@@ -9,10 +9,8 @@
 
 #pragma once
 
-#include "stdio.h"
-#include "stdint.h"
-#include "esp_attr.h"
-#include "WString.h"
+#include <ArduinoOrAlt.h>
+#include <esp_attr.h>
 
 class RaftI2CCentralIF
 {
