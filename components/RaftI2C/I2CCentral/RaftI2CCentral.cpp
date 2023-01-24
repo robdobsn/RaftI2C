@@ -9,6 +9,7 @@
 
 #include "RaftI2CCentral.h"
 #include <Logger.h>
+#include <RaftUtils.h>
 #include <ArduinoOrAlt.h>
 #include <driver/gpio.h>
 #include <soc/dport_reg.h>
@@ -299,7 +300,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint16_t address, uint
     // Wait for a result
     uint64_t startUs = micros();
     while ((_accessResultCode == ACCESS_RESULT_PENDING) &&
-           !Utils::isTimeout((uint64_t)micros(), startUs, maxExpectedUs))
+           !Raft::isTimeout((uint64_t)micros(), startUs, maxExpectedUs))
     {
         vTaskDelay(0);
     }
@@ -901,11 +902,11 @@ void RaftI2CCentral::debugShowStatus(const char *prefix, uint32_t addr)
           I2C_DEVICE.fifo_st.val, debugFIFOStatusStr("", I2C_DEVICE.fifo_st.val).c_str(),
           _i2cStats.debugStr().c_str());
     String cmdRegsStr;
-    Utils::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.command[0].val)),
+    Raft::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.command[0].val)),
                                I2C_ENGINE_CMD_QUEUE_SIZE, cmdRegsStr, " ");
     LOG_I(MODULE_PREFIX, "___Cmds %s", cmdRegsStr.c_str());
     String memStr;
-    Utils::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.ram_data[0])),
+    Raft::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.ram_data[0])),
                                I2C_ENGINE_FIFO_SIZE, memStr, " ");
     LOG_I(MODULE_PREFIX, "___Mem %s", memStr.c_str());
 }
