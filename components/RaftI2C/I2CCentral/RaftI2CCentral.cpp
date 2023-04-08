@@ -22,9 +22,6 @@
 #include <soc/io_mux_reg.h>
 #include <hal/gpio_hal.h>
 #include <esp_private/esp_clk.h>
-// TODO remove
-#include "driver/i2c.h"
-#include "esp_private/periph_ctrl.h"
 #endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
