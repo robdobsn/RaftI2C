@@ -1,6 +1,6 @@
 {
   "name": "RaftI2C",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "I2C for the Raft ESP32 framework",
   "keywords": "esp32, esp32s3, framework, I2C",
   "repository":

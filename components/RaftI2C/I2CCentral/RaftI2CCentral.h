@@ -16,6 +16,7 @@
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <sdkconfig.h>
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ALL_SOURCES
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL
@@ -38,7 +39,7 @@ public:
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) override final;
 
     // Check if bus operating ok
-    virtual bool isOperatingOk() override final;
+    virtual bool isOperatingOk() const override final;
      
 private:
     // Settings
@@ -68,6 +69,7 @@ private:
     volatile uint32_t _writeBufLen = 0;
 
     // Access result code
+    volatile bool _accessNackDetected = false;
     volatile AccessResultCode _accessResultCode = ACCESS_RESULT_PENDING;
 
     // Interrupt handle, clear and enable flags
@@ -76,14 +78,33 @@ private:
     uint32_t _interruptEnFlags = 0;
 
     // FIFO size
-    static const uint32_t I2C_ENGINE_FIFO_SIZE = sizeof(I2C0.ram_data)/sizeof(I2C0.ram_data[0]);
+    static const uint32_t I2C_ENGINE_FIFO_SIZE = 32;
 
     // Command max send/receive size
     static const uint32_t I2C_ENGINE_CMD_MAX_TX_BYTES = 255;
     static const uint32_t I2C_ENGINE_CMD_MAX_RX_BYTES = 255;
 
-    // Command queue siz
-    static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = sizeof(I2C0.command)/sizeof(I2C0.command[0]);
+    // Alternate definitions for chip variants
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    // ESP32 S3
+    static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = 8;
+    #define I2C_ACK_ERR_INT_ENA I2C_NACK_INT_ENA
+    #define I2C_ACK_ERR_INT_ST I2C_NACK_INT_ST
+    #define I2C_TXFIFO_EMPTY_INT_ENA I2C_TXFIFO_WM_INT_ENA
+    #define I2C_TXFIFO_EMPTY_INT_ST I2C_TXFIFO_WM_INT_ST
+    #define I2C_RXFIFO_FULL_INT_ENA I2C_RXFIFO_WM_INT_ENA
+    #define I2C_RXFIFO_FULL_INT_ST I2C_RXFIFO_WM_INT_ST
+    #define I2C_MASTER_TRAN_COMP_INT_ST I2C_MST_TXFIFO_UDF_INT_ST
+    #define I2C_STATUS_REGISTER_NAME sr
+    #define I2C_COMMAND_0_REGISTER_NAME comd0
+    #define I2C_TX_FIFO_RAM_ADDR_0_NAME txfifo_start_addr
+#else
+    // ESP32
+    static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = 16;
+    #define I2C_STATUS_REGISTER_NAME status_reg
+    #define I2C_COMMAND_0_REGISTER_NAME command[0]
+    #define I2C_TX_FIFO_RAM_ADDR_0_NAME ram_data
+#endif
 
     // Interrupts flags
     static const uint32_t INTERRUPT_BASE_ENABLES = 
@@ -110,6 +131,20 @@ private:
     static const uint32_t SCL_STATUS_START = 1;
     static const uint32_t MAIN_STATUS_SEND_ACK = 5;
     static const uint32_t MAIN_STATUS_WAIT_ACK = 6;
+
+    // Command register type (same for ESP32 and ESP32S3)
+    typedef union {
+        struct {
+            uint32_t byte_num:    8,
+                    ack_en:      1,
+                    ack_exp:     1,
+                    ack_val:     1,
+                    op_code:     3,
+                    reserved14: 17,
+                    done:        1;
+        };
+        uint32_t val;
+    } I2C_COMMAND_REG_TYPE;
 
     // Access type
     enum I2CAccessType
@@ -138,11 +173,13 @@ private:
     void IRAM_ATTR i2cISR();
     uint32_t IRAM_ATTR fillTxFifo();
     uint32_t IRAM_ATTR emptyRxFifo();
+    void setDefaultTimeout();
 
     // Debugging
     static String debugMainStatusStr(const char* prefix, uint32_t statusFlags);
     static String debugFIFOStatusStr(const char* prefix, uint32_t statusFlags);
     static String debugINTFlagStr(const char* prefix, uint32_t statusFlags);
+    static void debugShowAllRegs(const char *prefix, i2c_dev_t* pDev);
     void debugShowStatus(const char* prefix, uint32_t addr);
 
     // Debug I2C ISR
@@ -150,36 +187,11 @@ private:
     class DebugI2CISRElem
     {
     public:
-        DebugI2CISRElem()
-        {
-            clear();
-        }
-        void IRAM_ATTR clear()
-        {
-            _micros = 0;
-            _msg[0] = 0;
-            _intStatus = 0;
-        }
+        DebugI2CISRElem();
+        void IRAM_ATTR clear();
         void IRAM_ATTR set(const char* msg, uint32_t intStatus, 
-                        uint32_t mainStatus, uint32_t txFifoStatus)
-        {
-            _micros = micros();
-            _intStatus = intStatus;
-            _mainStatus = mainStatus;
-            _txFifoStatus = txFifoStatus;
-            strlcpy(_msg, msg, sizeof(_msg));
-        }
-        String toStr()
-        {
-            char outStr[300];
-            snprintf(outStr, sizeof(outStr), "%lld %s INT (%08x) %s MAIN (%08x) %s FIFO (%08x) %s", 
-                        _micros, _msg,
-                        _intStatus, debugINTFlagStr("", _intStatus).c_str(),
-                        _mainStatus, debugMainStatusStr("", _mainStatus).c_str(), 
-                        _txFifoStatus, debugFIFOStatusStr("", _txFifoStatus).c_str()
-            );
-            return outStr;
-        }
+                        uint32_t mainStatus, uint32_t txFifoStatus);
+        String toStr();
         uint64_t _micros;
         char _msg[20];
         uint32_t _intStatus;
@@ -189,33 +201,15 @@ private:
     class DebugI2CISR
     {
     public:
-        DebugI2CISR()
-        {
-            clear();
-        }
-        void IRAM_ATTR clear()
-        {
-            _i2cISRDebugCount = 0;
-        }
+        DebugI2CISR();
+        void IRAM_ATTR clear();
         static const uint32_t DEBUG_RAFT_I2C_CENTRAL_ISR_MAX = 100;
         DebugI2CISRElem _i2cISRDebugElems[DEBUG_RAFT_I2C_CENTRAL_ISR_MAX];
         uint32_t _i2cISRDebugCount;
         void IRAM_ATTR debugISRAdd(const char* msg, uint32_t intStatus, 
-                        uint32_t mainStatus, uint32_t txFifoStatus)
-        {
-            if (_i2cISRDebugCount >= DEBUG_RAFT_I2C_CENTRAL_ISR_MAX)
-                return;
-            _i2cISRDebugElems[_i2cISRDebugCount].set(msg, intStatus, mainStatus, txFifoStatus);
-            _i2cISRDebugCount++;
-        }
-        uint32_t getCount()
-        {
-            return _i2cISRDebugCount;
-        }
-        DebugI2CISRElem& getElem(uint32_t i)
-        {
-            return _i2cISRDebugElems[i];
-        }
+                        uint32_t mainStatus, uint32_t txFifoStatus);
+        uint32_t getCount();
+        DebugI2CISRElem& getElem(uint32_t i);
     };
     DebugI2CISR _debugI2CISR;
 #endif
