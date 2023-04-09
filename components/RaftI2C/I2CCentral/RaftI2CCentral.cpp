@@ -488,23 +488,29 @@ void RaftI2CCentral::prepareI2CAccess()
     setDefaultTimeout();
 
     // Lock fifos
-    I2C_DEVICE.fifo_conf.tx_fifo_rst = 1;
-    I2C_DEVICE.fifo_conf.rx_fifo_rst = 1;
+    typeof(I2C_DEVICE.fifo_conf) fifoConf;
+    fifoConf.val = I2C_DEVICE.fifo_conf.val;
+    fifoConf.tx_fifo_rst = 1;
+    fifoConf.rx_fifo_rst = 1;
+    I2C_DEVICE.fifo_conf.val = fifoConf.val;
 
     // Set the fifo thresholds to reasonable values given 100KHz bus speed and 180MHz processor clock
     // the threshold must allow for interrupt latency
     // ESP IDF uses full threshold of 11 and empty threshold of 4
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-    I2C_DEVICE.fifo_conf.rxfifo_wm_thrhd = 24;
-    I2C_DEVICE.fifo_conf.txfifo_wm_thrhd = 6;
+    fifoConf.rxfifo_wm_thrhd = 24;
+    fifoConf.txfifo_wm_thrhd = 6;
+    fifoConf.fifo_prt_en = 1;
 #else
-    I2C_DEVICE.fifo_conf.rx_fifo_full_thrhd = 24;
-    I2C_DEVICE.fifo_conf.tx_fifo_empty_thrhd = 6;
+    fifoConf.rx_fifo_full_thrhd = 24;
+    fifoConf.tx_fifo_empty_thrhd = 6;
 #endif
+    I2C_DEVICE.fifo_conf.val = fifoConf.val;
 
     // Release fifos
-    I2C_DEVICE.fifo_conf.tx_fifo_rst = 0;
-    I2C_DEVICE.fifo_conf.rx_fifo_rst = 0;
+    fifoConf.tx_fifo_rst = 0;
+    fifoConf.rx_fifo_rst = 0;
+    I2C_DEVICE.fifo_conf.val = fifoConf.val;
 
     // Disable interrupts and clear
     I2C_DEVICE.int_ena.val = 0;
@@ -606,7 +612,7 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     // Ensure 32bit access
     i2c_clk_conf_reg_t tmpReg;
     tmpReg.val = I2C_DEVICE.clk_conf.val;
-    tmpReg.sclk_sel = 1;
+    tmpReg.sclk_sel = 0;
     tmpReg.sclk_div_num = clk_cal.clkm_div - 1;
     I2C_DEVICE.clk_conf.val = tmpReg.val;
 
@@ -619,8 +625,6 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     scl_low_period_reg.val = 0;
     scl_low_period_reg.scl_low_period = clk_cal.scl_low - 1;
     I2C_DEVICE.scl_low_period.val = scl_low_period_reg.val;
-
-
     I2C_DEVICE.scl_high_period.scl_high_period = clk_cal.scl_high;
     I2C_DEVICE.scl_high_period.scl_wait_high_period = clk_cal.scl_wait_high;
     //sda sample
@@ -986,7 +990,9 @@ uint32_t RaftI2CCentral::emptyRxFifo()
     {
         if (_readBufPos >= _readBufMaxLen)
             break;
-        _readBufStartPtr[_readBufPos] = I2C_DEVICE.data.fifo_rdata;
+        i2c_data_reg_t dataReg;
+        dataReg.val = I2C_DEVICE.data.val;
+        _readBufStartPtr[_readBufPos] = dataReg.fifo_rdata;
         _readBufPos = _readBufPos + 1;
     }
 #else
