@@ -14,16 +14,12 @@
 #include <driver/gpio.h>
 #include <soc/dport_reg.h>
 #include <soc/rtc.h>
-
-#ifdef CONFIG_IDF_TARGET_ESP32S3
 #include <soc/i2c_periph.h>
 #include <hal/i2c_types.h>
 #include <esp_rom_gpio.h>
 #include <soc/io_mux_reg.h>
 #include <hal/gpio_hal.h>
 #include <esp_private/esp_clk.h>
-#include "esp_private/periph_ctrl.h"
-#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consts
@@ -143,8 +139,13 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
         gpio_set_level((gpio_num_t)_pinSDA, 1);
         gpio_set_direction((gpio_num_t)_pinSDA, GPIO_MODE_INPUT_OUTPUT_OD);
         gpio_pullup_en((gpio_num_t)_pinSDA);
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
         gpio_matrix_out((gpio_num_t)_pinSDA, sdaIdx, false, false);
         gpio_matrix_in((gpio_num_t)_pinSDA, sdaIdx, false);
+#else
+        esp_rom_gpio_connect_out_signal((gpio_num_t)_pinSDA, sdaIdx, false, false);
+        esp_rom_gpio_connect_in_signal((gpio_num_t)_pinSDA, sdaIdx, false);
+#endif
     }
     if (_pinSCL >= 0)
     {
@@ -152,8 +153,13 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
         gpio_set_level((gpio_num_t)_pinSCL, 1);
         gpio_set_direction((gpio_num_t)_pinSCL, GPIO_MODE_INPUT_OUTPUT_OD);
         gpio_pullup_en((gpio_num_t)_pinSCL);
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
         gpio_matrix_out((gpio_num_t)_pinSCL, sclIdx, false, false);
         gpio_matrix_in((gpio_num_t)_pinSCL, sclIdx, false);
+#else
+        esp_rom_gpio_connect_out_signal((gpio_num_t)_pinSCL, sclIdx, false, false);
+        esp_rom_gpio_connect_in_signal((gpio_num_t)_pinSCL, sclIdx, false);
+#endif
     }
 #endif
 
@@ -953,7 +959,10 @@ uint32_t RaftI2CCentral::fillTxFifo()
     if (toSend > remainingBytes)
         toSend = remainingBytes;
     for (uint32_t i = 0; i < toSend; i++)
-        I2C_DEVICE.fifo_data.data = _writeBufStartPtr[_writeBufPos++];
+    {
+        I2C_DEVICE.fifo_data.data = _writeBufStartPtr[_writeBufPos];
+        _writeBufPos = _writeBufPos + 1;
+    }
 
     // If we have finished all data to write AND
     // if we have a restart address to send AND
