@@ -10,7 +10,7 @@
 #include "RaftI2CCentral.h"
 #include <Logger.h>
 #include <RaftUtils.h>
-#include <ArduinoOrAlt.h>
+#include <RaftArduino.h>
 #include <driver/gpio.h>
 #include <soc/dport_reg.h>
 #include <soc/rtc.h>

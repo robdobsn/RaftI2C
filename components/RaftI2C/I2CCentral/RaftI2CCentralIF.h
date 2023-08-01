@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <ArduinoOrAlt.h>
+#include <RaftArduino.h>
 #include <esp_attr.h>
 
 class RaftI2CCentralIF
