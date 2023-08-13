@@ -990,7 +990,7 @@ uint32_t RaftI2CCentral::emptyRxFifo()
         return RX_FIFO_NEARING_FULL_INT;
 
     // Start critical section for access to I2C FIFO
-    portENTER_CRITICAL(&_i2cAccessMutex);
+    portENTER_CRITICAL_ISR(&_i2cAccessMutex);
 
     // Empty received data from the Rx FIFO
 #ifdef CONFIG_IDF_TARGET_ESP32S3
@@ -1016,7 +1016,7 @@ uint32_t RaftI2CCentral::emptyRxFifo()
 #endif
 
     // Exit ctitical section
-    portEXIT_CRITICAL(&_i2cAccessMutex);
+    portEXIT_CRITICAL_ISR(&_i2cAccessMutex);
     return (_readBufPos >= _readBufMaxLen) ? RX_FIFO_NEARING_FULL_INT : 0;
 }
 
