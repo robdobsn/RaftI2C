@@ -455,11 +455,15 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint16_t address, uint
 bool RaftI2CCentral::ensureI2CReady()
 {
     // Check if busy
-    if (isBusy())
+    if (isBusy() && Raft::isTimeout(millis(), _lastCheckI2CReadyMs, _lastCheckI2CReadyIntervalMs))
     {
 #ifdef WARN_ON_BUS_IS_BUSY
         LOG_W(MODULE_PREFIX, "ensureI2CReady bus is busy ... resetting\n");
 #endif
+
+        // Other checks on I2C should delayed more
+        _lastCheckI2CReadyIntervalMs = I2C_READY_CHECK_INTERVAL_OTHER_MS;
+        _lastCheckI2CReadyMs = millis();
 
         // Should not be busy - so reinit I2C
         reinitI2CModule();

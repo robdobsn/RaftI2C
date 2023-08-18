@@ -84,6 +84,12 @@ private:
     static const uint32_t I2C_ENGINE_CMD_MAX_TX_BYTES = 255;
     static const uint32_t I2C_ENGINE_CMD_MAX_RX_BYTES = 255;
 
+    // Last check of I2C ready
+    static const uint32_t I2C_READY_CHECK_INTERVAL_FIRST_MS = 10;
+    static const uint32_t I2C_READY_CHECK_INTERVAL_OTHER_MS = 5000;
+    uint32_t _lastCheckI2CReadyMs = 0;
+    uint32_t _lastCheckI2CReadyIntervalMs = I2C_READY_CHECK_INTERVAL_FIRST_MS;
+
     // Alternate definitions for chip variants
 #ifdef CONFIG_IDF_TARGET_ESP32S3
     // ESP32 S3
