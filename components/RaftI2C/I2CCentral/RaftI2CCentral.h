@@ -102,7 +102,7 @@ private:
     #define I2C_RXFIFO_FULL_INT_ST I2C_RXFIFO_WM_INT_ST
     #define I2C_MASTER_TRAN_COMP_INT_ST I2C_MST_TXFIFO_UDF_INT_ST
     #define I2C_STATUS_REGISTER_NAME sr
-    #define I2C_COMMAND_0_REGISTER_NAME comd0
+    #define I2C_COMMAND_0_REGISTER_NAME comd[0]
     #define I2C_TX_FIFO_RAM_ADDR_0_NAME txfifo_start_addr
 #else
     // ESP32

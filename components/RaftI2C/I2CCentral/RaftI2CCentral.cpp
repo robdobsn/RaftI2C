@@ -11,6 +11,7 @@
 #include <Logger.h>
 #include <RaftUtils.h>
 #include <RaftArduino.h>
+#include "sdkconfig.h"
 #include <driver/gpio.h>
 #include <soc/dport_reg.h>
 #include <soc/rtc.h>
@@ -20,6 +21,7 @@
 #include <soc/io_mux_reg.h>
 #include <hal/gpio_hal.h>
 #include <esp_private/esp_clk.h>
+#include "esp_private/periph_ctrl.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consts
@@ -737,7 +739,7 @@ void RaftI2CCentral::setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byt
     cmdVal.ack_exp = ack_exp;
     cmdVal.ack_en = ack_en;
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-    (&I2C_DEVICE.comd0)[cmdIdx].val = cmdVal.val;
+    (&I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME)[cmdIdx].val = cmdVal.val;
     // LOG_I(MODULE_PREFIX, "setI2CCommand idx %d op %d byte %d ackv %d ackexp %d acken %d val %08x addr %p readback %08x", 
     //         cmdIdx, op_code, byte_num, ack_val, ack_exp, ack_en, cmdVal.val, (&I2C_DEVICE.comd0) + cmdIdx, 
     //         (&I2C_DEVICE.comd0)[cmdIdx].val);
