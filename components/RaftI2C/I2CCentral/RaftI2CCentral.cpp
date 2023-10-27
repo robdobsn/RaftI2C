@@ -478,7 +478,9 @@ bool RaftI2CCentral::ensureI2CReady()
         {
             // Something more seriously wrong
 #ifdef WARN_ON_BUS_CANNOT_BE_RESET
-            LOG_W(MODULE_PREFIX, "ensureI2CReady bus still busy ... FAILED ACCESS lines held %d\n", checkI2CLinesOk());
+            String busLinesErrorMsg;
+            checkI2CLinesOk(busLinesErrorMsg);
+            LOG_W(MODULE_PREFIX, "ensureI2CReady bus still busy ... %s\n", busLinesErrorMsg.c_str());
 #endif
             return false;
         }
@@ -807,11 +809,12 @@ void RaftI2CCentral::initBusFiltering()
 // Checks both I2C lines (SCL and SDA) for pin-held-low problems
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool RaftI2CCentral::checkI2CLinesOk()
+bool RaftI2CCentral::checkI2CLinesOk(String& busLinesErrorMsg)
 {
     // Check if SDA or SCL are held low
     bool sdaHeld = gpio_get_level((gpio_num_t)_pinSDA) == 0;
     bool sclHeld = gpio_get_level((gpio_num_t)_pinSCL) == 0;
+    busLinesErrorMsg = sdaHeld && sclHeld ? "SDA & SCL held low" : sdaHeld ? "SDA held low" : sclHeld ? "SCL held low" : "";
     return sdaHeld || sclHeld;
 }
 

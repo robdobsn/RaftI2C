@@ -174,7 +174,7 @@ private:
     void setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byte_num, bool ack_val, bool ack_exp, bool ack_en);
     bool initInterrupts();
     void initBusFiltering();
-    bool checkI2CLinesOk();
+    bool checkI2CLinesOk(String& busLinesErrorMsg);
     static void IRAM_ATTR i2cISRStatic(void* arg);
     void IRAM_ATTR i2cISR();
     uint32_t IRAM_ATTR fillTxFifo();
