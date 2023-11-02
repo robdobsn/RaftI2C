@@ -34,6 +34,7 @@ public:
 private:
     // Bus settings
     int _i2cPort = 0;
+    i2c_port_t _i2cNum = I2C_NUM_0;
     static const int I2C_TIMEOUT_IN_I2C_BIT_PERIODS = 20;
     // Detection of bus failure
     uint32_t _busLockDetectCount = 0;
