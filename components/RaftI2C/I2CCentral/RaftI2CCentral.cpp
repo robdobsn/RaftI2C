@@ -13,7 +13,9 @@
 #include <RaftArduino.h>
 #include "sdkconfig.h"
 #include <driver/gpio.h>
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
 #include <soc/dport_reg.h>
+#endif
 #include <soc/rtc.h>
 #include <soc/i2c_periph.h>
 #include <hal/i2c_types.h>
@@ -40,8 +42,8 @@ static const char *MODULE_PREFIX = "RaftI2CCentral";
 // #define DEBUG_ALL_REGS
 // #define DEBUG_ISR_USING_GPIO_NUM 1
 
-// I2C operation mode command (different for ESP32 and ESP32S3)
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+// I2C operation mode command (different for ESP32 and ESP32S3/C3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
 static const uint8_t ESP32_I2C_CMD_RSTART = 6;
 static const uint8_t ESP32_I2C_CMD_WRITE = 1;
 static const uint8_t ESP32_I2C_CMD_READ = 3;
@@ -55,7 +57,11 @@ static const uint8_t ESP32_I2C_CMD_STOP = 3;
 static const uint8_t ESP32_I2C_CMD_END = 4;
 #endif
 
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#define I2C_DEVICE I2C0
+#else
 #define I2C_DEVICE (_i2cPort == 0 ? I2C0 : I2C1)
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor / Destructor
@@ -94,10 +100,13 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     _busFrequency = busFrequency;
     _busFilteringLevel = busFilteringLevel;
 
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Enable peripheral on ESP32 S3
     periph_module_enable((i2cPort == 0) ? PERIPH_I2C0_MODULE : PERIPH_I2C1_MODULE);
 
+    // Enable clock to I2C peripheral
+    I2C_DEVICE.clk_conf.sclk_active = 1;
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
     // Enable clock to I2C peripheral
     I2C_DEVICE.clk_conf.sclk_active = 1;
 #endif
@@ -109,7 +118,7 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     reinitI2CModule();
 
     // Attach SDA and SCL
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     int sda_out_sig = i2c_periph_signal[_i2cPort].sda_out_sig;
     int sda_in_sig = i2c_periph_signal[_i2cPort].sda_in_sig;
     int scl_out_sig = i2c_periph_signal[_i2cPort].scl_out_sig;
@@ -372,7 +381,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint16_t address, uint
 #endif
 
     // Start communicating
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     I2C_DEVICE.ctr.clk_en = 1;
     I2C_DEVICE.ctr.conf_upgate = 1;
 #endif
@@ -511,9 +520,13 @@ void RaftI2CCentral::prepareI2CAccess()
     // Set the fifo thresholds to reasonable values given 100KHz bus speed and 180MHz processor clock
     // the threshold must allow for interrupt latency
     // ESP IDF uses full threshold of 11 and empty threshold of 4
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
     fifoConf.rxfifo_wm_thrhd = 24;
     fifoConf.txfifo_wm_thrhd = 6;
+    fifoConf.fifo_prt_en = 1;
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    fifoConf.rx_fifo_wm_thrhd = 24;
+    fifoConf.tx_fifo_wm_thrhd = 6;
     fifoConf.fifo_prt_en = 1;
 #else
     fifoConf.rx_fifo_full_thrhd = 24;
@@ -543,7 +556,7 @@ void RaftI2CCentral::reinitI2CModule()
     I2C_DEVICE.int_clr.val = UINT32_MAX;
 
     // Reset hardware
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     I2C_DEVICE.ctr.fsm_rst = 1;
     I2C_DEVICE.ctr.fsm_rst = 0;
     vTaskDelay(1);
@@ -564,7 +577,7 @@ void RaftI2CCentral::reinitI2CModule()
     I2C_DEVICE.ctr.val = ctrl_reg.val;
 
     // Set data mode
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     I2C_DEVICE.ctr.tx_lsb_first = I2C_DATA_MODE_MSB_FIRST;
     I2C_DEVICE.ctr.rx_lsb_first = I2C_DATA_MODE_MSB_FIRST;
 #endif
@@ -575,7 +588,7 @@ void RaftI2CCentral::reinitI2CModule()
     // Clear FIFO config
     I2C_DEVICE.fifo_conf.val = 0;
 
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     // Set FIFO mode
     I2C_DEVICE.fifo_conf.nonfifo_en = 0;
 
@@ -596,7 +609,7 @@ void RaftI2CCentral::reinitI2CModule()
 
 bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
 
     i2c_hal_clk_config_t clk_cal;
     uint32_t sourceClockFreq = esp_clk_xtal_freq();
@@ -624,7 +637,7 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     //     busFreq, sourceClockFreq, clkm_div, sclk_freq, half_cycle, clk_cal.scl_low, clk_cal.scl_wait_high, clk_cal.scl_high, clk_cal.sda_hold, clk_cal.sda_sample, clk_cal.setup, clk_cal.hold, clk_cal.tout);
 
     // Ensure 32bit access
-    i2c_clk_conf_reg_t tmpReg;
+    typeof(I2C_DEVICE.clk_conf) tmpReg;
     tmpReg.val = I2C_DEVICE.clk_conf.val;
     tmpReg.sclk_sel = 0;
     tmpReg.sclk_div_num = clk_cal.clkm_div - 1;
@@ -635,23 +648,23 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
      * The SCL frequency would be a little higher than expected. Therefore, the solution
      * here is not to minus scl_high as well as scl_wait high, and the frequency will be absolutely accurate to all frequency
      * to some extent. */
-    i2c_scl_low_period_reg_t scl_low_period_reg;
+    typeof(I2C_DEVICE.scl_low_period) scl_low_period_reg;
     scl_low_period_reg.val = 0;
-    scl_low_period_reg.scl_low_period = clk_cal.scl_low - 1;
+    scl_low_period_reg.I2C_SCL_LOW_PERIOD_PERIOD_NAME = clk_cal.scl_low - 1;
     I2C_DEVICE.scl_low_period.val = scl_low_period_reg.val;
-    I2C_DEVICE.scl_high_period.scl_high_period = clk_cal.scl_high;
+    I2C_DEVICE.scl_high_period.I2C_SCL_HIGH_PERIOD_PERIOD_NAME = clk_cal.scl_high;
     I2C_DEVICE.scl_high_period.scl_wait_high_period = clk_cal.scl_wait_high;
     //sda sample
-    I2C_DEVICE.sda_hold.sda_hold_time = clk_cal.sda_hold - 1;
-    I2C_DEVICE.sda_sample.sda_sample_time = clk_cal.sda_sample - 1;
+    I2C_DEVICE.sda_hold.I2C_SDA_HOLD_TIME_NAME = clk_cal.sda_hold - 1;
+    I2C_DEVICE.sda_sample.I2C_SDA_SAMPLE_TIME_NAME = clk_cal.sda_sample - 1;
     //setup
-    I2C_DEVICE.scl_rstart_setup.scl_rstart_setup_time = clk_cal.setup - 1;
-    I2C_DEVICE.scl_stop_setup.scl_stop_setup_time = clk_cal.setup - 1;
+    I2C_DEVICE.scl_rstart_setup.I2C_SCL_RSTART_SETUP_TIME_NAME = clk_cal.setup - 1;
+    I2C_DEVICE.scl_stop_setup.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.setup - 1;
     //hold
-    I2C_DEVICE.scl_start_hold.scl_start_hold_time = clk_cal.hold - 1;
-    I2C_DEVICE.scl_stop_hold.scl_stop_hold_time = clk_cal.hold - 1;
-    I2C_DEVICE.to.time_out_value = clk_cal.tout;
-    I2C_DEVICE.to.time_out_en = 1;
+    I2C_DEVICE.scl_start_hold.I2C_SCL_START_HOLD_TIME_NAME= clk_cal.hold - 1;
+    I2C_DEVICE.scl_stop_hold.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.hold - 1;
+    I2C_DEVICE.I2C_TIMEOUT_REG_NAME.time_out_value = clk_cal.tout;
+    I2C_DEVICE.I2C_TIMEOUT_REG_NAME.time_out_en = 1;
 
     // LOG_I(MODULE_PREFIX, "scl_low_period_reg_val %ld wrote %ld", I2C_DEVICE.scl_low_period.val, scl_low_period_reg.val);
 
@@ -740,7 +753,7 @@ void RaftI2CCentral::setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byt
     cmdVal.ack_val = ack_val;
     cmdVal.ack_exp = ack_exp;
     cmdVal.ack_en = ack_en;
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     (&I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME)[cmdIdx].val = cmdVal.val;
     // LOG_I(MODULE_PREFIX, "setI2CCommand idx %d op %d byte %d ackv %d ackexp %d acken %d val %08x addr %p readback %08x", 
     //         cmdIdx, op_code, byte_num, ack_val, ack_exp, ack_en, cmdVal.val, (&I2C_DEVICE.comd0) + cmdIdx, 
@@ -773,9 +786,11 @@ bool RaftI2CCentral::initInterrupts()
     if (_i2cPort == 0)
         esp_intr_alloc_intrstatus(ETS_I2C_EXT0_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
                                   _interruptEnFlags, i2cISRStatic, this, &_i2cISRHandle);
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
     else
         esp_intr_alloc_intrstatus(ETS_I2C_EXT1_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
                                   _interruptEnFlags, i2cISRStatic, this, &_i2cISRHandle);
+#endif
 
     // Warn if problems
     if (retc != ESP_OK)
@@ -791,17 +806,10 @@ bool RaftI2CCentral::initInterrupts()
 
 void RaftI2CCentral::initBusFiltering()
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    I2C_DEVICE.filter_cfg.scl_filter_thres = _busFilteringLevel;
-    I2C_DEVICE.filter_cfg.sda_filter_thres = _busFilteringLevel;
-    I2C_DEVICE.filter_cfg.scl_filter_en = _busFilteringLevel != 0;
-    I2C_DEVICE.filter_cfg.sda_filter_en = _busFilteringLevel != 0;
-#else
-    I2C_DEVICE.scl_filter_cfg.thres = _busFilteringLevel;
-    I2C_DEVICE.sda_filter_cfg.thres = _busFilteringLevel;
-    I2C_DEVICE.scl_filter_cfg.en = _busFilteringLevel != 0;
-    I2C_DEVICE.sda_filter_cfg.en = _busFilteringLevel != 0;
-#endif
+    I2C_DEVICE.I2C_FILTER_CFG_SCL_THRESH = _busFilteringLevel;
+    I2C_DEVICE.I2C_FILTER_CFG_SDA_THRESH = _busFilteringLevel;
+    I2C_DEVICE.I2C_FILTER_CFG_SCL_ENABLE = _busFilteringLevel != 0;
+    I2C_DEVICE.I2C_FILTER_CFG_SDA_ENABLE = _busFilteringLevel != 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -917,11 +925,11 @@ void RaftI2CCentral::i2cISR()
 
 uint32_t RaftI2CCentral::fillTxFifo()
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     // Check if we need to add the start address+RW to the Tx FIFO
     if (_startAddrPlusRWRequired)
     {
-        I2C_DEVICE.data.fifo_rdata = _startAddrPlusRW;
+        I2C_DEVICE.I2C_DATA_FIFO_DATA_REG.I2C_DATA_FIFO_READ_DATA_REG = _startAddrPlusRW;
         _startAddrPlusRWRequired = false;
     }
 
@@ -931,12 +939,12 @@ uint32_t RaftI2CCentral::fillTxFifo()
 
     // Fill fifo with data to write
     uint32_t remainingBytes = _writeBufLen - _writeBufPos;
-    uint32_t toSend = I2C_ENGINE_FIFO_SIZE - I2C_DEVICE.sr.txfifo_cnt;
+    uint32_t toSend = I2C_ENGINE_FIFO_SIZE - I2C_DEVICE.I2C_STATUS_REGISTER_NAME.I2C_STATUS_REGISTER_TX_FIFO_CNT_NAME;
     if (toSend > remainingBytes)
         toSend = remainingBytes;
     for (uint32_t i = 0; i < toSend; i++)
     {
-        I2C_DEVICE.data.fifo_rdata = _writeBufStartPtr[_writeBufPos];
+        I2C_DEVICE.I2C_DATA_FIFO_DATA_REG.I2C_DATA_FIFO_READ_DATA_REG = _writeBufStartPtr[_writeBufPos];
         _writeBufPos = _writeBufPos + 1;
     }
 
@@ -944,9 +952,9 @@ uint32_t RaftI2CCentral::fillTxFifo()
     // if we have a restart address to send AND
     // there is space in the FIFO then add the restart address
     if ((_writeBufPos == _writeBufLen) && _restartAddrPlusRWRequired &&
-        (I2C_DEVICE.sr.txfifo_cnt < I2C_ENGINE_FIFO_SIZE))
+        (I2C_DEVICE.I2C_STATUS_REGISTER_NAME.I2C_STATUS_REGISTER_TX_FIFO_CNT_NAME < I2C_ENGINE_FIFO_SIZE))
     {
-        I2C_DEVICE.data.fifo_rdata = _restartAddrPlusRW;
+        I2C_DEVICE.I2C_DATA_FIFO_DATA_REG.I2C_DATA_FIFO_READ_DATA_REG = _restartAddrPlusRW;
         _restartAddrPlusRWRequired = false;
     }
 
@@ -1002,15 +1010,16 @@ uint32_t RaftI2CCentral::emptyRxFifo()
     portENTER_CRITICAL_ISR(&_i2cAccessMutex);
 
     // Empty received data from the Rx FIFO
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    uint32_t toGet = I2C_DEVICE.I2C_STATUS_REGISTER_NAME.rxfifo_cnt;
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    uint32_t toGet = I2C_DEVICE.I2C_STATUS_REGISTER_NAME.I2C_STATUS_REGISTER_RX_FIFO_CNT_NAME;
     for (uint32_t i = 0; i < toGet; i++)
     {
         if (_readBufPos >= _readBufMaxLen)
             break;
-        i2c_data_reg_t dataReg;
-        dataReg.val = I2C_DEVICE.data.val;
-        _readBufStartPtr[_readBufPos] = dataReg.fifo_rdata;
+            
+        typeof(I2C_DEVICE.I2C_DATA_FIFO_DATA_REG) dataReg;
+        dataReg.val = I2C_DEVICE.I2C_DATA_FIFO_DATA_REG.val;
+        _readBufStartPtr[_readBufPos] = dataReg.I2C_DATA_FIFO_READ_DATA_REG;
         _readBufPos = _readBufPos + 1;
     }
 #else
@@ -1058,12 +1067,12 @@ void RaftI2CCentral::deinit()
 
 void RaftI2CCentral::setDefaultTimeout()
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    I2C_DEVICE.to.time_out_value = 16;
-    I2C_DEVICE.to.time_out_en = 1;
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    I2C_DEVICE.I2C_TIMEOUT_REG_NAME.time_out_value = 16;
+    I2C_DEVICE.I2C_TIMEOUT_REG_NAME.time_out_en = 1;
 #else
     // Timout default
-    I2C_DEVICE.timeout.tout = 0x8000;
+    I2C_DEVICE.I2C_TIMEOUT_REG_NAME.tout = 0x8000;
 #endif
 
 }
@@ -1122,7 +1131,7 @@ String RaftI2CCentral::debugFIFOStatusStr(const char *prefix, uint32_t statusFla
 
 String RaftI2CCentral::debugINTFlagStr(const char *prefix, uint32_t statusFlags)
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     const char *intStrs[] = {
         "RxFIFOFull",
         "TxFIFOEmpty",
