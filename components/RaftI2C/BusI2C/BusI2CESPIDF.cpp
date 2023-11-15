@@ -33,6 +33,7 @@ bool BusI2CESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint3
     conf.scl_io_num = (gpio_num_t) pinSCL;
     conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
     conf.master.clk_speed = busFrequency;
+    conf.clk_flags = 0;
     _i2cNum = (i2cPort == 0) ? I2C_NUM_0 : 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
     I2C_NUM_0;
@@ -50,7 +51,11 @@ bool BusI2CESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint3
     {
         LOG_W(MODULE_PREFIX, "driver_install fail %s", err == ESP_FAIL ? "DRIVER FAIL" : "param error");
     }
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    int timeout = 16;
+#else
     int timeout = I2C_TIMEOUT_IN_I2C_BIT_PERIODS * (APB_CLK_FREQ / busFrequency);
+#endif
     err = i2c_set_timeout(_i2cNum, timeout);
     if (err != ESP_OK)
     {
