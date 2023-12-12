@@ -27,6 +27,8 @@ public:
     virtual bool init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency, 
                 uint32_t busFilteringLevel = DEFAULT_BUS_FILTER_LEVEL) = 0;
 
+    virtual void deinit() = 0;
+
     // Busy
     virtual bool isBusy() = 0;
 

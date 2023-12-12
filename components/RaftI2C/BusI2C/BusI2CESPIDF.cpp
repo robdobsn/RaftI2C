@@ -65,6 +65,11 @@ bool BusI2CESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint3
     return true;
 }
 
+void BusI2CESPIDF::deinit()
+{
+    i2c_driver_delete(_i2cNum);
+}
+
 // Busy
 bool BusI2CESPIDF::isBusy()
 {

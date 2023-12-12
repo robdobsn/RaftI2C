@@ -30,6 +30,7 @@ public:
     // Init/de-init
     virtual bool init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency, 
                 uint32_t busFilteringLevel = DEFAULT_BUS_FILTER_LEVEL) override final;
+    virtual void deinit() override final;
 
     // Busy
     virtual bool isBusy() override final;
@@ -223,7 +224,6 @@ private:
     // Helpers
     bool ensureI2CReady();
     void prepareI2CAccess();
-    void deinit();
     void reinitI2CModule();
     bool setBusFrequency(uint32_t busFreq);
     uint32_t getApbFrequency();
