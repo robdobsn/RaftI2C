@@ -6,11 +6,10 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <Logger.h>
-#include <BusI2C.h>
-#include <ConfigBase.h>
-#include <ConfigPinMap.h>
-#include <RaftArduino.h>
+#include "Logger.h"
+#include "BusI2C.h"
+#include "ConfigPinMap.h"
+#include "RaftArduino.h"
 #include "esp_task_wdt.h"
 
 static const char* MODULE_PREFIX = "BusI2C";
@@ -121,7 +120,7 @@ BusI2C::~BusI2C()
 // Setup
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusI2C::setup(ConfigBase& config, const char* pConfigPrefix)
+bool BusI2C::setup(const RaftJsonIF& config)
 {
     // Note:
     // No attempt is made here to clean-up properly
@@ -140,22 +139,22 @@ bool BusI2C::setup(ConfigBase& config, const char* pConfigPrefix)
     }
 
     // Get bus details
-    _i2cPort = config.getLong("i2cPort", 0, pConfigPrefix);
-    String pinName = config.getString("sdaPin", "", pConfigPrefix);
+    _i2cPort = config.getLong("i2cPort", 0);
+    String pinName = config.getString("sdaPin", "");
     _sdaPin = ConfigPinMap::getPinFromName(pinName.c_str());
-    pinName = config.getString("sclPin", "", pConfigPrefix);
+    pinName = config.getString("sclPin", "");
     _sclPin = ConfigPinMap::getPinFromName(pinName.c_str());
-    _freq = config.getLong("i2cFreq", 100000, pConfigPrefix);
-    _i2cFilter = config.getLong("i2cFilter", RaftI2CCentralIF::DEFAULT_BUS_FILTER_LEVEL, pConfigPrefix);
-    _busName = config.getString("name", "", pConfigPrefix);
-    UBaseType_t taskCore = config.getLong("taskCore", DEFAULT_TASK_CORE, pConfigPrefix);
-    BaseType_t taskPriority = config.getLong("taskPriority", DEFAULT_TASK_PRIORITY, pConfigPrefix);
-    int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES, pConfigPrefix);
-    _lowLoadBus = config.getLong("lowLoad", 0, pConfigPrefix) != 0;
+    _freq = config.getLong("i2cFreq", 100000);
+    _i2cFilter = config.getLong("i2cFilter", RaftI2CCentralIF::DEFAULT_BUS_FILTER_LEVEL);
+    _busName = config.getString("name", "");
+    UBaseType_t taskCore = config.getLong("taskCore", DEFAULT_TASK_CORE);
+    BaseType_t taskPriority = config.getLong("taskPriority", DEFAULT_TASK_PRIORITY);
+    int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES);
+    _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
     // Scan boost
     std::vector<String> scanBoostAddrStrs;
-    config.getArrayElems("scanBoost", scanBoostAddrStrs, pConfigPrefix);
+    config.getArrayElems("scanBoost", scanBoostAddrStrs);
     _scanBoostAddresses.resize(scanBoostAddrStrs.size());
     for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
     {
@@ -168,7 +167,7 @@ bool BusI2C::setup(ConfigBase& config, const char* pConfigPrefix)
     _addrForLockupDetect = 0;
     _addrForLockupDetectValid = false;
 #ifdef I2C_USE_RAFT_I2C
-    uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff", pConfigPrefix).c_str(), NULL, 0);
+    uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
     if (address != 0xffffffff)
     {
         _addrForLockupDetect = address;

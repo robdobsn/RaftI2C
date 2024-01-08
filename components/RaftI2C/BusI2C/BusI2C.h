@@ -29,7 +29,7 @@ public:
     virtual ~BusI2C();
 
     // Setup
-    virtual bool setup(ConfigBase& config, const char* pConfigPrefix) override final;
+    virtual bool setup(const RaftJsonIF& config) override final;
 
     // Close bus
     virtual void close() override final;

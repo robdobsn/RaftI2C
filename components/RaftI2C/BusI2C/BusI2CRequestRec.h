@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <BusRequestInfo.h>
+#include "BusRequestInfo.h"
 
 // Request record
 class BusI2CRequestRec
