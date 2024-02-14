@@ -119,7 +119,7 @@ private:
     #define I2C_SCL_START_HOLD_TIME_NAME scl_start_hold_time
     #define I2C_SCL_STOP_HOLD_TIME_NAME scl_stop_hold_time
     #define I2C_FILTER_CFG_SCL_THRESH filter_cfg.scl_filter_thres
-    #define I2C_FILTER_CFG_SCL_THRESH filter_cfg.sda_filter_thres
+    #define I2C_FILTER_CFG_SDA_THRESH filter_cfg.sda_filter_thres
     #define I2C_FILTER_CFG_SCL_ENABLE filter_cfg.scl_filter_en
     #define I2C_FILTER_CFG_SDA_ENABLE filter_cfg.sda_filter_en
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)

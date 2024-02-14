@@ -659,7 +659,7 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     I2C_DEVICE.sda_sample.I2C_SDA_SAMPLE_TIME_NAME = clk_cal.sda_sample - 1;
     //setup
     I2C_DEVICE.scl_rstart_setup.I2C_SCL_RSTART_SETUP_TIME_NAME = clk_cal.setup - 1;
-    I2C_DEVICE.scl_stop_setup.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.setup - 1;
+    I2C_DEVICE.scl_stop_setup.I2C_SCL_STOP_SETUP_TIME_NAME = clk_cal.setup - 1;
     //hold
     I2C_DEVICE.scl_start_hold.I2C_SCL_START_HOLD_TIME_NAME= clk_cal.hold - 1;
     I2C_DEVICE.scl_stop_hold.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.hold - 1;
