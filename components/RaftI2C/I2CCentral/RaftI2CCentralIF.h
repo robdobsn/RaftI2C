@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <RaftArduino.h>
-#include <esp_attr.h>
+#include "RaftArduino.h"
+#include "esp_attr.h"
 
 class RaftI2CCentralIF
 {

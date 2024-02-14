@@ -8,21 +8,21 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "RaftI2CCentral.h"
-#include <Logger.h>
-#include <RaftUtils.h>
-#include <RaftArduino.h>
+#include "Logger.h"
+#include "RaftUtils.h"
+#include "RaftArduino.h"
 #include "sdkconfig.h"
-#include <driver/gpio.h>
+#include "driver/gpio.h"
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
-#include <soc/dport_reg.h>
+#include "soc/dport_reg.h"
 #endif
-#include <soc/rtc.h>
-#include <soc/i2c_periph.h>
-#include <hal/i2c_types.h>
-#include <esp_rom_gpio.h>
-#include <soc/io_mux_reg.h>
-#include <hal/gpio_hal.h>
-#include <esp_private/esp_clk.h>
+#include "soc/rtc.h"
+#include "soc/i2c_periph.h"
+#include "hal/i2c_types.h"
+#include "esp_rom_gpio.h"
+#include "soc/io_mux_reg.h"
+#include "hal/gpio_hal.h"
+#include "esp_private/esp_clk.h"
 #include "esp_private/periph_ctrl.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -659,7 +659,7 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     I2C_DEVICE.sda_sample.I2C_SDA_SAMPLE_TIME_NAME = clk_cal.sda_sample - 1;
     //setup
     I2C_DEVICE.scl_rstart_setup.I2C_SCL_RSTART_SETUP_TIME_NAME = clk_cal.setup - 1;
-    I2C_DEVICE.scl_stop_setup.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.setup - 1;
+    I2C_DEVICE.scl_stop_setup.I2C_SCL_STOP_SETUP_TIME_NAME = clk_cal.setup - 1;
     //hold
     I2C_DEVICE.scl_start_hold.I2C_SCL_START_HOLD_TIME_NAME= clk_cal.hold - 1;
     I2C_DEVICE.scl_stop_hold.I2C_SCL_STOP_HOLD_TIME_NAME = clk_cal.hold - 1;

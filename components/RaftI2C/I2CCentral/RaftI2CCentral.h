@@ -10,13 +10,13 @@
 #pragma once
 
 #include "RaftI2CCentralIF.h"
-#include <RaftUtils.h>
-#include <soc/i2c_struct.h>
-#include <soc/i2c_reg.h>
-#include <esp_intr_alloc.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <sdkconfig.h>
+#include "RaftUtils.h"
+#include "soc/i2c_struct.h"
+#include "soc/i2c_reg.h"
+#include "esp_intr_alloc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "sdkconfig.h"
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ALL_SOURCES
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL
@@ -119,7 +119,7 @@ private:
     #define I2C_SCL_START_HOLD_TIME_NAME scl_start_hold_time
     #define I2C_SCL_STOP_HOLD_TIME_NAME scl_stop_hold_time
     #define I2C_FILTER_CFG_SCL_THRESH filter_cfg.scl_filter_thres
-    #define I2C_FILTER_CFG_SCL_THRESH filter_cfg.sda_filter_thres
+    #define I2C_FILTER_CFG_SDA_THRESH filter_cfg.sda_filter_thres
     #define I2C_FILTER_CFG_SCL_ENABLE filter_cfg.scl_filter_en
     #define I2C_FILTER_CFG_SDA_ENABLE filter_cfg.sda_filter_en
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
