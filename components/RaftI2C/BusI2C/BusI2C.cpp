@@ -62,11 +62,11 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 // #define DEBUG_DISABLE_INITIAL_FAST_SCAN
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Construct / Destruct
+// Constructor / Destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
-                RaftI2CCentralIF* pI2CInterface)
+                RaftI2CCentralIF* pI2CCentralIF)
     : BusBase(busElemStatusCB, busOperationStatusCB)
 {
     // Init
@@ -84,15 +84,15 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busAccessBarMs[i] = 0;
 
     // Set the interface
-    _pI2CDevice = pI2CInterface;
-    if (!_pI2CDevice)
+    _pI2CCentral = pI2CCentralIF;
+    if (!_pI2CCentral)
     {
 #ifdef I2C_USE_RAFT_I2C
-        _pI2CDevice = new RaftI2CCentral();
+        _pI2CCentral = new RaftI2CCentral();
 #else
-        _pI2CDevice = new BusI2CESPIDF();
+        _pI2CCentral = new BusI2CESPIDF();
 #endif
-        _i2cDeviceNeedsDeleting = true;
+        _i2cCentralNeedsToBeDeleted = true;
     }
 
 #ifdef DEBUG_DISABLE_INITIAL_FAST_SCAN
@@ -106,8 +106,8 @@ BusI2C::~BusI2C()
     close();
 
     // Clean up
-    if (_i2cDeviceNeedsDeleting)
-        delete _pI2CDevice;
+    if (_i2cCentralNeedsToBeDeleted)
+        delete _pI2CCentral;
 
     // Remove mutex
     if (_pollingMutex)
@@ -184,14 +184,14 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Initialise bus
-    if (!_pI2CDevice)
+    if (!_pI2CCentral)
     {
         LOG_W(MODULE_PREFIX, "setup FAILED no device");
         return false;
     }
 
     // Init the I2C device
-    if (!_pI2CDevice->init(_i2cPort, _sdaPin, _sclPin, _freq, _i2cFilter))
+    if (!_pI2CCentral->init(_i2cPort, _sdaPin, _sclPin, _freq, _i2cFilter))
     {
         LOG_W(MODULE_PREFIX, "setup FAILED name %s port %d SDA %d SCL %d FREQ %d", _busName.c_str(), _i2cPort, _sdaPin, _sclPin, _freq);
         return false;
@@ -337,9 +337,9 @@ void BusI2C::service()
         }
 
         // If no lockup detection addresses are used then rely on the bus's isOperatingOk() result
-        if (!_addrForLockupDetectValid && _pI2CDevice)
+        if (!_addrForLockupDetectValid && _pI2CCentral)
         {
-            newBusOperationStatus = _pI2CDevice->isOperatingOk() ?
+            newBusOperationStatus = _pI2CCentral->isOperatingOk() ?
                         BUS_OPERATION_OK : BUS_OPERATION_FAILING;
             
         }
@@ -614,9 +614,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     // Access the bus
     uint32_t numBytesRead = 0;
     RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
-    if (!_pI2CDevice)
+    if (!_pI2CCentral)
         return rsltCode;
-    rsltCode = _pI2CDevice->access(address, pReqRec->getWriteData(), writeReqLen, 
+    rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
     // Handle bus element state changes - online/offline/etc

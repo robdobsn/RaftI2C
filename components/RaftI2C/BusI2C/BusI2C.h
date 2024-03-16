@@ -18,6 +18,19 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
+// I2C address and slot
+// The slotPlus1 value is 0 if the device is not connected to an I2C bus expander
+// The slotPlus1 value is 1-63 to specify the slot on the I2C bus expander with
+// 1 indicating the first slot on the first expander
+// The slotPlus1 value of 0 can also be used to address a device which is connected
+// to a bus expander and if more than one device is on the same address, the
+// first device found will be used
+struct RaftI2CAddrAndSlot
+{
+    uint16_t addr:10;
+    uint8_t slotPlus1:6;
+};
+
 class RaftI2CCentralIF;
 
 class BusI2C : public BusBase
@@ -25,7 +38,7 @@ class BusI2C : public BusBase
 public:
     // Constructor
     BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
-                RaftI2CCentralIF* pI2CInterface = nullptr);
+                RaftI2CCentralIF* pI2CCentralIF = nullptr);
     virtual ~BusI2C();
 
     // Setup
@@ -94,6 +107,7 @@ public:
     }
 
 private:
+
     // Settings
     int _i2cPort = 0;
     int _sdaPin = -1;
@@ -103,18 +117,19 @@ private:
     String _busName;
 
     // I2C device
-    RaftI2CCentralIF* _pI2CDevice = nullptr;
-    bool _i2cDeviceNeedsDeleting = false;
+    RaftI2CCentralIF* _pI2CCentral = nullptr;
+    bool _i2cCentralNeedsToBeDeleted = false;
 
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;
 
     // Address to use for lockup-detection - this should be the address of a device
-    // that is permanently connected to the bus
+    // that is permanently connected to the main bus (which may be a bus expander chip)
+    // and should not be connected via a bus expander
     uint8_t _addrForLockupDetect = 0;
     bool _addrForLockupDetectValid = false;
 
-    // Scan boost - used to increase the rate of scanning on these addresses
+    // Scan boost - used to increase the rate of scanning on some addresses
     uint16_t _scanBoostCount = 0;
     std::vector<uint8_t> _scanBoostAddresses;
     static const uint32_t SCAN_BOOST_FACTOR = 10;
