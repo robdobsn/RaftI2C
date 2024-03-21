@@ -1,4 +1,12 @@
-idf_component_register(SRCS 
-                        "test_main.cpp"
-                    INCLUDE_DIRS 
-                        ".")
+idf_component_register(
+        SRCS
+            "test_main.cpp"
+            "Test1.cpp"
+        INCLUDE_DIRS 
+            "."
+        REQUIRES
+            esp_system
+            unity
+            nvs_flash
+        WHOLE_ARCHIVE
+        )
