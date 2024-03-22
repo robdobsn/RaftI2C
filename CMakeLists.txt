@@ -4,6 +4,8 @@ idf_component_register(
                   "components/RaftI2C/BusI2C/BusI2C.cpp"
                   "components/RaftI2C/BusI2C/BusI2CESPIDF.cpp"
                   "components/RaftI2C/BusI2C/BusI2CScheduler.cpp"
+                  "components/RaftI2C/BusI2C/BusScanner.cpp"
+                  "components/RaftI2C/BusI2C/BusStatusMgr.cpp"
                 INCLUDE_DIRS
                   "components/RaftI2C/I2CCentral"
                   "components/RaftI2C/BusI2C"

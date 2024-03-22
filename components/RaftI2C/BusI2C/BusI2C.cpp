@@ -43,23 +43,16 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 
 // Debug
 // #define DEBUG_BUS_I2C_POLLING
-// #define DEBUG_CONSECUTIVE_ERROR_HANDLING
-// #define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x55
-// #define DEBUG_LOCKUP_DETECTION
 // #define DEBUG_ADD_TO_QUEUED_REC_FIFO
 // #define DEBUG_ACCESS_BARRING_FOR_MS
-// #define DEBUG_ELEM_SCAN_STATUS
 // #define DEBUG_QUEUED_COMMANDS
 // #define DEBUG_ONE_ADDR 0x1d
-// #define DEBUG_NO_SCANNING
 // #define DEBUG_NO_POLLING
 // #define DEBUG_POLL_TIME_FOR_ADDR 0x1d
 // #define DEBUG_I2C_SEND_HELPER
 // #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
 // #define DEBUG_SERVICE_RESPONSE
-// #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_BUS_HIATUS
-// #define DEBUG_DISABLE_INITIAL_FAST_SCAN
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor / Destructor
@@ -67,17 +60,17 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 
 BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
                 RaftI2CCentralIF* pI2CCentralIF)
-    : BusBase(busElemStatusCB, busOperationStatusCB)
+    : BusBase(busElemStatusCB, busOperationStatusCB),
+        _busStatusMgr(*this),
+        _busScanner(_busStatusMgr, 
+            std::bind(&BusI2C::i2cSendHelper, this, std::placeholders::_1, std::placeholders::_2) 
+        )
 {
     // Init
     _lastI2CCommsUs = micros();
-    _busScanLastMs = millis();
 
     // Mutex for polling list
     _pollingMutex = xSemaphoreCreateMutex();
-
-    // Bus element status change detection
-    _busElemStatusMutex = xSemaphoreCreateMutex();
 
     // Clear barring
     for (uint32_t i = 0; i < ELEM_BAR_I2C_ADDRESS_MAX; i++)
@@ -95,9 +88,6 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _i2cCentralNeedsToBeDeleted = true;
     }
 
-#ifdef DEBUG_DISABLE_INITIAL_FAST_SCAN
-    _fastScanPendingCount = 0;
-#endif
 }
 
 BusI2C::~BusI2C()
@@ -112,8 +102,6 @@ BusI2C::~BusI2C()
     // Remove mutex
     if (_pollingMutex)
         vSemaphoreDelete(_pollingMutex);
-    if (_busElemStatusMutex)
-        vSemaphoreDelete(_busElemStatusMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -152,29 +140,11 @@ bool BusI2C::setup(const RaftJsonIF& config)
     int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES);
     _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
-    // Scan boost
-    std::vector<String> scanBoostAddrStrs;
-    config.getArrayElems("scanBoost", scanBoostAddrStrs);
-    _scanBoostAddresses.resize(scanBoostAddrStrs.size());
-    for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
-    {
-        _scanBoostAddresses[i] = strtoul(scanBoostAddrStrs[i].c_str(), nullptr, 0);
-        // LOG_I(MODULE_PREFIX, "setup scanBoost %02x", _scanBoostAddresses[i]);
-    }
-    _scanBoostCount = 0;
+    // Bus status manager
+    _busStatusMgr.setup(config);
 
-    // Get address to use for lockup detection
-    _addrForLockupDetect = 0;
-    _addrForLockupDetectValid = false;
-#ifdef I2C_USE_RAFT_I2C
-    uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
-    if (address != 0xffffffff)
-    {
-        _addrForLockupDetect = address;
-        _addrForLockupDetectValid = true;
-    }
-#endif
-    _busOperationStatus = BUS_OPERATION_UNKNOWN;
+    // Setup bus scanner
+    _busScanner.setup(config);
 
     // Check valid
     if ((_sdaPin < 0) || (_sclPin < 0))
@@ -219,10 +189,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d lockupDetAddr %02x (valid %s) portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d",
+    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d",
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
-                _addrForLockupDetect, _addrForLockupDetectValid ? "Y" : "N",
                 portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize);
 
     // Ok
@@ -283,82 +252,11 @@ void BusI2C::service()
         }
     }
 
-    // Obtain semaphore controlling access to busElemChange list and flag
-    // so we can update bus and element operation status - don't worry if we can't
-    // access the list as there will be other service loops
-    std::vector<BusElemAddrAndStatus> statusChanges;
-    BusOperationStatus newBusOperationStatus = _busOperationStatus; 
-    if (xSemaphoreTake(_busElemStatusMutex, 0) == pdTRUE)
-    {    
-        // Check for any changes
-        if (_busElemStatusChangeDetected)
-        {
-            // Go through once and look for changes
-            uint32_t numChanges = 0;
-            for (uint16_t i = 0; i <= BUS_SCAN_I2C_ADDRESS_MAX; i++)
-            {
-                if (_i2cAddrResponseStatus[i].isChange)
-                    numChanges++;
-            }
+    // Service bus scanner
+    _busScanner.service();
 
-            // Create change vector if required
-            if (numChanges > 0)
-            {
-                statusChanges.reserve(numChanges);
-                for (uint16_t i2cAddr = 0; i2cAddr <= BUS_SCAN_I2C_ADDRESS_MAX; i2cAddr++)
-                {
-                    if (_i2cAddrResponseStatus[i2cAddr].isChange)
-                    {
-                        // Handle element change
-                        BusElemAddrAndStatus statusChange = 
-                            {
-                                i2cAddr, 
-                                _i2cAddrResponseStatus[i2cAddr].isOnline
-                            };
-#ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
-                        LOG_I(MODULE_PREFIX, "service addr 0x%02x status change to %s", 
-                                    i2cAddr, statusChange.isChangeToOnline ? "online" : "offline");
-#endif
-                        statusChanges.push_back(statusChange);
-                        _i2cAddrResponseStatus[i2cAddr].isChange = false;
-
-                        // Check if this is the addrForLockupDetect
-                        if (_addrForLockupDetectValid && (i2cAddr == _addrForLockupDetect) && (_i2cAddrResponseStatus[i2cAddr].isValid))
-                        {
-                            newBusOperationStatus = _i2cAddrResponseStatus[i2cAddr].isOnline ?
-                                        BUS_OPERATION_OK : BUS_OPERATION_FAILING;
-                        }
-                    }
-                }
-            }
-
-            // No more changes
-            _busElemStatusChangeDetected = false;
-        }
-
-        // If no lockup detection addresses are used then rely on the bus's isOperatingOk() result
-        if (!_addrForLockupDetectValid && _pI2CCentral)
-        {
-            newBusOperationStatus = _pI2CCentral->isOperatingOk() ?
-                        BUS_OPERATION_OK : BUS_OPERATION_FAILING;
-            
-        }
-
-        // Return semaphore
-        xSemaphoreGive(_busElemStatusMutex);
-
-        // Elem change callback if required
-        if ((statusChanges.size() > 0) && _busElemStatusCB)
-            _busElemStatusCB(*this, statusChanges);
-
-        // Bus operation change callback if required
-        if (_busOperationStatus != newBusOperationStatus)
-        {
-            _busOperationStatus = newBusOperationStatus;
-            if (_busOperationStatusCB)
-                _busOperationStatusCB(*this, _busOperationStatus);
-        }
-    }
+    // Service bus status change detection
+    _busStatusMgr.service(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -447,16 +345,7 @@ void BusI2C::i2cWorkerTask()
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
         {
-            // Perform fast scans of the bus if requested
-            while (_fastScanPendingCount > 0)
-                scanNextAddress(true);
-
-            // Perform regular scans at BUS_SCAN_PERIOD_MS intervals
-            if (_slowScanEnabled)
-            {
-                if (Raft::isTimeout(millis(), _busScanLastMs, BUS_SCAN_PERIOD_MS))
-                    scanNextAddress(false);
-            }
+            _busScanner.service();
         }
 #endif
 
@@ -621,7 +510,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
 
     // Handle bus element state changes - online/offline/etc
     bool accessOk = rsltCode == RaftI2CCentralIF::ACCESS_RESULT_OK;
-    handleBusElemStateChanges(address, accessOk);
+    _busStatusMgr.handleBusElemStateChanges(address, accessOk);
 
     // Add the response to the response queue unless it was only a scan
     if (!pReqRec->isScan())
@@ -652,14 +541,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
             {
                 // Poll complete stats
                 _busStats.pollComplete();
-
-    #ifdef DEBUG_LOCKUP_DETECTION
-                if (_addrForLockupDetectValid && (address == _addrForLockupDetect))
-                {
-                    LOG_I(MODULE_PREFIX, "i2cSendHelper lockup addr %02x accessOk %d readReqLen %d", 
-                                address, accessOk, readReqLen);
-                }
-    #endif
 
                 // Check if callback is required
                 BusRequestCallbackType callback = reqResult.getCallback();
@@ -716,50 +597,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scan a single address
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusI2C::scanNextAddress(bool isFastScan)
-{
-    // Scan the addresses specified in scan-boost more frequently than normal
-    uint8_t scanAddress = _busScanCurAddr;
-    _scanBoostCount++;
-    if ((_scanBoostCount >= SCAN_BOOST_FACTOR) && (_fastScanPendingCount == 0))
-    {
-        // Check if the scan addr index is beyond the end of the array
-        if (_scanBoostCurAddrIdx >= _scanBoostAddresses.size())
-        {
-            // Reset the scan address index
-            _scanBoostCurAddrIdx = 0;
-            _scanBoostCount = 0;
-        }
-        else
-        {
-            scanAddress = _scanBoostAddresses[_scanBoostCurAddrIdx++];
-        }
-    }
-
-    // Scan the address
-    BusI2CRequestRec reqRec(isFastScan ? BUS_REQ_TYPE_FAST_SCAN : BUS_REQ_TYPE_SLOW_SCAN, scanAddress,
-                0, 0, nullptr, 0, 0, nullptr, this);
-    i2cSendHelper(&reqRec, 0);
-
-    // Bump address if next in regular scan sequence
-    if (scanAddress == _busScanCurAddr)
-    {
-        _busScanCurAddr++;
-        if (_busScanCurAddr > BUS_SCAN_I2C_ADDRESS_MAX)
-        {
-            _busScanCurAddr = BUS_SCAN_I2C_ADDRESS_MIN;
-            if (_fastScanPendingCount > 0)
-                _fastScanPendingCount--;
-        }
-    }
-    _busScanLastMs = millis();
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Add a request - queued or polling
+// Add a queued request
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool BusI2C::addRequest(BusRequestInfo& busReqInfo)
@@ -773,6 +611,10 @@ bool BusI2C::addRequest(BusRequestInfo& busReqInfo)
     // Add to queued request FIFO
     return addToQueuedReqFIFO(busReqInfo);
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add to the polling list
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool BusI2C::addToPollingList(BusRequestInfo& busReqInfo)
 {
@@ -829,6 +671,10 @@ bool BusI2C::addToPollingList(BusRequestInfo& busReqInfo)
     return false;
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add to the queued request FIFO
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 bool BusI2C::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
 {
     // Check init
@@ -872,126 +718,13 @@ bool BusI2C::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Bus element state changes
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusI2C::handleBusElemStateChanges(uint32_t address, bool elemResponding)
-{
-    // Check valid
-    if (address > BUS_SCAN_I2C_ADDRESS_MAX)
-        return;
-
-    // Obtain semaphore controlling access to busElemChange list and flag
-    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
-    {    
-        // Init state change detection
-        uint8_t count = _i2cAddrResponseStatus[address].count;
-        bool isOnline = _i2cAddrResponseStatus[address].isOnline;
-        bool isChange = _i2cAddrResponseStatus[address].isChange;
-        bool isValid = _i2cAddrResponseStatus[address].isValid;
-
-        // Check coming online - the count must reach ok level to indicate online
-        // If a change is detected then we toggle the change indicator - if it was already
-        // set then we must have a double-change which is equivalent to no change
-        // We also set the _busElemStatusChangedDetected even if there might have been a
-        // double-change as it is not safe to clear it because there may be other changes
-        // - the service loop will sort out what has really happened
-        if (elemResponding && !isOnline)
-        {
-            count = (count < I2C_ADDR_RESP_COUNT_OK_MAX) ? count+1 : count;
-            if (count >= I2C_ADDR_RESP_COUNT_OK_MAX)
-            {
-                // Now online
-                isChange = !isChange;
-                count = 0;
-                isOnline = true;
-                isValid = true;
-                _busElemStatusChangeDetected = true;
-            }
-        }
-        else if (!elemResponding && (isOnline || !isValid))
-        {
-            // Bump the failure count indicator and check if we reached failure level
-            count = (count < I2C_ADDR_RESP_COUNT_FAIL_MAX) ? count+1 : count;
-            if (count >= I2C_ADDR_RESP_COUNT_FAIL_MAX)
-            {
-                // Now offline 
-                isChange = !isChange;
-                isOnline = false;
-                isValid = true;
-                _busElemStatusChangeDetected = true;
-            }
-        }
-        
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
-        uint32_t prevCount = count;
-        bool prevOnline = isOnline;
-        bool prevChange = isChange;
-        bool prevValid = isValid;
-#endif
-        // Update status
-        _i2cAddrResponseStatus[address].count = count;
-        _i2cAddrResponseStatus[address].isOnline = isOnline;
-        _i2cAddrResponseStatus[address].isChange = isChange;
-        _i2cAddrResponseStatus[address].isValid = isValid;
-
-        // Return semaphore
-        xSemaphoreGive(_busElemStatusMutex);
-
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR
-        if (address == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
-#endif
-        if (isChange)
-        {
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr %02x failCount %d(was %d) isOnline %d(was %d) isChange %d (was %d) isValid %d (was %d) paused %d isResponding %d",
-                        address, count, prevCount, isOnline, prevOnline, isChange, prevChange, isValid, prevValid,
-                        _isPaused, elemResponding);
-        }
-#endif
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Check bus element is responding
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
-{
-#ifdef DEBUG_NO_SCANNING
-    return true;
-#endif
-    if (pIsValid)
-        *pIsValid = false;
-    if (address > BUS_SCAN_I2C_ADDRESS_MAX)
-        return false;
-        
-    // Obtain semaphore controlling access to busElemChange list and flag
-    bool isOnline = false;
-    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
-    {    
-        isOnline = _i2cAddrResponseStatus[address].isOnline;
-        if (pIsValid)
-            *pIsValid = _i2cAddrResponseStatus[address].isValid;
-
-        // Return semaphore
-        xSemaphoreGive(_busElemStatusMutex);        
-    }
-    return isOnline;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Request bus scan
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void BusI2C::requestScan(bool enableSlowScan, bool requestFastScan)
 {
-    // Perform fast scans to detect online/offline status
-    if (requestFastScan)
-        _fastScanPendingCount = I2C_ADDR_RESP_COUNT_FAIL_MAX;
-    _slowScanEnabled = enableSlowScan;
+    _busScanner.requestScan(enableSlowScan, requestFastScan);
 }
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Hiatus for period of ms

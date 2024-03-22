@@ -14,9 +14,8 @@
 #include "BusI2CRequestRec.h"
 #include "BusI2CScheduler.h"
 #include "ThreadSafeQueue.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
+#include "BusScanner.h"
+#include "BusStatusMgr.h"
 
 // I2C address and slot
 // The slotPlus1 value is 0 if the device is not connected to an I2C bus expander
@@ -88,7 +87,7 @@ public:
     // isOperatingOk
     virtual BusOperationStatus isOperatingOk() const override final
     {
-        return _busOperationStatus;
+        return _busStatusMgr.isOperatingOk();
     }
 
     // Request bus action
@@ -122,18 +121,6 @@ private:
 
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;
-
-    // Address to use for lockup-detection - this should be the address of a device
-    // that is permanently connected to the main bus (which may be a bus expander chip)
-    // and should not be connected via a bus expander
-    uint8_t _addrForLockupDetect = 0;
-    bool _addrForLockupDetectValid = false;
-
-    // Scan boost - used to increase the rate of scanning on some addresses
-    uint16_t _scanBoostCount = 0;
-    std::vector<uint8_t> _scanBoostAddresses;
-    static const uint32_t SCAN_BOOST_FACTOR = 10;
-    uint8_t _scanBoostCurAddrIdx = 0;
 
     // Last comms time uS
     uint64_t _lastI2CCommsUs = 0;
@@ -202,29 +189,11 @@ private:
     uint32_t _respBufferFullLastWarnMs = 0;
     uint32_t _reqBufferFullLastWarnMs = 0;
 
-    // Scanning
-    static const uint32_t BUS_SCAN_PERIOD_MS = 10;
-    static const uint32_t BUS_SCAN_I2C_ADDRESS_MIN = 4;
-    static const uint32_t BUS_SCAN_I2C_ADDRESS_MAX = 0x77;
-    uint32_t _busScanCurAddr = BUS_SCAN_I2C_ADDRESS_MIN;
-    uint32_t _busScanLastMs = 0;
+    // Bus status
+    BusStatusMgr _busStatusMgr;
 
-    // Enable slow scanning initially
-    bool _slowScanEnabled = true;
-
-    // Set bus scanning so enough fast scans are done initially to
-    // detect online/offline status of all bus elements
-    uint32_t _fastScanPendingCount = I2C_ADDR_RESP_COUNT_FAIL_MAX;
-
-    // Bus element status
-    I2CPerifStatusManager _busElemStatusMgr;
-    
-    // Bus element status change detection
-    SemaphoreHandle_t _busElemStatusMutex = nullptr;
-    bool _busElemStatusChangeDetected = false;
-
-    // Bus operation status
-    BusOperationStatus _busOperationStatus = BUS_OPERATION_UNKNOWN;
+    // Bus scanner
+    BusScanner _busScanner;
 
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;
@@ -242,6 +211,5 @@ private:
     bool addToPollingList(BusRequestInfo& busReqInfo);
     bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);
     RaftI2CCentralIF::AccessResultCode i2cSendHelper(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
-    void scanNextAddress(bool isFastScan);
     void handleBusElemStateChanges(uint32_t address, bool elemResponding);
 };

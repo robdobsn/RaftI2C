@@ -1,0 +1,17 @@
+build
+logs
+sdkconfig
+build_raft_artifacts
+managed_components
+compile_commands_win.json
+*.pyc
+logs/
+test/logs
+devScripts/exerciseCommandSerial/.vscode/settings.json
+scripts/config.ini
+.venv
+test/eepromPartitionTest/prewritedata.bin
+test/eepromPartitionTest/readbackdata.bin
+node_modules
+
+

@@ -13,6 +13,8 @@
 #include "unity.h"
 #include "unity_test_runner.h"
 
+#include "BusI2C.h"
+
 static const char* MODULE_PREFIX = "TestRaftI2C";
 
 TEST_CASE("test_rafti2c_", "[rafti2c_]")
