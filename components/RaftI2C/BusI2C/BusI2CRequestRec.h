@@ -9,6 +9,7 @@
 #pragma once
 
 #include "BusRequestInfo.h"
+#include "BusI2CConsts.h"
 
 // Request record
 class BusI2CRequestRec
@@ -20,7 +21,7 @@ public:
     }
     void clear()
     {
-        _address = 0;
+        _addrAndSlot.clear();
         _cmdId = 0;
         _readReqLen = 0;
         _busReqCallback = nullptr;
@@ -29,13 +30,13 @@ public:
         _pollFreqHz = 1;
         _barAccessForMsAfterSend = 0;
     };
-    BusI2CRequestRec(BusReqType busReqType, uint32_t address, uint32_t cmdId, uint32_t writeDataLen, 
+    BusI2CRequestRec(BusReqType busReqType, RaftI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
                 uint8_t* pWriteData, uint32_t readReqLen, uint32_t barAccessForMsAfterSend,
                 BusRequestCallbackType busReqCallback, void* pCallbackData)
     {
         clear();
         _busReqType = busReqType;
-        _address = address;
+        _addrAndSlot = addrAndSlot;
         _cmdId = cmdId;
         writeDataLen = (writeDataLen <= REQUEST_BUFFER_MAX_BYTES) ? writeDataLen : REQUEST_BUFFER_MAX_BYTES;
         if (writeDataLen > 0)
@@ -57,7 +58,7 @@ public:
         clear();
         _readReqLen = reqInfo.getReadReqLen();
         _reqBuf.assign(reqInfo.getWriteData(), reqInfo.getWriteData()+reqInfo.getWriteDataLen());
-        _address = reqInfo.getAddressUint32();
+        _addrAndSlot = RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(reqInfo.getAddressUint32());
         _cmdId = reqInfo.getCmdId();
         _pCallbackData = reqInfo.getCallbackParam();
         _busReqCallback = reqInfo.getCallback();
@@ -118,9 +119,9 @@ public:
     {
         return _busReqType;
     }
-    uint32_t getAddress()
+    RaftI2CAddrAndSlot getAddrAndSlot()
     {
-        return _address;
+        return _addrAndSlot;
     }
     uint32_t getCmdId()
     {
@@ -130,14 +131,14 @@ public:
     {
         return _barAccessForMsAfterSend;
     }
-    uint32_t _address;
-    uint32_t _cmdId;
-    uint32_t _readReqLen;
-    void* _pCallbackData;
-    BusRequestCallbackType _busReqCallback;
-    BusReqType _busReqType;
-    float _pollFreqHz;
-    uint32_t _barAccessForMsAfterSend;
+    RaftI2CAddrAndSlot _addrAndSlot;
+    uint32_t _cmdId = 0;
+    uint32_t _readReqLen = 0;
+    void* _pCallbackData = nullptr;
+    BusRequestCallbackType _busReqCallback = nullptr;
+    BusReqType _busReqType = BUS_REQ_TYPE_STD;
+    float _pollFreqHz = 0;
+    uint32_t _barAccessForMsAfterSend = 0;
 
     // Request buffer
     static const uint32_t REQUEST_BUFFER_MAX_BYTES = 120;

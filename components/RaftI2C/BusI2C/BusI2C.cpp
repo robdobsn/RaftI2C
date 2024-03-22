@@ -42,7 +42,6 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 // Debug
 // #define DEBUG_BUS_I2C_POLLING
 // #define DEBUG_ADD_TO_QUEUED_REC_FIFO
-// #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_QUEUED_COMMANDS
 // #define DEBUG_ONE_ADDR 0x1d
 // #define DEBUG_NO_POLLING
@@ -474,22 +473,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
 #endif
 
     // Check if this address is barred for a period
-    uint32_t address = pReqRec->getAddress() & 0x7f;
-    if (_busAccessBarMs[address] != 0)
-    {
-        // Check if time has elapsed and ignore request if not
-        if (millis() < _busAccessBarMs[address])
-        {
-#ifdef DEBUG_ACCESS_BARRING_FOR_MS
-            LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for address %02x for %ldms", address, _busAccessBarMs[address]-millis());
-#endif
-            return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
-        }
-#ifdef DEBUG_ACCESS_BARRING_FOR_MS
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for address %02x for %ldms", address, _busAccessBarMs[address]-millis());
-#endif
-        _busAccessBarMs[address] = 0;
-    }
+    RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    if (_busStatusMgr.barElemAccessGet(addrAndSlot))
+        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
     // Buffer for read
     uint32_t readReqLen = pReqRec->getReadReqLen();
@@ -497,6 +483,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     uint32_t writeReqLen = pReqRec->getWriteDataLen();
     uint32_t cmdId = pReqRec->getCmdId();
     uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
+
+    // TODO handle addresses with slot specified
+    uint16_t address = addrAndSlot.addr;
 
     // Access the bus
     uint32_t numBytesRead = 0;
@@ -508,7 +497,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
 
     // Handle bus element state changes - online/offline/etc
     bool accessOk = rsltCode == RaftI2CCentralIF::ACCESS_RESULT_OK;
-    _busStatusMgr.handleBusElemStateChanges(address, accessOk);
+    _busStatusMgr.handleBusElemStateChanges(addrAndSlot, accessOk);
 
     // Add the response to the response queue unless it was only a scan
     if (!pReqRec->isScan())
@@ -578,16 +567,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
 
     // Bar access to element if requested
     if (barAccessAfterSendMs > 0)
-    {
-        _busAccessBarMs[address] = millis() + barAccessAfterSendMs;
-        // Check we're not using the value that indicates no barring of access due to wrap-around
-        // of milliseconds
-        if (_busAccessBarMs[address] == 0)
-            _busAccessBarMs[address] = 1;
-#ifdef DEBUG_ACCESS_BARRING_FOR_MS
-        LOG_W(MODULE_PREFIX, "i2cSendHelper barring bus access for address %02x for %dms", address, barAccessAfterSendMs);
-#endif
-    }
+        _busStatusMgr.barElemAccessSet(addrAndSlot, barAccessAfterSendMs);
 
     // Record time of comms
     _lastI2CCommsUs = micros();
@@ -627,7 +607,8 @@ bool BusI2C::addToPollingList(BusRequestInfo& busReqInfo)
         bool addedOk = false;
         for (PollingVectorItem& pollItem : _pollingVector)
         {
-            if (pollItem.pollReq.getAddress() == busReqInfo.getAddressUint32())
+            if (pollItem.pollReq.getAddrAndSlot() == 
+                        RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddressUint32()))
             {
                 // Replace request record
                 addedOk = true;

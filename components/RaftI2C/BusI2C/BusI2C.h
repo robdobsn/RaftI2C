@@ -17,19 +17,6 @@
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
 
-// I2C address and slot
-// The slotPlus1 value is 0 if the device is not connected to an I2C bus expander
-// The slotPlus1 value is 1-63 to specify the slot on the I2C bus expander with
-// 1 indicating the first slot on the first expander
-// The slotPlus1 value of 0 can also be used to address a device which is connected
-// to a bus expander and if more than one device is on the same address, the
-// first device found will be used
-struct RaftI2CAddrAndSlot
-{
-    uint16_t addr:10;
-    uint8_t slotPlus1:6;
-};
-
 class RaftI2CCentralIF;
 
 class BusI2C : public BusBase
@@ -211,5 +198,4 @@ private:
     bool addToPollingList(BusRequestInfo& busReqInfo);
     bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);
     RaftI2CCentralIF::AccessResultCode i2cSendHelper(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
-    void handleBusElemStateChanges(uint32_t address, bool elemResponding);
 };

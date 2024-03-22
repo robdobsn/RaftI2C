@@ -12,6 +12,10 @@
 
 static const char* MODULE_PREFIX = "BusScanner";
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Constructor and destructor
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusI2CRequestFn busI2CRequestFn) :
     _busStatusMgr(busStatusMgr),
     _busI2CRequestFn(busI2CRequestFn)
@@ -86,9 +90,16 @@ void BusScanner::scanNextAddress(bool isFastScan)
         }
     }
 
+    // TODO - scanning with slot = 0
     // Scan the address
-    BusI2CRequestRec reqRec(isFastScan ? BUS_REQ_TYPE_FAST_SCAN : BUS_REQ_TYPE_SLOW_SCAN, scanAddress,
-                0, 0, nullptr, 0, 0, nullptr, this);
+    RaftI2CAddrAndSlot addrAndSlot(scanAddress, 0);
+    BusI2CRequestRec reqRec(isFastScan ? BUS_REQ_TYPE_FAST_SCAN : BUS_REQ_TYPE_SLOW_SCAN, 
+                addrAndSlot,
+                0, 0, 
+                nullptr, 
+                0, 0, 
+                nullptr, 
+                this);
     _busI2CRequestFn(&reqRec, 0);
 
     // Bump address if next in regular scan sequence

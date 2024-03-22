@@ -69,7 +69,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_tests]")
     // Detect change to online
     for (int i = 0; i < BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX; i++)
     {
-        busStatusMgr.handleBusElemStateChanges(0x55, true);
+        busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(0x55,0), true);
     }
 
     // Service the status for some time
@@ -92,7 +92,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_tests]")
     // Detect change to offline
     for (int i = 0; i < BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX; i++)
     {
-        busStatusMgr.handleBusElemStateChanges(0x55, false);
+        busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(0x55,0), false);
     }
 
     // Service the status for some time
@@ -139,9 +139,9 @@ TEST_CASE("test_rafti2c_bus_scanner", "[rafti2c_busi2c_tests]")
         }
     };
 
-    // typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CRequestFn;
     BusI2CRequestFn busOperationRequestFn = [](BusI2CRequestRec* pReqRec, uint32_t pollListIdx) {
-        LOG_I(MODULE_PREFIX, "busOperationRequestFn addr 0x%02x pollListIdx %d", pReqRec->getAddress(), pollListIdx);
+        LOG_I(MODULE_PREFIX, "busOperationRequestFn addr 0x%02x slot+1 %d pollListIdx %d", 
+                        pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pollListIdx);
         return RaftI2CCentralIF::ACCESS_RESULT_OK;
     };
 

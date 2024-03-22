@@ -18,33 +18,32 @@
 class BusStatusMgr {
 
 public:
-    BusStatusMgr(BusBase& busBase) :
-        _busBase(busBase)
-    {
-        // Bus element status change detection
-        _busElemStatusMutex = xSemaphoreCreateMutex();
-    }
+    // Constructor and destructor
+    BusStatusMgr(BusBase& busBase);
+    ~BusStatusMgr();
 
-    ~BusStatusMgr()
-    {
-        if (_busElemStatusMutex)
-            vSemaphoreDelete(_busElemStatusMutex);
-    }
-
+    // Setup & service
     void setup(const RaftJsonIF& config);
-
     void service(bool hwIsOperatingOk);
 
+    // Get bus operation status
     BusOperationStatus isOperatingOk() const
     {
         return _busOperationStatus;
     }
 
-    // Check if element is responding
-    bool isElemResponding(uint32_t address, bool* pIsValid);
+    // Bus element access barring
+    void barElemAccessSet(RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
+    bool barElemAccessGet(RaftI2CAddrAndSlot addrAndSlot);
+
+    // Scan rate setting
+
+
+    // Check if element is online
+    BusOperationStatus isElemOnline(RaftI2CAddrAndSlot addrAndSlot);
 
     // Handle bus element state changes
-    void handleBusElemStateChanges(uint32_t address, bool elemResponding);
+    void handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
@@ -56,29 +55,64 @@ private:
     // Bus element status change mutex
     SemaphoreHandle_t _busElemStatusMutex = nullptr;
 
-    // I2C address response status
-    class I2CAddrRespStatus
+    // I2C address status
+    class I2CAddrStatus
     {
     public:
-        I2CAddrRespStatus()
+        RaftI2CAddrAndSlot addrAndSlot;
+        uint8_t count : 5 = 0;
+        bool isChange : 1 = false;
+        bool isOnline : 1 = false;
+        bool isValid : 1 = false;
+        uint32_t barStartMs = 0;
+        uint16_t barDurationMs = 0;
+
+        bool handleIsResponding()
         {
-            clear();
+            printf("---- handleIsResponding addr %02x slot %d count %d\n", addrAndSlot.addr, addrAndSlot.slotPlus1, count);
+            count = (count < I2C_ADDR_RESP_COUNT_OK_MAX) ? count+1 : count;
+            if (count >= I2C_ADDR_RESP_COUNT_OK_MAX)
+            {
+                // Now online
+                isChange = !isChange;
+                count = 0;
+                isOnline = true;
+                isValid = true;
+                return true;
+            }
+            return false;
         }
-        void clear()
+        bool handleNotResponding()
         {
-            count = 0;
-            isChange = false;
-            isOnline = false;
-            isValid = false;
+            // Bump the failure count indicator and check if we reached failure level
+            count = (count < I2C_ADDR_RESP_COUNT_FAIL_MAX) ? count+1 : count;
+            if (count >= I2C_ADDR_RESP_COUNT_FAIL_MAX)
+            {
+                // Now offline
+                isChange = !isChange;
+                isOnline = false;
+                isValid = true;
+                return true;
+            }
+            return false;
         }
-        uint8_t count : 5;
-        bool isChange : 1;
-        bool isOnline : 1;
-        bool isValid : 1;
     };
 
-    // I2C address response status
-    I2CAddrRespStatus _i2cAddrResponseStatus[I2C_BUS_ADDRESS_MAX+1];
+    // I2C address status
+    std::vector<I2CAddrStatus> _i2cAddrStatus;
+    static const uint32_t I2C_ADDR_STATUS_MAX = 50;
+
+    // Find address record
+    I2CAddrStatus* findAddrStatusRecord(RaftI2CAddrAndSlot addrAndSlot)
+    {
+        for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+        {
+            if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
+                    (addrStatus.addrAndSlot.slotPlus1 == addrAndSlot.slotPlus1))
+                return &addrStatus;
+        }
+        return nullptr;
+    }
 
     // Address for lockup detect
     uint8_t _addrForLockupDetect = 0;
