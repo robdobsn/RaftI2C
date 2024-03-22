@@ -1,13 +1,26 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// I2C Bus Status Manager
+//
+// Rob Dobson 2020-2024
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #include "BusStatusMgr.h"
 #include "Logger.h"
 
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x55
+// #define WARN_ON_FAILED_TO_GET_SEMAPHORE
 // #define DEBUG_LOCKUP_DETECTION
 // #define DEBUG_NO_SCANNING
 // #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 
 static const char* MODULE_PREFIX = "BusStatusMgr";
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Setup
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void BusStatusMgr::setup(const RaftJsonIF& config)
 {
@@ -25,10 +38,14 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     _busOperationStatus = BUS_OPERATION_UNKNOWN;
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task lockupDetAddr %02x (valid %s)",
+    LOG_I(MODULE_PREFIX, "task lockupDetect addr %02x (valid %s)",
                 _addrForLockupDetect, _addrForLockupDetectValid ? "Y" : "N");
 
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Service
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void BusStatusMgr::service(bool hwIsOperatingOk)
 {
@@ -113,6 +130,8 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
 
 void BusStatusMgr::handleBusElemStateChanges(uint32_t address, bool elemResponding)
 {
+    LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr %02x isResponding %d", address, elemResponding);
+
     // Check valid
     if (address > I2C_BUS_ADDRESS_MAX)
         return;
@@ -158,7 +177,7 @@ void BusStatusMgr::handleBusElemStateChanges(uint32_t address, bool elemRespondi
                 _busElemStatusChangeDetected = true;
             }
         }
-        
+
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
         uint32_t prevCount = count;
         bool prevOnline = isOnline;
@@ -178,12 +197,17 @@ void BusStatusMgr::handleBusElemStateChanges(uint32_t address, bool elemRespondi
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR
         if (address == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
 #endif
-        if (isChange)
+        // if (isChange)
         {
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr %02x failCount %d(was %d) isOnline %d(was %d) isChange %d (was %d) isValid %d (was %d) paused %d isResponding %d",
-                        address, count, prevCount, isOnline, prevOnline, isChange, prevChange, isValid, prevValid,
-                        _isPaused, elemResponding);
+            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr %02x failCount %d(was %d) isOnline %d(was %d) isChange %d(was %d) isValid %d(was %d) isResponding %d",
+                        address, count, prevCount, isOnline, prevOnline, isChange, prevChange, isValid, prevValid, elemResponding);
         }
+#endif
+    }
+    else
+    {
+#ifdef WARN_ON_FAILED_TO_GET_SEMAPHORE
+        LOG_E(MODULE_PREFIX, "handleBusElemStateChanges addr %02x failed to obtain semaphore", address);
 #endif
     }
 }

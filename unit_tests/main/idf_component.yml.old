@@ -1,6 +1,0 @@
-dependencies:
-  # Define local dependency with relative path
-  raftcore:
-    path: raftcore
-    git: https://github.com/robdobsn/RaftCore.git
-    version: main

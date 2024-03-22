@@ -1,8 +1,16 @@
-
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// I2C Bus Scanner
+//
+// Rob Dobson 2020-2024
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "RaftUtils.h"
 #include "BusScanner.h"
 #include "BusI2CRequestRec.h"
+
+static const char* MODULE_PREFIX = "BusScanner";
 
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusI2CRequestFn busI2CRequestFn) :
     _busStatusMgr(busStatusMgr),
@@ -31,7 +39,7 @@ void BusScanner::setup(const RaftJsonIF& config)
     for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
     {
         _scanBoostAddresses[i] = strtoul(scanBoostAddrStrs[i].c_str(), nullptr, 0);
-        // LOG_I(MODULE_PREFIX, "setup scanBoost %02x", _scanBoostAddresses[i]);
+        LOG_I(MODULE_PREFIX, "setup scanBoost %02x", _scanBoostAddresses[i]);
     }
     _scanBoostCount = 0;
 }

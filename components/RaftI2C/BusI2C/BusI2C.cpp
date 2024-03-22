@@ -11,11 +11,9 @@
 #include "ConfigPinMap.h"
 #include "RaftArduino.h"
 #include "esp_task_wdt.h"
+#include "BusI2CConsts.h"
 
 static const char* MODULE_PREFIX = "BusI2C";
-
-// Use replacement I2C library - if not defined use original ESP IDF I2C implementation
-#define I2C_USE_RAFT_I2C
 
 #ifdef I2C_USE_RAFT_I2C
 #include "RaftI2CCentral.h"
