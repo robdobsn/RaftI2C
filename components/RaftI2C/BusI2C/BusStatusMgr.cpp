@@ -10,13 +10,15 @@
 #include "Logger.h"
 #include "RaftUtils.h"
 
-#define DEBUG_CONSECUTIVE_ERROR_HANDLING
-#define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x55
-#define WARN_ON_FAILED_TO_GET_SEMAPHORE
-// #define DEBUG_LOCKUP_DETECTION
+// #define DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
+// #define DEBUG_CONSECUTIVE_ERROR_HANDLING
+// #define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x55
+// #define WARN_ON_FAILED_TO_GET_SEMAPHORE
+// #define DEBUG_BUS_OPERATION_STATUS
 // #define DEBUG_NO_SCANNING
 // #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
-#define DEBUG_ACCESS_BARRING_FOR_MS
+// #define DEBUG_ACCESS_BARRING_FOR_MS
+// #define DEBUG_HANDLE_NEW_BUS_EXTENDER
 
 static const char* MODULE_PREFIX = "BusStatusMgr";
 
@@ -55,6 +57,9 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     }
 #endif
     _busOperationStatus = BUS_OPERATION_UNKNOWN;
+    _busElemStatusChangeDetected = false;
+    _i2cAddrStatus.clear();
+    _busExtenders.clear();
 
     // Debug
     LOG_I(MODULE_PREFIX, "task lockupDetect addr %02x (valid %s)",
@@ -102,8 +107,10 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                             addrStatus.isOnline
                         };
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
-                    LOG_I(MODULE_PREFIX, "service addr 0x%02x status change to %s", 
-                                i2cAddr, statusChange.isChangeToOnline ? "online" : "offline");
+                    LOG_I(MODULE_PREFIX, "service addr 0x%02x slot+1 %d status change to %s", 
+                                addrStatus.addrAndSlot.addr,
+                                addrStatus.addrAndSlot.slotPlus1,
+                                statusChange.isChangeToOnline ? "online" : "offline");
 #endif
                     statusChanges.push_back(statusChange);
                     addrStatus.isChange = false;
@@ -111,7 +118,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                     // Check if this is the addrForLockupDetect
                     if (_addrForLockupDetectValid && 
                                 (addrStatus.addrAndSlot.addr == _addrForLockupDetect) && 
-                                (addrStatus.isValid))
+                                (addrStatus.wasOnline))
                     {
                         newBusOperationStatus = addrStatus.isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
                     }
@@ -139,6 +146,11 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
     // Bus operation change callback if required
     if (_busOperationStatus != newBusOperationStatus)
     {
+#ifdef DEBUG_BUS_OPERATION_STATUS
+        LOG_I(MODULE_PREFIX, "service newOpStatus %s (was %s)", 
+                    newBusOperationStatus ? "online" : "offline",
+                    _busOperationStatus ? "online" : "offline");
+#endif
         _busOperationStatus = newBusOperationStatus;
         _busBase.callBusOperationStatusCB(_busOperationStatus);
     }
@@ -150,8 +162,10 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
 
 void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding)
 {
+#ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
     LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d isResponding %d", 
                         addrAndSlot.addr, addrAndSlot.slotPlus1, elemResponding);
+#endif
 
     // Obtain semaphore controlling access to busElemChange list and flag
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
@@ -164,6 +178,7 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
 
         // Check for new status change
         bool isNewStatusChange = false;
+        bool flagSpuriousRecord = false;
 
         // Find address record
         I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
@@ -178,7 +193,7 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
             pAddrStatus = &_i2cAddrStatus.back();
         }
 
-        // Check if we found a record (and it's not new)
+        // Check if we found a record
         if (pAddrStatus)
         {
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
@@ -186,22 +201,37 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
             prevStatus = *pAddrStatus;
 #endif
 
-            // Check coming online - the count must reach ok level to indicate online
-            // If a change is detected then we toggle the change indicator - if it was already
-            // set then we must have a double-change which is equivalent to no change
-            // We also set the _busElemStatusChangedDetected even if there might have been a
-            // double-change as it is not safe to clear it because there may be other changes
-            // - the service loop will sort out what has really happened
-            if (elemResponding && !pAddrStatus->isOnline)
+            // Handle element response
+            isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
+
+#ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
+            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d isResponding %d isNewStatusChange %d", 
+                        addrAndSlot.addr, addrAndSlot.slotPlus1, elemResponding,
+                        isNewStatusChange);
+#endif
+
+            // Check if this is a newly online bus expander
+            if (isNewStatusChange && elemResponding && isBusExtender(addrAndSlot.addr))
             {
-                if (pAddrStatus->handleIsResponding())
-                    isNewStatusChange = true;
+                // Find the bus extender record
+                BusExtender* pBusExtender = findBusExtender(pAddrStatus->addrAndSlot.addr);
+
+                // If not found then add a new record
+                if (pBusExtender == nullptr)
+                {
+                    // Add new record
+                    BusExtender newBusExtender;
+                    newBusExtender.addr = pAddrStatus->addrAndSlot.addr;
+                    _busExtenders.push_back(newBusExtender);
+                    pBusExtender = &_busExtenders.back();
+
+                    // Debug
+#ifdef DEBUG_HANDLE_NEW_BUS_EXTENDER
+                    LOG_I(MODULE_PREFIX, "handleBusElemStateChanges new bus extender 0x%02x", pAddrStatus->addrAndSlot.addr);
+#endif
+                }
             }
-            else if (!elemResponding && (pAddrStatus->isOnline || !pAddrStatus->isValid))
-            {
-                if (pAddrStatus->handleNotResponding())
-                    isNewStatusChange = true;
-            }
+
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
             // Debug
             newStatus = *pAddrStatus;
@@ -212,6 +242,15 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
         if (isNewStatusChange)
             _busElemStatusChangeDetected = true;
 
+        // Check for spurious record detected
+        if (flagSpuriousRecord)
+        {
+            // Remove the record
+            _i2cAddrStatus.erase(std::remove_if(_i2cAddrStatus.begin(), _i2cAddrStatus.end(), 
+                [addrAndSlot](I2CAddrStatus& addrStatus) { return addrStatus.addrAndSlot == addrAndSlot; }), 
+                _i2cAddrStatus.end());
+        }
+
         // Return semaphore
         xSemaphoreGive(_busElemStatusMutex);
 
@@ -221,12 +260,12 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
 #endif
         // if (isNewStatusChange)
         {
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d failCount %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) isValid %d(was %d) isResponding %d",
+            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnline %d(was %d) isResponding %d",
                         newStatus.addrAndSlot.addr, newStatus.addrAndSlot.slotPlus1,
                         newStatus.count, prevStatus.count, 
                         newStatus.isOnline, prevStatus.isOnline, 
                         newStatus.isChange, prevStatus.isChange, 
-                        newStatus.isValid, prevStatus.isValid, 
+                        newStatus.wasOnline, prevStatus.wasOnline, 
                         elemResponding);
         }
 #endif
@@ -258,7 +297,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(RaftI2CAddrAndSlot addrAndSlot)
     {
         // Find address record
         I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
-        if (!pAddrStatus || !pAddrStatus->isValid)
+        if (!pAddrStatus || !pAddrStatus->wasOnline)
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
             onlineStatus = pAddrStatus->isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;

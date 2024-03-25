@@ -495,10 +495,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
-    // Handle bus element state changes - online/offline/etc
-    bool accessOk = rsltCode == RaftI2CCentralIF::ACCESS_RESULT_OK;
-    _busStatusMgr.handleBusElemStateChanges(addrAndSlot, accessOk);
-
     // Add the response to the response queue unless it was only a scan
     if (!pReqRec->isScan())
     {
@@ -520,7 +516,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
         else
         {
             // Create response
-            BusRequestResult reqResult(address, cmdId, readBuf, readReqLen, accessOk,
+            BusRequestResult reqResult(address, cmdId, readBuf, readReqLen, rsltCode == RaftI2CCentralIF::ACCESS_RESULT_OK,
                                 pReqRec->getCallback(), pReqRec->getCallbackParam());
 
             // Check polling

@@ -31,12 +31,13 @@ public:
     void requestScan(bool enableSlowScan, bool requestFastScan);
 
     // Scan period
-    static const uint32_t I2C_BUS_SCAN_PERIOD_MS = 10;
+    static const uint32_t I2C_BUS_SCAN_DEFAULT_PERIOD_MS = 10;
 
 private:
     // Scanning
-    uint32_t _busScanCurAddr = I2C_BUS_ADDRESS_MIN;
+    uint32_t _busScanCurAddr = I2C_BUS_EXTENDER_BASE;
     uint32_t _busScanLastMs = 0;
+    uint32_t _busScanPeriodMs = I2C_BUS_SCAN_DEFAULT_PERIOD_MS;
 
     // Scan boost - used to increase the rate of scanning on some addresses
     uint16_t _scanBoostCount = 0;
@@ -49,7 +50,10 @@ private:
 
     // Set bus scanning so enough fast scans are done initially to
     // detect online/offline status of all bus elements
-    uint32_t _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX;
+    uint32_t _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+
+    // Bus extender address scanning count
+    uint32_t _busExtenderAddrScanCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
 
     // Status manager
     BusStatusMgr& _busStatusMgr;
@@ -58,5 +62,11 @@ private:
     BusI2CRequestFn _busI2CRequestFn;
 
     // Helper to scan next address
-    void scanNextAddress(bool isFastScan);
+    void scanNextAddress();
+    void busExtendersInit();
+    void discoverAddressElems(uint8_t addr);
+    RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
+    void scanElemSlots(uint32_t addr);
+    RaftI2CCentralIF::AccessResultCode busExtenderSetChannels(uint32_t addr, uint32_t channelMask);
+    void busExtendersSetAllChannels(bool allOn);
 };

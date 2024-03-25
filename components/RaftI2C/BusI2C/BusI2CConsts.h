@@ -25,7 +25,7 @@ public:
     {
         clear();
     }
-    RaftI2CAddrAndSlot(uint16_t addr, uint16_t slotPlus1)
+    RaftI2CAddrAndSlot(uint32_t addr, uint32_t slotPlus1)
     {
         this->addr = addr;
         this->slotPlus1 = slotPlus1;
