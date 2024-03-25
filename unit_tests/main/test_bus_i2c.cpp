@@ -436,13 +436,23 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Check bus extender is initialised
     TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr1.addr}), "busExtenderInitialised not true");
 
-    // Add a further slotted address
+    // Add two further slotted addresses
     RaftI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
-    helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, extenderAddr1});
+    RaftI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
+    helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time
     helper_service_some(1000, true);
 
     // Check elems that should be online are online, etc
-    TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, testSlottedAddr2, extenderAddr1}), "online/offline elems not correct");
+    TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1}), "online/offline elems not correct 2");
+
+    // Remove one of the slotted addresses
+    helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr3, extenderAddr1});
+
+    // Service the status for some time
+    helper_service_some(1000, true);
+
+    // Check elems that should be online are online, etc
+    TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, testSlottedAddr3, extenderAddr1}), "online/offline elems not correct 3");
 }
