@@ -61,13 +61,13 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busStatusMgr(*this),
         _busScanner(_busStatusMgr, 
             std::bind(&BusI2C::i2cSendHelper, this, std::placeholders::_1, std::placeholders::_2) 
+        ),
+        _busAccessor(*this,
+            std::bind(&BusI2C::i2cSendHelper, this, std::placeholders::_1, std::placeholders::_2)
         )
 {
     // Init
     _lastI2CCommsUs = micros();
-
-    // Mutex for polling list
-    _pollingMutex = xSemaphoreCreateMutex();
 
     // Clear barring
     for (uint32_t i = 0; i < ELEM_BAR_I2C_ADDRESS_MAX; i++)
@@ -95,10 +95,6 @@ BusI2C::~BusI2C()
     // Clean up
     if (_i2cCentralNeedsToBeDeleted)
         delete _pI2CCentral;
-
-    // Remove mutex
-    if (_pollingMutex)
-        vSemaphoreDelete(_pollingMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,13 +112,6 @@ bool BusI2C::setup(const RaftJsonIF& config)
     if (_initOk)
         return false;
 
-    // Obtain semaphore to polling vector
-    if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(10)) == pdTRUE)
-    {
-        _scheduler.clear();
-        xSemaphoreGive(_pollingMutex);
-    }
-
     // Get bus details
     _i2cPort = config.getLong("i2cPort", 0);
     String pinName = config.getString("sdaPin", "");
@@ -135,13 +124,15 @@ bool BusI2C::setup(const RaftJsonIF& config)
     UBaseType_t taskCore = config.getLong("taskCore", DEFAULT_TASK_CORE);
     BaseType_t taskPriority = config.getLong("taskPriority", DEFAULT_TASK_PRIORITY);
     int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES);
-    _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
     // Bus status manager
     _busStatusMgr.setup(config);
 
     // Setup bus scanner
     _busScanner.setup(config);
+
+    // Setup bus accessor
+    _busAccessor.setup(config);
 
     // Check valid
     if ((_sdaPin < 0) || (_sclPin < 0))
@@ -225,63 +216,28 @@ void BusI2C::service()
     if (!_initOk)
         return;
 
-    // Stats
-    _busStats.respQueueCount(_responseQueue.count());
-    _busStats.reqQueueCount(_requestQueue.count());
-
-    // See if there are any results awaiting callback
-    for (uint32_t i = 0; i < RESPONSE_FIFO_SLOTS; i++)
-    {
-        // Get response if available
-        BusRequestResult reqResult;
-        if (!_responseQueue.get(reqResult))
-            break;
-
-        // Check if callback is required
-        BusRequestCallbackType callback = reqResult.getCallback();
-        if (callback)
-        {
-            callback(reqResult.getCallbackParam(), reqResult);
-#ifdef DEBUG_SERVICE_RESPONSE
-            LOG_I(MODULE_PREFIX, "service response retval %d addr 0x%02x readLen %d", 
-                    reqResult.isResultOk(), reqResult.getAddress(), reqResult.getReadDataLen());
-#endif
-        }
-    }
-
     // Service bus scanner
     _busScanner.service();
 
     // Service bus status change detection
     _busStatusMgr.service(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
+
+    // Service bus accessor
+    _busAccessor.service();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Clear
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void BusI2C::clear(bool incPolling)
 {
     // Check init
     if (!_initOk)
         return;
 
-    // Clear the action queue
-    _responseQueue.clear();
-
-    // Clear polling list if required
-    if (incPolling)
-    {
-        // We're going to mess with the polling list so obtain the semaphore
-        if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(10)) == pdTRUE)
-        {
-            // Clear all lists
-            _scheduler.clear();
-            _pollingVector.clear();
-
-            // Return semaphore
-            xSemaphoreGive(_pollingMutex);
-        }
-    }
+    // Clear accessor
+    _busAccessor.clear(incPolling);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -346,45 +302,8 @@ void BusI2C::i2cWorkerTask()
         }
 #endif
 
-        // Get from request FIFO
-        BusI2CRequestRec reqRec;
-        if (_requestQueue.get(reqRec))
-        {
-            // Debug
-#ifdef DEBUG_QUEUED_COMMANDS
-            String writeDataStr;
-            Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-            LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr %02x write %s", reqRec.getAddress(), writeDataStr.c_str());
-#endif
-
-            // Debug one address only
-#ifdef DEBUG_ONE_ADDR
-            if (reqRec.getAddress() != DEBUG_ONE_ADDR)
-                continue;
-#endif
-
-            // Check if paused
-            if (_isPaused)
-            {
-                // Check is firmware update
-                if (reqRec.isFWUpdate() || reqRec.shouldSendIfPaused())
-                {
-                    // Make the request
-                    i2cSendHelper(&reqRec, 0);
-                    // LOG_I(MODULE_PREFIX, "worker sending fw len %d", reqRec.getWriteDataLen());
-                }
-                else
-                {
-                    // Debug
-                    // LOG_I(MODULE_PREFIX, "worker not sending as paused");
-                }
-            }
-            else
-            {
-                // Make the request
-                i2cSendHelper(&reqRec, 0);
-            }
-        }
+        // Handle requests
+        _busAccessor.processRequestQueue(_isPaused);
 
         // Don't do any polling when paused
         if (_isPaused)
@@ -394,52 +313,8 @@ void BusI2C::i2cWorkerTask()
         continue;
 #endif
 
-        // Obtain semaphore to polling vector
-        if (xSemaphoreTake(_pollingMutex, 0) == pdTRUE)
-        {
-            // Get the next element to poll
-            int pollListIdx = _scheduler.getNext();
-            if (pollListIdx >= 0)
-            {
-                // Check valid - if list is empty or has shrunk this test can fail
-                // Polling can be suspended if too many failures occur
-                BusI2CRequestRec* pReqRec = NULL;
-                if ((pollListIdx < _pollingVector.size()) &&
-                                (_pollingVector[pollListIdx].suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND))
-                {
-                    // Get request details
-                    pReqRec = &_pollingVector[pollListIdx].pollReq;
-                }
-
-                // Check ready to poll
-                if (pReqRec)
-                {
-                    // Debug poll timing
-#ifdef DEBUG_POLL_TIME_FOR_ADDR
-                    if (pReqRec->isPolling() && (pReqRec->getAddress() == DEBUG_POLL_TIME_FOR_ADDR))
-                    {
-                        LOG_I(MODULE_PREFIX, "i2cWorker polling addr %02x elapsed %ld", 
-                                    pReqRec->getAddress(), 
-                                    Raft::timeElapsed(millis(), _debugLastPollTimeMs));
-                        _debugLastPollTimeMs = millis();
-                    }
-#endif
-                    // Send poll request
-                    RaftI2CCentralIF::AccessResultCode sendResult = i2cSendHelper(pReqRec, pollListIdx);
-                    // Check for failed send and not barred temporarily
-                    if ((sendResult != RaftI2CCentralIF::ACCESS_RESULT_OK) && (sendResult != RaftI2CCentralIF::ACCESS_RESULT_BARRED))
-                    {
-                        // Increment the suspend count if required
-                        if (pollListIdx < _pollingVector.size())
-                            if (_pollingVector[pollListIdx].suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND)
-                                _pollingVector[pollListIdx].suspendCount++;
-                    }
-                }
-            }
-
-            // Free the semaphore
-            xSemaphoreGive(_pollingMutex);
-        }
+        // Perform polling
+        _busAccessor.processPolling();
     }
 
     LOG_I(MODULE_PREFIX, "i2cWorkerTask exiting");
@@ -481,7 +356,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     uint32_t readReqLen = pReqRec->getReadReqLen();
     uint8_t readBuf[readReqLen];
     uint32_t writeReqLen = pReqRec->getWriteDataLen();
-    uint32_t cmdId = pReqRec->getCmdId();
     uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
 
     // TODO handle addresses with slot specified
@@ -495,71 +369,8 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
-    // Add the response to the response queue unless it was only a scan
-    if (!pReqRec->isScan())
-    {
-        // Check if a response was expected but read length doesn't match
-        if (readReqLen != numBytesRead)
-        {
-            // Stats
-            _busStats.respLengthError();
-
-#ifdef DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
-            digitalWrite(5, 1);
-            pinMode(5, OUTPUT);
-            delayMicroseconds(10);
-            digitalWrite(5, 0);
-            delayMicroseconds(10);
-            digitalWrite(5, 1);
-#endif
-        }
-        else
-        {
-            // Create response
-            BusRequestResult reqResult(address, cmdId, readBuf, readReqLen, rsltCode == RaftI2CCentralIF::ACCESS_RESULT_OK,
-                                pReqRec->getCallback(), pReqRec->getCallbackParam());
-
-            // Check polling
-            if (pReqRec->isPolling())
-            {
-                // Poll complete stats
-                _busStats.pollComplete();
-
-                // Check if callback is required
-                BusRequestCallbackType callback = reqResult.getCallback();
-                if (callback)
-                {
-                    callback(reqResult.getCallbackParam(), reqResult);
-                    // LOG_D(MODULE_PREFIX, "service retval %d", reqResult.isResultOk());
-                }
-            }
-            else
-            {
-                // Add to the response queue
-                if (_responseQueue.put(reqResult, ADD_RESP_TO_QUEUE_MAX_MS))
-                {
-                    _busStats.cmdComplete();
-                }
-                else
-                {
-                    // Warn
-#ifdef WARN_ON_RESPONSE_BUFFER_FULL
-                    if (Raft::isTimeout(millis(), _respBufferFullLastWarnMs, BETWEEN_BUF_FULL_WARNINGS_MIN_MS))
-                    {
-                        int msgsWaiting = _responseQueue.count();
-                        LOG_W(MODULE_PREFIX, "sendHelper %s resp buffer full - waiting %d",
-                                _busName.c_str(), msgsWaiting
-                            );
-                        _respBufferFullLastWarnMs = millis();
-                    }
-#endif
-
-                    // Stats
-                    _busStats.respBufferFull();
-                }
-            }
-        }
-    }
+    // Handle response
+    _busAccessor.handleResponse(pReqRec, rsltCode, readBuf, numBytesRead);
 
     // Bar access to element if requested
     if (barAccessAfterSendMs > 0)
@@ -568,128 +379,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     // Record time of comms
     _lastI2CCommsUs = micros();
     return rsltCode;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Add a queued request
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusI2C::addRequest(BusRequestInfo& busReqInfo)
-{
-    // Check if this is a polling request
-    if (busReqInfo.isPolling())
-    {
-        // Add to the polling list and update the scheduler
-        return addToPollingList(busReqInfo);
-    }
-    // Add to queued request FIFO
-    return addToQueuedReqFIFO(busReqInfo);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Add to the polling list
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusI2C::addToPollingList(BusRequestInfo& busReqInfo)
-{
-#ifdef DEBUG_BUS_I2C_POLLING
-    LOG_I(MODULE_PREFIX, "addToPollingList elemAddr %x freqHz %.1f", busReqInfo.getAddressUint32(), busReqInfo.getPollFreqHz());
-#endif
-
-    // We're going to mess with the polling list so obtain the semaphore
-    if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(50)) == pdTRUE)
-    {
-        // See if already in the list
-        bool addedOk = false;
-        for (PollingVectorItem& pollItem : _pollingVector)
-        {
-            if (pollItem.pollReq.getAddrAndSlot() == 
-                        RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddressUint32()))
-            {
-                // Replace request record
-                addedOk = true;
-                pollItem.pollReq = BusI2CRequestRec(busReqInfo);
-                pollItem.suspendCount = 0;
-                break;
-            }
-        }
-
-        // Append
-        if (!addedOk)
-        {
-            // Check limit on polling list size
-            uint32_t maxPollListSize = _lowLoadBus ? MAX_POLLING_LIST_RECS_LOW_LOAD : MAX_POLLING_LIST_RECS;
-            if (_pollingVector.size() < maxPollListSize)
-            {
-                // Create new record to track polling
-                PollingVectorItem newPollingItem;
-                newPollingItem.pollReq.set(busReqInfo);
-                
-                // Add to the polling list
-                _pollingVector.push_back(newPollingItem);
-                addedOk = true;
-            }
-        }
-
-        // Update scheduler with the polling list if required
-        if (addedOk)
-        {
-            _scheduler.clear();
-            for (PollingVectorItem& pollItem : _pollingVector)
-                _scheduler.addNode(pollItem.pollReq.getPollFreqHz());
-        }
-
-        // Return semaphore
-        xSemaphoreGive(_pollingMutex);
-        return true;
-    }
-    return false;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Add to the queued request FIFO
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusI2C::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
-{
-    // Check init
-    if (!_initOk)
-        return false;
-
-    // Result
-    bool retc = false;
-
-    // Send to the request FIFO
-    BusI2CRequestRec reqRec;
-    reqRec.set(busReqInfo);
-    retc = _requestQueue.put(reqRec, ADD_REQ_TO_QUEUE_MAX_MS);
-
-#ifdef DEBUG_ADD_TO_QUEUED_REC_FIFO
-    // Debug
-    String writeDataStr;
-    Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-    LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr %02x writeData %s readLen %d delayMs %d", 
-                reqRec.getAddress(), writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
-#endif
-
-    // Msg buffer full
-    if (retc != pdTRUE)
-    {
-        _busStats.reqBufferFull();
-
-#ifdef WARN_ON_REQUEST_BUFFER_FULL
-        if (Raft::isTimeout(millis(), _reqBufferFullLastWarnMs, BETWEEN_BUF_FULL_WARNINGS_MIN_MS))
-        {
-            int msgsWaiting = _requestQueue.count();
-            LOG_W(MODULE_PREFIX, "addToQueuedReqFIFO %s req buffer full - waiting %d", 
-                    _busName.c_str(), msgsWaiting
-                );
-            _reqBufferFullLastWarnMs = millis();
-        }
-#endif
-    }
-
-    return retc;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

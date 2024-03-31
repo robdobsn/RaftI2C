@@ -10,6 +10,8 @@
 
 #include "BusRequestInfo.h"
 #include "BusI2CConsts.h"
+#include "RaftI2CCentralIF.h"
+#include <functional>
 
 // Request record
 class BusI2CRequestRec
@@ -144,3 +146,6 @@ public:
     static const uint32_t REQUEST_BUFFER_MAX_BYTES = 120;
     std::vector<uint8_t> _reqBuf;
 };
+
+// Callback to send i2c message
+typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CRequestFn;

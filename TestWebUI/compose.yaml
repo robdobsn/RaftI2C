@@ -1,0 +1,7 @@
+services:
+  build_esp32:
+    build: .
+    volumes:
+      - .:/project
+    working_dir: /project
+    command: ./build.sh

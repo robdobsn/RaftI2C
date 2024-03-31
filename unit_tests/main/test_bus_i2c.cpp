@@ -320,98 +320,98 @@ bool helper_check_bus_extender_init_ok(std::vector<uint32_t> busExtenderList)
     return true;
 }
 
-// TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
-// {
-//     static const uint32_t testAddr = lockupDetectAddr;
+TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
+{
+    static const uint32_t testAddr = lockupDetectAddr;
 
-//     // Setup test
-//     helper_setup_i2c_tests({});
+    // Setup test
+    helper_setup_i2c_tests({});
 
-//     // Service some
-//     helper_service_some(100, false);
+    // Service some
+    helper_service_some(100, false);
 
-//     // Check status changes list is empty
-//     TEST_ASSERT_MESSAGE(statusChangesList.size() == 0, "statusChangesList not empty initially");
+    // Check status changes list is empty
+    TEST_ASSERT_MESSAGE(statusChangesList.size() == 0, "statusChangesList not empty initially");
 
-//     // Detect change to online
-//     helper_elem_states_handle({{testAddr,0}}, true, BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX);
+    // Detect change to online
+    helper_elem_states_handle({{testAddr,0}}, true, BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX);
 
-//     // Service the status for some time
-//     helper_service_some(100, false);
+    // Service the status for some time
+    helper_service_some(100, false);
 
-//     // Check status changes list has one item which is the change of state for addr lockupDetectAddr to online
-//     TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList empty when lockupDetectAddr change to online");
-//     if (statusChangesList.size() == 1)
-//     {
-//         TEST_ASSERT_MESSAGE(statusChangesList[0].address == testAddr, "statusChangesList addr not lockupDetectAddr");
-//         TEST_ASSERT_MESSAGE(statusChangesList[0].isChangeToOnline, "statusChangesList status not online");
-//     }
+    // Check status changes list has one item which is the change of state for addr lockupDetectAddr to online
+    TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList empty when lockupDetectAddr change to online");
+    if (statusChangesList.size() == 1)
+    {
+        TEST_ASSERT_MESSAGE(statusChangesList[0].address == testAddr, "statusChangesList addr not lockupDetectAddr");
+        TEST_ASSERT_MESSAGE(statusChangesList[0].isChangeToOnline, "statusChangesList status not online");
+    }
 
-//     // Test bus is operational
-//     TEST_ASSERT_MESSAGE(busStatus == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
+    // Test bus is operational
+    TEST_ASSERT_MESSAGE(busStatus == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
 
-//     // Clear the list
-//     helper_reset_status_changes_list();
+    // Clear the list
+    helper_reset_status_changes_list();
 
-//     // Detect change to offline
-//     helper_elem_states_handle({{testAddr,0}}, false, BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
+    // Detect change to offline
+    helper_elem_states_handle({{testAddr,0}}, false, BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
 
-//     // Service the status for some time
-//     helper_service_some(100, false);
+    // Service the status for some time
+    helper_service_some(100, false);
 
-//     // Check status changes list has one item which is the change of state for addr lockupDetectAddr to offline
-//     TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList not 1 when lockupDetectAddr change to offline");
-//     if (statusChangesList.size() == 1)
-//     {
-//         TEST_ASSERT_MESSAGE(statusChangesList[0].address == lockupDetectAddr, "statusChangesList addr not lockupDetectAddr");
-//         TEST_ASSERT_MESSAGE(!statusChangesList[0].isChangeToOnline, "statusChangesList status not offline");
-//     }
-//     TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "getAddrStatusCount not 1");
+    // Check status changes list has one item which is the change of state for addr lockupDetectAddr to offline
+    TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList not 1 when lockupDetectAddr change to offline");
+    if (statusChangesList.size() == 1)
+    {
+        TEST_ASSERT_MESSAGE(statusChangesList[0].address == lockupDetectAddr, "statusChangesList addr not lockupDetectAddr");
+        TEST_ASSERT_MESSAGE(!statusChangesList[0].isChangeToOnline, "statusChangesList status not offline");
+    }
+    TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "getAddrStatusCount not 1");
 
-//     // Test bus is failing
-//     TEST_ASSERT_MESSAGE(busStatus == BUS_OPERATION_FAILING, "busStatus not BUS_OPERATION_FAILING");
+    // Test bus is failing
+    TEST_ASSERT_MESSAGE(busStatus == BUS_OPERATION_FAILING, "busStatus not BUS_OPERATION_FAILING");
 
-//     // Check spurious address handing
-//     statusChangesList.clear();
+    // Check spurious address handing
+    statusChangesList.clear();
 
-//     // Add some spurious records
-//     helper_elem_states_handle({{0x60,0},{0x64,0},{0x67,0}}, true, 1);
+    // Add some spurious records
+    helper_elem_states_handle({{0x60,0},{0x64,0},{0x67,0}}, true, 1);
 
-//     // Send some more status changes - should result in spurious records being removed
-//     helper_elem_states_handle({{0x60,0},{0x61,0},{0x62,0},{0x63,0},{0x64,0},{0x65,0},{0x66,0},{0x67,0}}, false, 
-//                         BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
+    // Send some more status changes - should result in spurious records being removed
+    helper_elem_states_handle({{0x60,0},{0x61,0},{0x62,0},{0x63,0},{0x64,0},{0x65,0},{0x66,0},{0x67,0}}, false, 
+                        BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
 
-//     // Service the status for some time
-//     helper_service_some(100, false);
+    // Service the status for some time
+    helper_service_some(100, false);
 
-//     // Check status changes list is empty
-//     helper_show_status_change_list("After spurious:");
-//     TEST_ASSERT_MESSAGE(statusChangesList.size() == 0, "statusChangesList not empty at end of test");
-//     TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "address status recs should be 1 at end of test");
-// }
+    // Check status changes list is empty
+    helper_show_status_change_list("After spurious:");
+    TEST_ASSERT_MESSAGE(statusChangesList.size() == 0, "statusChangesList not empty at end of test");
+    TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "address status recs should be 1 at end of test");
+}
 
-// TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
-// {
-//     // Setup test
-//     uint32_t testAddr = lockupDetectAddr;
-//     uint32_t extenderAddr = 0x73;
-//     helper_setup_i2c_tests({{testAddr, 0}, {extenderAddr, 0}});
+TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
+{
+    // Setup test
+    uint32_t testAddr = lockupDetectAddr;
+    uint32_t extenderAddr = 0x73;
+    helper_setup_i2c_tests({{testAddr, 0}, {extenderAddr, 0}});
 
-//     // Service the status for some time
-//     helper_service_some(1000, true);
+    // Service the status for some time
+    helper_service_some(1000, true);
 
-//     // Test bus is operational
-//     TEST_ASSERT_MESSAGE(busStatusMgr.isOperatingOk() == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
+    // Test bus is operational
+    TEST_ASSERT_MESSAGE(busStatusMgr.isOperatingOk() == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
 
-//     // Check that the scanner has detected one bus extender
-//     TEST_ASSERT_MESSAGE(helper_check_bus_extender_list({extenderAddr}), "busExtenderList not correct");
+    // Check that the scanner has detected one bus extender
+    TEST_ASSERT_MESSAGE(helper_check_bus_extender_list({extenderAddr}), "busExtenderList not correct");
 
-//     // Check elems that should be online are online, etc
-//     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({{testAddr,0},{extenderAddr,0}}), "online/offline elems not correct");
+    // Check elems that should be online are online, etc
+    TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({{testAddr,0},{extenderAddr,0}}), "online/offline elems not correct");
 
-//     // Check bus extender is initialised
-//     TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr}), "busExtenderInitialised not true");
-// }
+    // Check bus extender is initialised
+    TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr}), "busExtenderInitialised not true");
+}
 
 TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
 {

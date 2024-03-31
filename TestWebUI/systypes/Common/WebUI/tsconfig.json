@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+      "jsx": "react",
+      "esModuleInterop": true,
+      "module": "esnext",
+      "target": "es5",
+      "strict": true,
+      "lib": ["ES2017", "DOM"]
+    },
+    "include": ["src/**/*"]
+  }
+  

@@ -10,12 +10,10 @@
 
 #include "BusBase.h"
 #include "RaftI2CCentralIF.h"
-#include "BusRequestResult.h"
 #include "BusI2CRequestRec.h"
-#include "BusI2CScheduler.h"
-#include "ThreadSafeQueue.h"
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
+#include "BusAccessor.h"
 
 class RaftI2CCentralIF;
 
@@ -45,9 +43,8 @@ public:
         // Set pause flag - read in the worker
         _pauseRequested = pause;
 
-        // Suspend all polling
-        for (PollingVectorItem& pollItem : _pollingVector)
-            pollItem.suspendCount = MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND;
+        // Suspend bus accessor
+        _busAccessor.pause(pause);
     }
 
     // IsPaused
@@ -78,7 +75,10 @@ public:
     }
 
     // Request bus action
-    virtual bool addRequest(BusRequestInfo& busReqInfo) override final;
+    virtual bool addRequest(BusRequestInfo& busReqInfo) override final
+    {
+        return _busAccessor.addRequest(busReqInfo);
+    }
 
     // Check bus element responding
     virtual bool isElemResponding(uint32_t address, bool* pIsValid) override final;
@@ -106,18 +106,12 @@ private:
     RaftI2CCentralIF* _pI2CCentral = nullptr;
     bool _i2cCentralNeedsToBeDeleted = false;
 
-    // Low-load bus indicates the bus should use minimal resources
-    bool _lowLoadBus = false;
-
     // Last comms time uS
     uint64_t _lastI2CCommsUs = 0;
     static const uint32_t MIN_TIME_BETWEEN_I2C_COMMS_US = 1000;
 
     // Init ok
     bool _initOk = false;
-
-    // Scheduling helper
-    BusI2CScheduler _scheduler;
 
     // Task that operates the bus
     volatile TaskHandle_t _i2cWorkerTaskHandle = nullptr;
@@ -134,53 +128,15 @@ private:
     volatile bool _hiatusActive = false;
     uint32_t _hiatusStartMs = 0;
     uint32_t _hiatusForMs = 0;
-
-    // Polling vector item
-    class PollingVectorItem
-    {
-    public:
-        PollingVectorItem()
-        {
-            clear();
-        }
-        void clear()
-        {
-            suspendCount = 0;
-            pollReq.clear();
-        }
-        uint8_t suspendCount;
-        BusI2CRequestRec pollReq;
-    };
-
-    // Polling vector and mutex controlling access
-    std::vector<PollingVectorItem> _pollingVector;
-    SemaphoreHandle_t _pollingMutex = nullptr;
-    static const int MAX_POLLING_LIST_RECS = 30;
-    static const int MAX_POLLING_LIST_RECS_LOW_LOAD = 4;
-    static const int MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND = 2;
-
-    // Polling and queued requests
-    static const int REQUEST_FIFO_SLOTS = 40;
-    static const int REQUEST_FIFO_SLOTS_LOW_LOAD = 3;
-    static const uint32_t ADD_REQ_TO_QUEUE_MAX_MS = 2;
-    ThreadSafeQueue<BusI2CRequestRec> _requestQueue;
-
-    // Response FIFO
-    static const int RESPONSE_FIFO_SLOTS = 40;
-    static const int RESPONSE_FIFO_SLOTS_LOW_LOAD = 3;
-    static const uint32_t ADD_RESP_TO_QUEUE_MAX_MS = 2;
-    ThreadSafeQueue<BusRequestResult> _responseQueue;
-
-    // Buffer full warning last time
-    static const uint32_t BETWEEN_BUF_FULL_WARNINGS_MIN_MS = 5000;
-    uint32_t _respBufferFullLastWarnMs = 0;
-    uint32_t _reqBufferFullLastWarnMs = 0;
-
+    
     // Bus status
     BusStatusMgr _busStatusMgr;
 
     // Bus scanner
     BusScanner _busScanner;
+
+    // Bus accessor
+    BusAccessor _busAccessor; 
 
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;
@@ -195,7 +151,5 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    bool addToPollingList(BusRequestInfo& busReqInfo);
-    bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);
     RaftI2CCentralIF::AccessResultCode i2cSendHelper(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
 };

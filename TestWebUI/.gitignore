@@ -1,0 +1,8 @@
+build
+logs
+sdkconfig
+build_raft_artifacts
+managed_components
+compile_commands.json
+*.pyc
+node_modules

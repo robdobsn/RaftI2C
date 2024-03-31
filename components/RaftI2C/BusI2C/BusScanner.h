@@ -9,15 +9,11 @@
 #pragma once
 
 #include <vector>
-#include <functional>
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
 #include "RaftI2CCentralIF.h"
 #include "BusI2CRequestRec.h"
-
-// Callback to send i2c message
-typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CRequestFn;
 
 // #define DEBUG_DISABLE_INITIAL_FAST_SCAN
 
@@ -59,7 +55,7 @@ private:
     BusStatusMgr& _busStatusMgr;
 
     // Bus i2c request function
-    BusI2CRequestFn _busI2CRequestFn;
+    BusI2CRequestFn _busI2CRequestFn = nullptr;
 
     // Helper to scan next address
     void scanNextAddress();
