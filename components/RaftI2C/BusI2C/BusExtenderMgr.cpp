@@ -151,3 +151,22 @@ void BusExtenderMgr::setAllChannels(bool allOn)
         addr++;
     }
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Enable a single slot on bus extender(s)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
+{
+    // Set all bus extender channels off except for one   
+    for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
+    {
+        if (_busExtenderRecs[extenderIdx].isOnline)
+        {
+            uint32_t mask = extenderIdx == (slotPlus1-1) / I2C_BUS_EXTENDER_SLOT_COUNT ? 
+                            1 << ((slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT) : 0;
+            uint32_t addr = _minAddr + extenderIdx;
+            setChannels(addr, mask);
+        }
+    }
+}

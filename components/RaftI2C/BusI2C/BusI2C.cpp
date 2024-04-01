@@ -62,7 +62,10 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busExtenderMgr(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busScanner(_busStatusMgr, _busExtenderMgr,
+        _deviceIdentMgr(*this,
+            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
+        ),
+        _busScanner(_busStatusMgr, _busExtenderMgr, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
         ),
         _busAccessor(*this,
@@ -133,7 +136,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
 
     // Bus extender setup
     _busExtenderMgr.setup(config);
-    
+
     // Setup bus scanner
     _busScanner.setup(config);
 
@@ -358,13 +361,17 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
     if (_busStatusMgr.barElemAccessGet(addrAndSlot))
         return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
+    // Check if a bus extender slot is specified
+    if (addrAndSlot.slotPlus1 > 0)
+        _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+
     // Buffer for read
     uint32_t readReqLen = pReqRec->getReadReqLen();
     uint8_t readBuf[readReqLen];
     uint32_t writeReqLen = pReqRec->getWriteDataLen();
     uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
 
-    // TODO handle addresses with slot specified
+    // Get address
     uint32_t address = addrAndSlot.addr;
 
     // Access the bus
@@ -374,6 +381,10 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
         return rsltCode;
     rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
+
+    // Restore the bus extender(s) if necessary
+    if (addrAndSlot.slotPlus1 > 0)
+        _busExtenderMgr.setAllChannels(true);
 
     // Check for scanning
     if (!pReqRec->isScan())

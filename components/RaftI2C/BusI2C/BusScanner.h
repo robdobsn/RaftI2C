@@ -15,13 +15,15 @@
 #include "BusExtenderMgr.h"
 #include "RaftI2CCentralIF.h"
 #include "BusI2CRequestRec.h"
+#include "DeviceIdentMgr.h"
 
 // #define DEBUG_DISABLE_INITIAL_FAST_SCAN
 
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+    BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr,
+                DeviceIdentMgr deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void service();
@@ -61,6 +63,9 @@ private:
     // Bus extender manager
     BusExtenderMgr& _busExtenderMgr;
 
+    // Device ident manager
+    DeviceIdentMgr _deviceIdentMgr;
+
     // Bus i2c request function (synchronous)
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
 
@@ -69,4 +74,5 @@ private:
     void discoverAddressElems(uint8_t addr);
     RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
     void scanElemSlots(uint32_t addr);
+    void updateBusElemState(uint32_t addr, uint32_t slotPlus1, RaftI2CCentralIF::AccessResultCode accessResult);
 };

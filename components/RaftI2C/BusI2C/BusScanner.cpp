@@ -16,9 +16,11 @@ static const char* MODULE_PREFIX = "BusScanner";
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& busExtenderMgr, 
+                DeviceIdentMgr deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
-    _busExtenderMgr(BusExtenderMgr),
+    _busExtenderMgr(busExtenderMgr),
+    _deviceIdentMgr(deviceIdentMgr),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
     _busScanLastMs = millis();
@@ -174,8 +176,11 @@ void BusScanner::discoverAddressElems(uint8_t addr)
         if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busExtenderMgr.getBusExtenderCount() == 0) ||
                                 _busExtenderMgr.isBusExtender(addr))
         {
-            _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+            // Update bus element state for extenders (may or may not be one)
             _busExtenderMgr.elemStateChange(addr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+
+            // Update bus element state
+            updateBusElemState(addr, 0, rslt);
             return;
         }
     }
@@ -216,7 +221,7 @@ void BusScanner::scanElemSlots(uint32_t addr)
     if (scanOneAddress(addr) == RaftI2CCentralIF::ACCESS_RESULT_OK)
     {
         // Report slot 0 as an element on the main bus has to have a unique address
-        _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), true);
+        updateBusElemState(addr, 0, RaftI2CCentralIF::ACCESS_RESULT_OK);
         // Restore channels
         _busExtenderMgr.setAllChannels(true);
         return;
@@ -244,7 +249,7 @@ void BusScanner::scanElemSlots(uint32_t addr)
             RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
 
             // Report result for each slot
-            _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, slotPlus1), rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+            updateBusElemState(addr, slotPlus1, rslt);
         }
 
         // Disable all channels (if necessary)
@@ -259,3 +264,14 @@ void BusScanner::scanElemSlots(uint32_t addr)
     _busExtenderMgr.setAllChannels(true);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Update bus element state
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentralIF::AccessResultCode accessResult)
+{
+    // Update bus element state
+    bool isOnline = false;
+    bool isChange = _busStatusMgr.updateBusElemState(RaftI2CAddrAndSlot(addr, slot), 
+                    accessResult == RaftI2CCentralIF::ACCESS_RESULT_OK, isOnline);
+}

@@ -9,12 +9,12 @@
 #include <vector>
 #include <list>
 
-class DeviceIdHandler
+class DeviceIdentMgr
 {
 public:
     static const uint32_t HW_DEV_DETECT_NEXT_MS = 100;
 
-    DeviceIdHandler(BusBase& busBase, BusI2CReqSyncFn busI2CReqSyncFn) :
+    DeviceIdentMgr(BusBase& busBase, BusI2CReqSyncFn busI2CReqSyncFn) :
         _busBase(busBase),
         _busI2CReqSyncFn(busI2CReqSyncFn)
     {
@@ -89,21 +89,22 @@ public:
 private:
     bool accessDeviceAndCheckReponse(DevProcRec& devProc, const String& detectionValue)
     {
-        std::vector<uint8_t> writeData;
-        std::vector<uint8_t> readDataMask;
-        std::vector<uint8_t> readDataCheck;
-        extractRegAndValue(detectionValue, writeData, readDataMask, readData);
+        // TODO
+        // std::vector<uint8_t> writeData;
+        // std::vector<uint8_t> readDataMask;
+        // std::vector<uint8_t> readDataCheck;
+        // extractRegAndValue(detectionValue, writeData, readDataMask, readData);
 
-        // Create a bus request to read the detection value
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_POLL,
-                    devProc.addrAndSlot,
-                    0, writeData.size(), 
-                    writeData.data(),
-                    readData.size(), 0, 
-                    nullptr, 
-                    this);
-        std::vector<uint8_t> readData;
-        RaftI2CCentralIF::AccessResultCode rslt = _busI2CReqSyncFn(&reqRec, readData);
+        // // Create a bus request to read the detection value
+        // BusI2CRequestRec reqRec(BUS_REQ_TYPE_POLL,
+        //             devProc.addrAndSlot,
+        //             0, writeData.size(), 
+        //             writeData.data(),
+        //             readData.size(), 0, 
+        //             nullptr, 
+        //             this);
+        // std::vector<uint8_t> readData;
+        // RaftI2CCentralIF::AccessResultCode rslt = _busI2CReqSyncFn(&reqRec, readData);
 
         // Access the device and check the response
         return true;

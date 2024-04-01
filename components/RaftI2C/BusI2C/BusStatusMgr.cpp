@@ -155,15 +155,21 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Bus element state changes
+// Update bus element state
+// Returns true if the element state has changed
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding)
+bool BusStatusMgr::updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline)
 {
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-    LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d isResponding %d", 
+    LOG_I(MODULE_PREFIX, "updateBusElemState addr 0x%02x slot+1 %d isResponding %d", 
                         addrAndSlot.addr, addrAndSlot.slotPlus1, elemResponding);
 #endif
+
+    // Check for new status change
+    isOnline = false;
+    bool isNewStatusChange = false;
+    bool flagSpuriousRecord = false;
 
     // Obtain semaphore controlling access to busElemChange list and flag
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
@@ -173,10 +179,6 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
         I2CAddrStatus prevStatus;
         I2CAddrStatus newStatus;
 #endif
-
-        // Check for new status change
-        bool isNewStatusChange = false;
-        bool flagSpuriousRecord = false;
 
         // Find address record
         I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
@@ -190,7 +192,7 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
             _i2cAddrStatus.push_back(newAddrStatus);
             pAddrStatus = &_i2cAddrStatus.back();
             // TODO remove
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges new addr 0x%02x slot+1 %d", 
+            LOG_I(MODULE_PREFIX, "updateBusElemState new addr 0x%02x slot+1 %d", 
                         addrAndSlot.addr, addrAndSlot.slotPlus1)
         }
 
@@ -204,9 +206,10 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
 
             // Handle element response
             isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
+            isOnline = pAddrStatus->isOnline;
 
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d isResponding %d isNewStatusChange %d", 
+            LOG_I(MODULE_PREFIX, "updateBusElemState addr 0x%02x slot+1 %d isResponding %d isNewStatusChange %d", 
                         addrAndSlot.addr, addrAndSlot.slotPlus1, elemResponding,
                         isNewStatusChange);
 #endif
@@ -237,9 +240,9 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR
         if (addrAndSlot.addr == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
 #endif
-        // if (isNewStatusChange)
+        if (isNewStatusChange)
         {
-            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnline %d(was %d) isResponding %d",
+            LOG_I(MODULE_PREFIX, "updateBusElemState addr 0x%02x slot+1 %d count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnline %d(was %d) isResponding %d",
                         newStatus.addrAndSlot.addr, newStatus.addrAndSlot.slotPlus1,
                         newStatus.count, prevStatus.count, 
                         newStatus.isOnline, prevStatus.isOnline, 
@@ -252,10 +255,12 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
     else
     {
 #ifdef WARN_ON_FAILED_TO_GET_SEMAPHORE
-        LOG_E(MODULE_PREFIX, "handleBusElemStateChanges addr 0x%02x slot+1 %d failed to obtain semaphore", 
+        LOG_E(MODULE_PREFIX, "updateBusElemState addr 0x%02x slot+1 %d failed to obtain semaphore", 
                             addrAndSlot.addr, addrAndSlot.slotPlus1);
 #endif
     }
+
+    return isNewStatusChange;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

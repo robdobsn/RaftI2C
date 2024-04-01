@@ -165,7 +165,8 @@ BusBase busBase(busElemStatusCB, busOperationStatusCB);
 // BusStatusMgr
 BusStatusMgr busStatusMgr(busBase);
 BusExtenderMgr busExtenderMgr(busReqSyncFn);
-BusScanner busScanner(busStatusMgr, busExtenderMgr, busReqSyncFn);
+DeviceIdentMgr deviceIdentMgr(busBase, busReqSyncFn);
+BusScanner busScanner(busStatusMgr, busExtenderMgr, deviceIdentMgr, busReqSyncFn);
 
 void helper_reset_status_changes_list()
 {
@@ -211,7 +212,8 @@ void helper_elem_states_handle(const std::vector<RaftI2CAddrAndSlot>& addrs, boo
     {
         for (auto addr : addrs)
         {
-            busStatusMgr.handleBusElemStateChanges(addr, elemResponding);
+            bool isOnline = false;
+            busStatusMgr.updateBusElemState(addr, elemResponding, isOnline);
         }
     }
 }

@@ -15,6 +15,7 @@
 #include "BusBase.h"
 #include "BusI2CConsts.h"
 #include "BusExtenderMgr.h"
+#include "DeviceIdent.h"
 
 class BusStatusMgr {
 
@@ -40,8 +41,9 @@ public:
     // Check if element is online
     BusOperationStatus isElemOnline(RaftI2CAddrAndSlot addrAndSlot);
 
-    // Handle bus element state changes
-    void handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding);
+    // Update bus element state
+    // Returns true if state has changed
+    bool updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline);
 
     // Check if address is a bus extender
     static bool isBusExtender(uint8_t addr)
@@ -99,6 +101,9 @@ private:
         // Access barring
         uint32_t barStartMs = 0;
         uint16_t barDurationMs = 0;
+
+        // Device ident
+        DeviceIdent deviceIdent;
 
         // Handle responding
         bool handleResponding(bool isResponding, bool& flagSpuriousRecord)

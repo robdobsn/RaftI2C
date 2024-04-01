@@ -15,6 +15,7 @@
 #include "BusStatusMgr.h"
 #include "BusExtenderMgr.h"
 #include "BusAccessor.h"
+#include "DeviceIdentMgr.h"
 
 class RaftI2CCentralIF;
 
@@ -147,11 +148,14 @@ private:
     // Bus extender manager
     BusExtenderMgr _busExtenderMgr;
 
+    // Device identifier
+    DeviceIdentMgr _deviceIdentMgr;
+
     // Bus scanner
     BusScanner _busScanner;
 
     // Bus accessor
-    BusAccessor _busAccessor; 
+    BusAccessor _busAccessor;
 
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;

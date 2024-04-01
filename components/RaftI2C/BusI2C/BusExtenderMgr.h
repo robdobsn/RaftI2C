@@ -58,6 +58,9 @@ public:
         }
     }
 
+    // Enable one slot on bus extender(s)
+    void enableOneSlot(uint32_t slotPlus1);
+
     // Set channels on extender
     RaftI2CCentralIF::AccessResultCode setChannels(uint32_t addr, uint32_t channelMask);
 
