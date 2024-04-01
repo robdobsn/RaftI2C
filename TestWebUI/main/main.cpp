@@ -8,7 +8,7 @@
 #include "RegisterSysMods.h"
 #include "RegisterWebServer.h"
 #include "BusI2CTest.h"
-#include "DevMan.h"
+#include "HWDevMan.h"
 
 // Entry point
 extern "C" void app_main(void)
@@ -25,7 +25,7 @@ extern "C" void app_main(void)
     raftCoreApp.registerSysMod("BusI2CTest", BusI2CTest::create, true);
 
     // TODO - fix this as it should be somewhere else
-    raftCoreApp.registerSysMod("DevMan", DevMan::create, true);
+    raftCoreApp.registerSysMod("HWDevMan", HWDevMan::create, true);
 
     // Loop forever
     while (1)

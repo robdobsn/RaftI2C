@@ -103,7 +103,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                     // Handle element change
                     BusElemAddrAndStatus statusChange = 
                         {
-                            addrStatus.addrAndSlot.addr, 
+                            addrStatus.addrAndSlot.toCompositeAddrAndSlot(), 
                             addrStatus.isOnline
                         };
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
@@ -191,6 +191,9 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
             newAddrStatus.addrAndSlot = addrAndSlot;
             _i2cAddrStatus.push_back(newAddrStatus);
             pAddrStatus = &_i2cAddrStatus.back();
+            // TODO remove
+            LOG_I(MODULE_PREFIX, "handleBusElemStateChanges new addr 0x%02x slot+1 %d", 
+                        addrAndSlot.addr, addrAndSlot.slotPlus1)
         }
 
         // Check if we found a record

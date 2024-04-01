@@ -26,21 +26,6 @@ static const char* MODULE_PREFIX = "TestRaftI2C";
 static const uint32_t lockupDetectAddr = 0x55;
 static RaftJson configJson = "{\"lockupDetect\":\"0x55\",\"scanBoost\":[\"0x55\"],\"busScanPeriodMs\":0}";
 
-const char* getBusOpStr(BusOperationStatus busOperationStatus)
-{
-    switch (busOperationStatus)
-    {
-        case BUS_OPERATION_UNKNOWN:
-            return "BUS_OPERATION_UNKNOWN";
-        case BUS_OPERATION_OK:
-            return "BUS_OPERATION_OK";
-        case BUS_OPERATION_FAILING:
-            return "BUS_OPERATION_FAILING";
-        default:
-            return "UNKNOWN";
-    }
-}
-
 // List of status changes
 std::vector<BusElemAddrAndStatus> statusChangesList;
 BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
@@ -52,7 +37,7 @@ uint32_t busExtenderStatusChanMask[I2C_BUS_EXTENDERS_MAX] = {0};
 // Callback for bus operating
 BusOperationStatusCB busOperationStatusCB = [](BusBase& bus, BusOperationStatus busOperationStatus) {
 #ifdef DEBUG_BUS_OPERATION_CB
-    LOG_I(MODULE_PREFIX, "busOperationStatusCB %s", getBusOpStr(busOperationStatus));
+    LOG_I(MODULE_PREFIX, "busOperationStatusCB %s", BusBase::busOperationStatusToString(busOperationStatus));
 #endif
     busStatus = busOperationStatus;
 };

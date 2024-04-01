@@ -133,6 +133,27 @@
             }
         ]
     },
+    "HWDevMan":
+    {
+        "Buses":
+        {
+            "buslist":
+            [
+                {
+                    "name": "I2CA",
+                    "type": "I2C",
+                    "reqFIFOLen": 10,
+                    "i2cPort": 0,
+                    "sdaPin": 21,
+                    "sclPin": 22,
+                    "i2cFreq": 100000,
+                    "taskCore": 0,
+                    "taskStack": 3000,
+                    "taskPriority": 24
+                }
+            ]
+        }
+    },
     "BusI2CTest": {
         "exampleGroup": {
             "exampleKey": "Welcome to Raft!"

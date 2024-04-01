@@ -334,8 +334,8 @@ void BusI2C::i2cWorkerTask()
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
 {
 #ifdef DEBUG_I2C_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendHelper addr %02x writeLen %d readLen %d reqType %d pollListIdx %d",
-                    pReqRec->getAddress(), pReqRec->getWriteDataLen(),
+    LOG_I(MODULE_PREFIX, "I2CSendHelper addr %02x slot+1 %d writeLen %d readLen %d reqType %d pollListIdx %d",
+                    pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
 #endif
 
@@ -379,6 +379,17 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendHelper(BusI2CRequestRec* pReqR
     // Record time of comms
     _lastI2CCommsUs = micros();
     return rsltCode;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Is elem reponding
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
+{
+    if (pIsValid)
+        *pIsValid = true;
+    return _busStatusMgr.isElemOnline(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address)) == BusOperationStatus::BUS_OPERATION_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

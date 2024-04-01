@@ -70,6 +70,7 @@ void BusScanner::service()
     {
         scanNextAddress();
         busExtendersInit();
+        vTaskDelay(1);
     }
 
     // Perform regular scans at _busScanPeriodMs intervals
@@ -175,20 +176,24 @@ void BusScanner::requestScan(bool enableSlowScan, bool requestFastScan)
 
 void BusScanner::discoverAddressElems(uint8_t addr)
 {
-    // This assumes that any bus extenders are in all-channel-enabled mode
+    // The following assumes that any bus extenders are in all-channel-enabled mode
 
-    // Scan the address and if not responding or no bus extenders are present
-    // then handle possible bus element state changes
-    
-    RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-    if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busStatusMgr.getBusExtenderCount() == 0) ||
-                            BusStatusMgr::isBusExtender(addr))
+    // Check if this address has already been identified on an extender
+    bool isAddrOnSlot = _busStatusMgr.isAddrFoundOnAnyExtender(addr);
+    if (!isAddrOnSlot)
     {
-        _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
-        return;
+        // Scan the address and if not responding or no bus extenders are present
+        // then handle possible bus element state changes
+        RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
+        if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busStatusMgr.getBusExtenderCount() == 0) ||
+                                BusStatusMgr::isBusExtender(addr))
+        {
+            _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+            return;
+        }
     }
 
-    // We have at least one element responding on this address and bus extender's present
+    // We have at least one element responding on this address and bus extenders present
     // so scan the bus extender slot numbers that this address responds on 
     // (if no slot responds then it is found on the main bus - slot 0)
     scanElemSlots(addr);

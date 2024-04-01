@@ -42,7 +42,6 @@ public:
     // Polling
     void processPolling();
 
-
 private:
     // Bus base
     BusBase& _busBase;

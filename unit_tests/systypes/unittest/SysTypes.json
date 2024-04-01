@@ -16,7 +16,7 @@
         "crlfOnTx": 1,
         "protocol": "RICSerial",
         "logLevel": "D"
-    },    
+    },
     "unittest": {
         "BusI2C": {
             "name": "I2CA",

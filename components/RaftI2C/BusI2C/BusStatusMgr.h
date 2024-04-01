@@ -94,6 +94,18 @@ public:
         }
     }
 
+    // Check if address is already detected on an extender
+    bool isAddrFoundOnAnyExtender(uint32_t addr)
+    {
+        for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+        {
+            if ((addrStatus.addrAndSlot.addr == addr) && 
+                    (addrStatus.addrAndSlot.slotPlus1 != 0))
+                return true;
+        }
+        return false;
+    }
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 

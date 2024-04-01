@@ -92,6 +92,17 @@ public:
         return new BusI2C(busElemStatusCB, busOperationStatusCB);
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Get the bus element address as a string
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) override
+    {
+        RaftI2CAddrAndSlot addrAndSlot = RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
+        return "0x" + String(addrAndSlot.addr, 16) + "@" + String(addrAndSlot.slotPlus1) + "=" +
+                                (busElemAddr.isChangeToOnline ? "Online" : "Offline");
+    }     
+
 private:
 
     // Settings
