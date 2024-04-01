@@ -147,5 +147,8 @@ public:
     std::vector<uint8_t> _reqBuf;
 };
 
-// Callback to send i2c message
-typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CRequestFn;
+// Callback to send i2c message (async)
+typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CReqAsyncFn;
+
+// Callback to send i2c message (sync)
+typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)> BusI2CReqSyncFn;

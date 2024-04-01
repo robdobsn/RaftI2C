@@ -13,6 +13,7 @@
 #include "BusI2CRequestRec.h"
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
+#include "BusExtenderMgr.h"
 #include "BusAccessor.h"
 
 class RaftI2CCentralIF;
@@ -143,6 +144,9 @@ private:
     // Bus status
     BusStatusMgr _busStatusMgr;
 
+    // Bus extender manager
+    BusExtenderMgr _busExtenderMgr;
+
     // Bus scanner
     BusScanner _busScanner;
 
@@ -162,5 +166,6 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode i2cSendHelper(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
+    RaftI2CCentralIF::AccessResultCode i2cSendAsync(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
+    RaftI2CCentralIF::AccessResultCode i2cSendSync(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
 };

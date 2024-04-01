@@ -61,8 +61,8 @@ BusElemStatusCB busElemStatusCB = [](BusBase& bus, const std::vector<BusElemAddr
     }
 };
 
-BusI2CRequestFn busOperationRequestFn = [](BusI2CRequestRec* pReqRec, uint32_t pollListIdx) {
-    // LOG_I(MODULE_PREFIX, "busOperationRequestFn addr 0x%02x slot+1 %d pollListIdx %d", 
+BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData) {
+    // LOG_I(MODULE_PREFIX, "busReqSyncFn addr 0x%02x slot+1 %d pollListIdx %d", 
     //                 pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pollListIdx);
     
     RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
@@ -107,8 +107,8 @@ BusI2CRequestFn busOperationRequestFn = [](BusI2CRequestRec* pReqRec, uint32_t p
                         break;
                     }
                     // Calculate the extender idx and mask required
-                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT;
-                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT);
+                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT;
+                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT);
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
@@ -134,7 +134,7 @@ BusI2CRequestFn busOperationRequestFn = [](BusI2CRequestRec* pReqRec, uint32_t p
 #ifdef DEBUG_FAILED_BUS_REQ_FN_SPECIFIC_ADDR
     if ((reslt != RaftI2CCentralIF::ACCESS_RESULT_OK) && (addr == DEBUG_FAILED_BUS_REQ_FN_SPECIFIC_ADDR))
     {
-        LOG_E(MODULE_PREFIX, "======= busOperationRequestFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
+        LOG_E(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
             RaftI2CCentralIF::getAccessResultStr(reslt),
             addr,
             inOnlineList ? "Y" : "N", 
@@ -146,7 +146,7 @@ BusI2CRequestFn busOperationRequestFn = [](BusI2CRequestRec* pReqRec, uint32_t p
 #ifdef DEBUG_SUCCESS_BUS_REQ_FN
     if (reslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
     {
-        LOG_I(MODULE_PREFIX, "======= busOperationRequestFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
+        LOG_I(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
             RaftI2CCentralIF::getAccessResultStr(reslt),
             addr,
             inOnlineList ? "Y" : "N", 
@@ -164,8 +164,8 @@ BusBase busBase(busElemStatusCB, busOperationStatusCB);
 
 // BusStatusMgr
 BusStatusMgr busStatusMgr(busBase);
-
-BusScanner busScanner(busStatusMgr, busOperationRequestFn);
+BusExtenderMgr busExtenderMgr(busReqSyncFn);
+BusScanner busScanner(busStatusMgr, busExtenderMgr, busReqSyncFn);
 
 void helper_reset_status_changes_list()
 {
@@ -186,6 +186,7 @@ void helper_setup_i2c_tests(std::vector<RaftI2CAddrAndSlot> onlineAddrs)
     // Config
     busBase.setup(configJson);
     busStatusMgr.setup(configJson);
+    busExtenderMgr.setup(configJson);
     busScanner.setup(configJson);
 }
 
@@ -201,13 +202,6 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
         busStatusMgr.service(true);
         if (serviceScanner)
             busScanner.service();
-
-        // Check if any bus extenders need to be initialised
-        uint32_t addr = 0;
-        if (busStatusMgr.getBusExtenderAddrRequiringInit(addr))
-        {
-            LOG_I(MODULE_PREFIX, "Bus extender requiring init 0x%02x", addr);
-        }
     }
 }
 
@@ -234,7 +228,7 @@ bool helper_check_bus_extender_list(std::vector<uint32_t> busExtenderList)
 {
     // Check bus extenders
     std::vector<uint32_t> busExtenders;
-    busStatusMgr.getBusExtenderAddrList(busExtenders);
+    busExtenderMgr.getActiveExtenderAddrs(busExtenders);
     if (busExtenders.size() != busExtenderList.size())
     {
         LOG_E(MODULE_PREFIX, "Bus extender list size mismatch actual len %d expected %d", busExtenders.size(), busExtenderList.size());
@@ -403,7 +397,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Setup test
     RaftI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
     RaftI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    RaftI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
+    RaftI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -422,8 +416,8 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr1.addr}), "busExtenderInitialised not true");
 
     // Add two further slotted addresses
-    RaftI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
-    RaftI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
+    RaftI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
+    RaftI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time

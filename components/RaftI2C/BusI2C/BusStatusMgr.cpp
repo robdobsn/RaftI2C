@@ -18,7 +18,6 @@
 // #define DEBUG_NO_SCANNING
 // #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_ACCESS_BARRING_FOR_MS
-// #define DEBUG_HANDLE_NEW_BUS_EXTENDER
 
 static const char* MODULE_PREFIX = "BusStatusMgr";
 
@@ -59,7 +58,6 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     _busOperationStatus = BUS_OPERATION_UNKNOWN;
     _busElemStatusChangeDetected = false;
     _i2cAddrStatus.clear();
-    _busExtenders.clear();
 
     // Debug
     LOG_I(MODULE_PREFIX, "task lockupDetect addr %02x (valid %s)",
@@ -212,28 +210,6 @@ void BusStatusMgr::handleBusElemStateChanges(RaftI2CAddrAndSlot addrAndSlot, boo
                         addrAndSlot.addr, addrAndSlot.slotPlus1, elemResponding,
                         isNewStatusChange);
 #endif
-
-            // Check if this is a newly online bus expander
-            if (isNewStatusChange && elemResponding && isBusExtender(addrAndSlot.addr))
-            {
-                // Find the bus extender record
-                BusExtender* pBusExtender = findBusExtender(pAddrStatus->addrAndSlot.addr);
-
-                // If not found then add a new record
-                if (pBusExtender == nullptr)
-                {
-                    // Add new record
-                    BusExtender newBusExtender;
-                    newBusExtender.addr = pAddrStatus->addrAndSlot.addr;
-                    _busExtenders.push_back(newBusExtender);
-                    pBusExtender = &_busExtenders.back();
-
-                    // Debug
-#ifdef DEBUG_HANDLE_NEW_BUS_EXTENDER
-                    LOG_I(MODULE_PREFIX, "handleBusElemStateChanges new bus extender 0x%02x", pAddrStatus->addrAndSlot.addr);
-#endif
-                }
-            }
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
             // Debug

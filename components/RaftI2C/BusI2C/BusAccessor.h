@@ -22,7 +22,7 @@
 class BusAccessor {
 public:
     // Constructor and destructor
-    BusAccessor(BusBase& busBase, BusI2CRequestFn busI2CRequestFn);
+    BusAccessor(BusBase& busBase, BusI2CReqAsyncFn busI2CReqAsyncFn);
     ~BusAccessor();
 
     // Setup and service
@@ -91,7 +91,7 @@ private:
     BusI2CScheduler _scheduler;
 
     // Bus i2c request function
-    BusI2CRequestFn _busI2CRequestFn = nullptr;
+    BusI2CReqAsyncFn _busI2CReqAsyncFn = nullptr;
 
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;

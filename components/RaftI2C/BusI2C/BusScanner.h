@@ -12,6 +12,7 @@
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
+#include "BusExtenderMgr.h"
 #include "RaftI2CCentralIF.h"
 #include "BusI2CRequestRec.h"
 
@@ -20,7 +21,7 @@
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusI2CRequestFn busI2CRequestFn);
+    BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void service();
@@ -28,6 +29,9 @@ public:
 
     // Scan period
     static const uint32_t I2C_BUS_SCAN_DEFAULT_PERIOD_MS = 10;
+
+    // Max fast scanning without yielding
+    static const uint32_t I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS = 10;
 
 private:
     // Scanning
@@ -54,15 +58,15 @@ private:
     // Status manager
     BusStatusMgr& _busStatusMgr;
 
-    // Bus i2c request function
-    BusI2CRequestFn _busI2CRequestFn = nullptr;
+    // Bus extender manager
+    BusExtenderMgr& _busExtenderMgr;
+
+    // Bus i2c request function (synchronous)
+    BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
 
     // Helper to scan next address
     void scanNextAddress();
-    void busExtendersInit();
     void discoverAddressElems(uint8_t addr);
     RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
     void scanElemSlots(uint32_t addr);
-    RaftI2CCentralIF::AccessResultCode busExtenderSetChannels(uint32_t addr, uint32_t channelMask);
-    void busExtendersSetAllChannels(bool allOn);
 };

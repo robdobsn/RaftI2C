@@ -77,7 +77,7 @@ bool BusI2CESPIDF::isBusy()
 }
 
 // Access the bus
-RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint16_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
+RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint32_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
                 uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead)
 {
     // Send the command

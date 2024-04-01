@@ -16,9 +16,10 @@ static const char* MODULE_PREFIX = "BusScanner";
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusI2CRequestFn busI2CRequestFn) :
+BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
-    _busI2CRequestFn(busI2CRequestFn)
+    _busExtenderMgr(BusExtenderMgr),
+    _busI2CReqSyncFn(busI2CReqSyncFn)
 {
     _busScanLastMs = millis();
 #ifdef DEBUG_DISABLE_INITIAL_FAST_SCAN
@@ -52,7 +53,7 @@ void BusScanner::setup(const RaftJsonIF& config)
 
     // Scanner reset
     _scanBoostCount = 0;
-    _busScanCurAddr = I2C_BUS_EXTENDER_BASE;
+    _busScanCurAddr = _busExtenderMgr.getMinAddr();
     _busScanLastMs = 0;
     _slowScanEnabled = true;
     _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
@@ -66,11 +67,16 @@ void BusScanner::setup(const RaftJsonIF& config)
 void BusScanner::service()
 {
     // Perform fast scans of the bus if requested
+    uint32_t scanLastYieldtMs = millis();
     while (_fastScanPendingCount > 0)
     {
         scanNextAddress();
-        busExtendersInit();
-        vTaskDelay(1);
+        _busExtenderMgr.service();
+        if (Raft::isTimeout(millis(), scanLastYieldtMs, I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
+        {
+            scanLastYieldtMs = millis();
+            vTaskDelay(1);
+        }
     }
 
     // Perform regular scans at _busScanPeriodMs intervals
@@ -80,28 +86,8 @@ void BusScanner::service()
             scanNextAddress();
     }
 
-    // Initialise bus extenders if necessary
-    busExtendersInit();
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Initialize bus extenders
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusScanner::busExtendersInit()
-{
-    // Check if any bus extenders need to be initialized
-    uint32_t extenderAddr = 0;
-    bool initRequired = _busStatusMgr.getBusExtenderAddrRequiringInit(extenderAddr);
-    if (initRequired)
-    {
-        if (busExtenderSetChannels(extenderAddr, BusStatusMgr::I2C_BUS_EXTENDER_ALL_CHANS_ON) == 
-                            RaftI2CCentralIF::ACCESS_RESULT_OK)
-        {
-            // Set the bus extender as initialised
-            _busStatusMgr.setBusExtenderAsInitialised(extenderAddr);
-        }
-    }
+    // Service bus extender manager
+    _busExtenderMgr.service();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -185,10 +171,11 @@ void BusScanner::discoverAddressElems(uint8_t addr)
         // Scan the address and if not responding or no bus extenders are present
         // then handle possible bus element state changes
         RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-        if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busStatusMgr.getBusExtenderCount() == 0) ||
-                                BusStatusMgr::isBusExtender(addr))
+        if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busExtenderMgr.getBusExtenderCount() == 0) ||
+                                _busExtenderMgr.isBusExtender(addr))
         {
             _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+            _busExtenderMgr.elemStateChange(addr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
             return;
         }
     }
@@ -213,7 +200,7 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
                 0, 0, 
                 nullptr, 
                 this);
-    return _busI2CRequestFn(&reqRec, 0);
+    return _busI2CReqSyncFn(&reqRec, nullptr);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -223,7 +210,7 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
 void BusScanner::scanElemSlots(uint32_t addr)
 {
     // Disable all bus extender channels initially
-    busExtendersSetAllChannels(false);
+    _busExtenderMgr.setAllChannels(false);
 
     // Check if the address still gets a response
     if (scanOneAddress(addr) == RaftI2CCentralIF::ACCESS_RESULT_OK)
@@ -231,26 +218,26 @@ void BusScanner::scanElemSlots(uint32_t addr)
         // Report slot 0 as an element on the main bus has to have a unique address
         _busStatusMgr.handleBusElemStateChanges(RaftI2CAddrAndSlot(addr, 0), true);
         // Restore channels
-        busExtendersSetAllChannels(true);
+        _busExtenderMgr.setAllChannels(true);
         return;
     }
 
     // Get bus extender addresses
     std::vector<uint32_t> busExtenderAddrs;
-    _busStatusMgr.getBusExtenderAddrList(busExtenderAddrs);
+    _busExtenderMgr.getActiveExtenderAddrs(busExtenderAddrs);
 
     // Iterate through bus extenders
     int extenderCount = busExtenderAddrs.size();
     for (auto& busExtenderAddr : busExtenderAddrs)
     {
         // Iterate through extender slots
-        for (uint32_t slotIdx = 0; slotIdx < BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT; slotIdx++)
+        for (uint32_t slotIdx = 0; slotIdx < BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT; slotIdx++)
         {
             // Calculate the slot
-            uint32_t slotPlus1 = (busExtenderAddr - I2C_BUS_EXTENDER_BASE) * BusStatusMgr::I2C_BUS_EXTENDER_SLOT_COUNT + slotIdx + 1;
+            uint32_t slotPlus1 = (busExtenderAddr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + slotIdx + 1;
 
             // Setup extender channel
-            if (busExtenderSetChannels(busExtenderAddr, 0x01 << slotIdx) != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            if (_busExtenderMgr.setChannels(busExtenderAddr, 0x01 << slotIdx) != RaftI2CCentralIF::ACCESS_RESULT_OK)
                 break;
             
             // Access the device address again to test if it still reponds
@@ -264,45 +251,11 @@ void BusScanner::scanElemSlots(uint32_t addr)
         extenderCount--;
         if (extenderCount > 0)
         {
-            busExtenderSetChannels(busExtenderAddr, BusStatusMgr::I2C_BUS_EXTENDER_ALL_CHANS_OFF);
+            _busExtenderMgr.setChannels(busExtenderAddr, BusExtenderMgr::I2C_BUS_EXTENDER_ALL_CHANS_OFF);
         }
     }
 
     // Re-enable all channels
-    busExtendersSetAllChannels(true);
+    _busExtenderMgr.setAllChannels(true);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Set bus extender channels (all off or all on)
-// Pass addr 0 for all extenders
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-RaftI2CCentralIF::AccessResultCode BusScanner::busExtenderSetChannels(uint32_t addr, uint32_t channelMask)
-{
-    // Initialise bus extender
-    RaftI2CAddrAndSlot addrAndSlot(addr, 0);
-    uint8_t writeData[1] = { uint8_t(channelMask) };
-    BusI2CRequestRec reqRec(BUS_REQ_TYPE_STD, 
-                addrAndSlot,
-                0, sizeof(writeData),
-                writeData,
-                0, 0, 
-                nullptr, 
-                this);
-    return _busI2CRequestFn(&reqRec, 0);
-}
-
-void BusScanner::busExtendersSetAllChannels(bool allOn)
-{
-    // Get bus extender addresses
-    std::vector<uint32_t> busExtenderAddrs;
-    _busStatusMgr.getBusExtenderAddrList(busExtenderAddrs);
-
-    // Set all bus extender channels
-    for (auto& busExtenderAddr : busExtenderAddrs)
-    {
-        busExtenderSetChannels(busExtenderAddr, allOn ? 
-                    BusStatusMgr::I2C_BUS_EXTENDER_ALL_CHANS_ON : 
-                    BusStatusMgr::I2C_BUS_EXTENDER_ALL_CHANS_OFF);
-    }
-}

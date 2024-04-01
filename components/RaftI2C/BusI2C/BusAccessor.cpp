@@ -16,9 +16,9 @@ static const char* MODULE_PREFIX = "BusAccessor";
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusAccessor::BusAccessor(BusBase& busBase, BusI2CRequestFn busI2CRequestFn) :
+BusAccessor::BusAccessor(BusBase& busBase, BusI2CReqAsyncFn busI2CReqAsyncFn) :
         _busBase(busBase),
-        _busI2CRequestFn(busI2CRequestFn)
+        _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
     // Create the mutex for the polling list
     _pollingMutex = xSemaphoreCreateMutex();
@@ -146,7 +146,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
             if (reqRec.isFWUpdate() || reqRec.shouldSendIfPaused())
             {
                 // Make the request
-                _busI2CRequestFn(&reqRec, 0);
+                _busI2CReqAsyncFn(&reqRec, 0);
                 // LOG_I(MODULE_PREFIX, "worker sending fw len %d", reqRec.getWriteDataLen());
             }
             else
@@ -158,7 +158,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
         else
         {
             // Make the request
-            _busI2CRequestFn(&reqRec, 0);
+            _busI2CReqAsyncFn(&reqRec, 0);
         }
     }
 }
@@ -201,7 +201,7 @@ void BusAccessor::processPolling()
                 }
 #endif
                 // Send poll request
-                RaftI2CCentralIF::AccessResultCode sendResult = _busI2CRequestFn(pReqRec, pollListIdx);
+                RaftI2CCentralIF::AccessResultCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
                 // Check for failed send and not barred temporarily
                 if ((sendResult != RaftI2CCentralIF::ACCESS_RESULT_OK) && (sendResult != RaftI2CCentralIF::ACCESS_RESULT_BARRED))
                 {
@@ -225,10 +225,6 @@ void BusAccessor::processPolling()
 void BusAccessor::handleResponse(BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead)
 {
-    // Check for scanning and ignore the response if so
-    if (pReqRec->isScan())
-        return;
-
     // Check if a response was expected but read length doesn't match
     if (pReqRec->getReadReqLen() != numBytesRead)
     {

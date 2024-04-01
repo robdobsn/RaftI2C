@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "BusBase.h"
 #include "BusI2CConsts.h"
+#include "BusExtenderMgr.h"
 
 class BusStatusMgr {
 
@@ -54,46 +55,6 @@ public:
         return _i2cAddrStatus.size();
     }
 
-    // Get count of bus extenders
-    uint32_t getBusExtenderCount() const
-    {
-        return _busExtenders.size();
-    }
-
-    // Get list of bus extender addresses
-    void getBusExtenderAddrList(std::vector<uint32_t>& busExtenderAddrList)
-    {
-        for (const BusExtender& busExtender : _busExtenders)
-            busExtenderAddrList.push_back(busExtender.addr);
-    }
-
-    // Get address of bus extender requiring initilisation
-    bool getBusExtenderAddrRequiringInit(uint32_t& addr)
-    {
-        for (const BusExtender& busExtender : _busExtenders)
-        {
-            if (!busExtender.isInitialised)
-            {
-                addr = busExtender.addr;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Set bus extender as initialised
-    void setBusExtenderAsInitialised(uint32_t addr)
-    {
-        for (BusExtender& busExtender : _busExtenders)
-        {
-            if (busExtender.addr == addr)
-            {
-                busExtender.isInitialised = true;
-                return;
-            }
-        }
-    }
-
     // Check if address is already detected on an extender
     bool isAddrFoundOnAnyExtender(uint32_t addr)
     {
@@ -112,27 +73,30 @@ public:
     // Max successes before declaring a bus element online
     static const uint32_t I2C_ADDR_RESP_COUNT_OK_MAX = 2;
 
-    // Bus extender slot count
-    static const uint32_t I2C_BUS_EXTENDER_SLOT_COUNT = 8;
-
-    // Bus extender channels
-    static const uint32_t I2C_BUS_EXTENDER_ALL_CHANS_OFF = 0;
-    static const uint32_t I2C_BUS_EXTENDER_ALL_CHANS_ON = 0xff;
-
 private:
     // Bus element status change mutex
     SemaphoreHandle_t _busElemStatusMutex = nullptr;
+
+    // Bus base
+    BusBase& _busBase;
 
     // I2C address status
     class I2CAddrStatus
     {
     public:
+        // Address and slot
         RaftI2CAddrAndSlot addrAndSlot;
+
+        // Online/offline count
         int8_t count = 0;
+
+        // State
         bool isChange : 1 = false;
         bool isOnline : 1 = false;
         bool wasOnline: 1 = false;
         bool slotResolved: 1 = false;
+
+        // Access barring
         uint32_t barStartMs = 0;
         uint16_t barDurationMs = 0;
 
@@ -205,29 +169,6 @@ private:
     // Bus operation status
     BusOperationStatus _busOperationStatus = BUS_OPERATION_UNKNOWN;
 
-    // Bus base
-    BusBase& _busBase;
-
     // Bus element status change detection
     bool _busElemStatusChangeDetected = false;
-
-    // Bus extenders
-    class BusExtender
-    {
-    public:
-        uint8_t addr = 0;
-        bool isInitialised: 1 = false;
-    };
-    std::vector<BusExtender> _busExtenders;
-
-    // Helper for finding bus extender
-    BusExtender* findBusExtender(uint8_t addr)
-    {
-        for (BusExtender& busExtender : _busExtenders)
-        {
-            if (busExtender.addr == addr)
-                return &busExtender;
-        }
-        return nullptr;
-    }
 };

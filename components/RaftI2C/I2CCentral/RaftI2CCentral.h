@@ -36,7 +36,7 @@ public:
     virtual bool isBusy() override final;
 
     // Access the bus
-    virtual AccessResultCode access(uint16_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual AccessResultCode access(uint32_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) override final;
 
     // Check if bus operating ok
