@@ -1,4 +1,10 @@
-
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Device Ident Manager
+//
+// Rob Dobson 2024
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
 
@@ -19,6 +25,12 @@ public:
         _busI2CReqSyncFn(busI2CReqSyncFn)
     {
         _hwDevInfoRecs.push_back(DevInfoRec({"VCNL4040", "Vishay", "VCNL4040", "0x60", {"0x0c==0b100001100000XXXX"}}));
+    }
+
+    void setup(const RaftJsonIF& config)
+    {
+        // Enabled
+        isEnabled = config.getBool("enable", true);
     }
 
     void deviceOnline(RaftI2CAddrAndSlot addrAndSlot)
@@ -109,6 +121,9 @@ private:
         // Access the device and check the response
         return true;
     }
+
+    // Device indentification enabled
+    bool isEnabled = false;
 
     std::vector<DevInfoRec> _hwDevInfoRecs;
     std::list<DevProcRec> _hwDevProcRecs;

@@ -101,8 +101,7 @@ public:
     virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) override
     {
         RaftI2CAddrAndSlot addrAndSlot = RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
-        return "0x" + String(addrAndSlot.addr, 16) + "@" + String(addrAndSlot.slotPlus1) + "=" +
-                                (busElemAddr.isChangeToOnline ? "Online" : "Offline");
+        return addrAndSlot.toString() + "=" + (busElemAddr.isChangeToOnline ? "Online" : "Offline");
     }     
 
 private:
@@ -163,7 +162,6 @@ private:
 
     // Debug
     uint32_t _debugLastBusLoopMs = 0;
-    uint32_t _debugLastPollTimeMs = 0;
 
     // Worker task (static version calls the other)
     static void i2cWorkerTaskStatic(void* pvParameters);

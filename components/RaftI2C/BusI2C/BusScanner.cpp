@@ -68,12 +68,20 @@ void BusScanner::setup(const RaftJsonIF& config)
 
 void BusScanner::service()
 {
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Service called from I2C task
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void BusScanner::taskService()
+{
     // Perform fast scans of the bus if requested
     uint32_t scanLastYieldtMs = millis();
     while (_fastScanPendingCount > 0)
     {
         scanNextAddress();
-        _busExtenderMgr.service();
+        _busExtenderMgr.taskService();
         if (Raft::isTimeout(millis(), scanLastYieldtMs, I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
         {
             scanLastYieldtMs = millis();
@@ -89,7 +97,7 @@ void BusScanner::service()
     }
 
     // Service bus extender manager
-    _busExtenderMgr.service();
+    _busExtenderMgr.taskService();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

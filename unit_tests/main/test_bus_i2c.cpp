@@ -15,7 +15,7 @@
 
 #include "BusI2C.h"
 
-static const char* MODULE_PREFIX = "TestRaftI2C";
+static const char* MODULE_PREFIX = "test_bus_i2c";
 
 // #define DEBUG_FAILED_BUS_REQ_FN_SPECIFIC_ADDR 0x47
 // #define DEBUG_SUCCESS_BUS_REQ_FN
@@ -62,8 +62,8 @@ BusElemStatusCB busElemStatusCB = [](BusBase& bus, const std::vector<BusElemAddr
 };
 
 BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData) {
-    // LOG_I(MODULE_PREFIX, "busReqSyncFn addr 0x%02x slot+1 %d pollListIdx %d", 
-    //                 pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pollListIdx);
+    // LOG_I(MODULE_PREFIX, "busReqSyncFn addr@slot+1 %s pollListIdx %d", 
+    //                 pReqRec->getAddrAndSlot().toString().c_str(), pollListIdx);
     
     RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
     uint32_t addr = addrAndSlot.addr;
@@ -112,8 +112,8 @@ BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
-                        LOG_I(MODULE_PREFIX, "Slot enabled addr 0x%02x slot+1 %d extenderIdx %d mask %02x", 
-                                addr, testConfigAddrAndSlot.slotPlus1, extenderIdx, chanMask);
+                        LOG_I(MODULE_PREFIX, "Slot enabled addr@slot+1 %s extenderIdx %d mask %02x", 
+                                testConfigAddrAndSlot.toString().c_str(), extenderIdx, chanMask);
 #endif
                         reslt = RaftI2CCentralIF::ACCESS_RESULT_OK;
                         break;
@@ -121,8 +121,8 @@ BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t
                     else
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
-                        LOG_I(MODULE_PREFIX, "Slot not enabled addr 0x%02x slot+1 %d extenderIdx %d mask %02x", 
-                                addr, testConfigAddrAndSlot.slotPlus1, extenderIdx, chanMask);
+                        LOG_I(MODULE_PREFIX, "Slot not enabled addr@slot+1 %s extenderIdx %d mask %02x", 
+                                testConfigAddrAndSlot.toString().c_str(), extenderIdx, chanMask);
 #endif
                     }
                 }
@@ -134,24 +134,20 @@ BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t
 #ifdef DEBUG_FAILED_BUS_REQ_FN_SPECIFIC_ADDR
     if ((reslt != RaftI2CCentralIF::ACCESS_RESULT_OK) && (addr == DEBUG_FAILED_BUS_REQ_FN_SPECIFIC_ADDR))
     {
-        LOG_E(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
+        LOG_E(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr@slot+1 %s isOnline %s writeData <%s> readDataLen %d", 
             RaftI2CCentralIF::getAccessResultStr(reslt),
-            addr,
+            addrAndSlot.toString().c_str(),
             inOnlineList ? "Y" : "N", 
-            addrAndSlot.slotPlus1,
-            pollListIdx,
             writeDataStr.c_str(), pReqRec->getReadReqLen());
     }
 #endif
 #ifdef DEBUG_SUCCESS_BUS_REQ_FN
     if (reslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
     {
-        LOG_I(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr 0x%02x isOnline %s slot+1 %d pollListIdx %d writeData <%s> readDataLen %d", 
+        LOG_I(MODULE_PREFIX, "======= busReqSyncFn rslt %s addr@slot+1 %s isOnline %s writeData <%s> readDataLen %d", 
             RaftI2CCentralIF::getAccessResultStr(reslt),
-            addr,
+            addrAndSlot.toString().c_str(),
             inOnlineList ? "Y" : "N", 
-            addrAndSlot.slotPlus1,
-            pollListIdx,
             writeDataStr.c_str(), pReqRec->getReadReqLen());
     }
 #endif
@@ -202,7 +198,7 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
     {
         busStatusMgr.service(true);
         if (serviceScanner)
-            busScanner.service();
+            busScanner.taskService();
     }
 }
 

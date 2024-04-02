@@ -29,6 +29,9 @@ public:
     void service();
     void requestScan(bool enableSlowScan, bool requestFastScan);
 
+    // Service called from I2C task
+    void taskService();
+
     // Scan period
     static const uint32_t I2C_BUS_SCAN_DEFAULT_PERIOD_MS = 10;
 

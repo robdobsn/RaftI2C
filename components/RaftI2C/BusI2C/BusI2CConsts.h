@@ -50,6 +50,10 @@ public:
     {
         return addr == other.addr && slotPlus1 == other.slotPlus1;
     }
+    String toString()
+    {
+        return "0x" + String(addr, 16) + "@" + String(slotPlus1);
+    }
     uint16_t addr:10;
     uint8_t slotPlus1:6;
 };

@@ -24,6 +24,9 @@ public:
     // Service
     void service();
 
+    // Service called from I2C task
+    void taskService();
+    
     // State change on an element (may or may not be a bus extender)
     void elemStateChange(uint32_t addr, bool elemResponding);
 

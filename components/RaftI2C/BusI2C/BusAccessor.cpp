@@ -10,6 +10,19 @@
 #include "Logger.h"
 #include "RaftUtils.h"
 
+// Warnings
+#define WARN_ON_REQUEST_BUFFER_FULL
+#define WARN_ON_RESPONSE_BUFFER_FULL
+
+// Debug
+// #define DEBUG_BUS_I2C_POLLING
+// #define DEBUG_SERVICE_RESPONSE_CALLBACK
+// #define DEBUG_REQ_QUEUE_COMMANDS
+// #define DEBUG_REQ_QUEUE_ONE_ADDR 0x1d
+// #define DEBUG_POLL_TIME_FOR_ADDR 0x1d
+// #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
+// #define DEBUG_ADD_TO_QUEUED_REC_FIFO
+
 static const char* MODULE_PREFIX = "BusAccessor";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,7 +84,7 @@ void BusAccessor::service()
         if (callback)
         {
             callback(reqResult.getCallbackParam(), reqResult);
-#ifdef DEBUG_SERVICE_RESPONSE
+#ifdef DEBUG_SERVICE_RESPONSE_CALLBACK
             LOG_I(MODULE_PREFIX, "service response retval %d addr 0x%02x readLen %d", 
                     reqResult.isResultOk(), reqResult.getAddress(), reqResult.getReadDataLen());
 #endif
@@ -127,16 +140,16 @@ void BusAccessor::processRequestQueue(bool isPaused)
     if (_requestQueue.get(reqRec))
     {
         // Debug
-#ifdef DEBUG_QUEUED_COMMANDS
+#ifdef DEBUG_REQ_QUEUE_COMMANDS
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr %02x write %s", reqRec.getAddress(), writeDataStr.c_str());
+        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slot+1 %s write %s", reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str());
 #endif
 
         // Debug one address only
-#ifdef DEBUG_ONE_ADDR
-        if (reqRec.getAddress() != DEBUG_ONE_ADDR)
-            continue;
+#ifdef DEBUG_REQ_QUEUE_ONE_ADDR
+        if (reqRec.getAddrAndSlot().addr != DEBUG_REQ_QUEUE_ONE_ADDR)
+            return;
 #endif
 
         // Check if paused
@@ -192,10 +205,10 @@ void BusAccessor::processPolling()
             {
                 // Debug poll timing
 #ifdef DEBUG_POLL_TIME_FOR_ADDR
-                if (pReqRec->isPolling() && (pReqRec->getAddress() == DEBUG_POLL_TIME_FOR_ADDR))
+                if (pReqRec->isPolling() && (pReqRec->getAddrAndSlot().addr == DEBUG_POLL_TIME_FOR_ADDR))
                 {
-                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr %02x elapsed %ld", 
-                                pReqRec->getAddress(), 
+                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slot+1 %s elapsed %ld", 
+                                pReqRec->getAddrAndSlot().toString().c_str(), 
                                 Raft::timeElapsed(millis(), _debugLastPollTimeMs));
                     _debugLastPollTimeMs = millis();
                 }
@@ -284,7 +297,7 @@ void BusAccessor::handleResponse(BusI2CRequestRec* pReqRec, RaftI2CCentralIF::Ac
             {
                 int msgsWaiting = _responseQueue.count();
                 LOG_W(MODULE_PREFIX, "sendHelper %s resp buffer full - waiting %d",
-                        _busName.c_str(), msgsWaiting
+                        _busBase.getBusName().c_str(), msgsWaiting
                     );
                 _respBufferFullLastWarnMs = millis();
             }
@@ -390,8 +403,8 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
     // Debug
     String writeDataStr;
     Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-    LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr %02x writeData %s readLen %d delayMs %d", 
-                reqRec.getAddress(), writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
+    LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slot+1 %s writeData %s readLen %d delayMs %d", 
+                reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
 #endif
 
     // Msg buffer full
@@ -404,7 +417,7 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
         {
             int msgsWaiting = _requestQueue.count();
             LOG_W(MODULE_PREFIX, "addToQueuedReqFIFO %s req buffer full - waiting %d", 
-                    _busName.c_str(), msgsWaiting
+                    _busBase.getBusName().c_str(), msgsWaiting
                 );
             _reqBufferFullLastWarnMs = millis();
         }

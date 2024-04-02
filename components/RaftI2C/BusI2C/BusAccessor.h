@@ -96,6 +96,9 @@ private:
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;
 
+    // Debug
+    uint32_t _debugLastPollTimeMs = 0;
+
     // Helpers
     bool addToPollingList(BusRequestInfo& busReqInfo);
     bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);

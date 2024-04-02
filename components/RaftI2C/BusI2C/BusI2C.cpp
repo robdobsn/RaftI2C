@@ -35,20 +35,10 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 // The following will define a minimum time between I2C comms activities
 // #define ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US 1
 
-// Warnings
-#define WARN_ON_REQUEST_BUFFER_FULL
-#define WARN_ON_RESPONSE_BUFFER_FULL
-
 // Debug
-// #define DEBUG_BUS_I2C_POLLING
-// #define DEBUG_ADD_TO_QUEUED_REC_FIFO
-// #define DEBUG_QUEUED_COMMANDS
-// #define DEBUG_ONE_ADDR 0x1d
 // #define DEBUG_NO_POLLING
-// #define DEBUG_POLL_TIME_FOR_ADDR 0x1d
-// #define DEBUG_I2C_SEND_HELPER
-// #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
-// #define DEBUG_SERVICE_RESPONSE
+// #define DEBUG_I2C_ASYNC_SEND_HELPER
+// #define DEBUG_I2C_SYNC_SEND_HELPER
 // #define DEBUG_BUS_HIATUS
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -136,6 +126,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
 
     // Bus extender setup
     _busExtenderMgr.setup(config);
+
+    // Device ident manager
+    _deviceIdentMgr.setup(config);
 
     // Setup bus scanner
     _busScanner.setup(config);
@@ -231,6 +224,12 @@ void BusI2C::service()
     // Service bus status change detection
     _busStatusMgr.service(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
 
+    // Service bus extender
+    _busExtenderMgr.service();
+
+    // Service device ident manager
+    _deviceIdentMgr.service();
+
     // Service bus accessor
     _busAccessor.service();
 }
@@ -307,7 +306,7 @@ void BusI2C::i2cWorkerTask()
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
         {
-            _busScanner.service();
+            _busScanner.taskService();
         }
 #endif
 
@@ -342,9 +341,9 @@ void BusI2C::i2cWorkerTask()
 
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
 {
-#ifdef DEBUG_I2C_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendAsync addr %02x slot+1 %d writeLen %d readLen %d reqType %d pollListIdx %d",
-                    pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pReqRec->getWriteDataLen(),
+#ifdef DEBUG_I2C_ASYNC_SEND_HELPER
+    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slot+1 %s writeLen %d readLen %d reqType %d pollListIdx %d",
+                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
 #endif
 
@@ -411,9 +410,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
 
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
 {
-#ifdef DEBUG_I2C_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendSync addr %02x slot+1 %d writeLen %d readLen %d reqType %d",
-                    pReqRec->getAddrAndSlot().addr, pReqRec->getAddrAndSlot().slotPlus1, pReqRec->getWriteDataLen(),
+#ifdef DEBUG_I2C_SYNC_SEND_HELPER
+    LOG_I(MODULE_PREFIX, "I2CSendSync addr@slot+1 writeLen %d readLen %d reqType %d",
+                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType());
 #endif
 
