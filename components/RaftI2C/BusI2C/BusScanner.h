@@ -23,7 +23,7 @@ class BusScanner {
 
 public:
     BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr,
-                DeviceIdentMgr deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+                DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void service();
@@ -67,7 +67,7 @@ private:
     BusExtenderMgr& _busExtenderMgr;
 
     // Device ident manager
-    DeviceIdentMgr _deviceIdentMgr;
+    DeviceIdentMgr& _deviceIdentMgr;
 
     // Bus i2c request function (synchronous)
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;

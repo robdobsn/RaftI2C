@@ -15,6 +15,7 @@ class DevInfoRec
 {
 public:
     // Device info
+    String typeKey;
     String friendlyName;
     String manufacturer;
     String model;
@@ -22,9 +23,13 @@ public:
     // This MUST either be 0xXX or 0xXX-0xXX
     String addressRange;
 
-    std::vector<String> detectionValues;
+    // Detection values
+    String detectionValues;
 
-    bool isAddrInRange(RaftI2CAddrAndSlot addrAndSlot)
+    // Initilisation values
+    String initValues;
+
+    bool isAddrInRange(RaftI2CAddrAndSlot addrAndSlot) const
     {
         // Convert address range to min and max addresses
         uint32_t minAddr = 0;
@@ -42,7 +47,7 @@ public:
     }
 
 private:
-    void convertAddressRangeToMinMax(uint32_t& minAddr, uint32_t& maxAddr)
+    void convertAddressRangeToMinMax(uint32_t& minAddr, uint32_t& maxAddr) const
     {
         // Check if the address range is a single address
         if (addressRange.length() == 4)

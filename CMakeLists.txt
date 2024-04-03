@@ -8,10 +8,10 @@ idf_component_register(
                   "components/RaftI2C/BusI2C/BusScanner.cpp"
                   "components/RaftI2C/BusI2C/BusStatusMgr.cpp"
                   "components/RaftI2C/BusI2C/BusExtenderMgr.cpp"
+                  "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
                 INCLUDE_DIRS
                   "components/RaftI2C/I2CCentral"
                   "components/RaftI2C/BusI2C"
-                  "components/RaftI2C/DeviceIdentifier"
                 REQUIRES
                   raftcore-src
                 )

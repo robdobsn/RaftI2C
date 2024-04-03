@@ -50,7 +50,7 @@ public:
     {
         return addr == other.addr && slotPlus1 == other.slotPlus1;
     }
-    String toString()
+    String toString() const
     {
         return "0x" + String(addr, 16) + "@" + String(slotPlus1);
     }

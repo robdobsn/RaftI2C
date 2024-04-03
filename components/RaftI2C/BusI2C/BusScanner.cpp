@@ -17,7 +17,7 @@ static const char* MODULE_PREFIX = "BusScanner";
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& busExtenderMgr, 
-                DeviceIdentMgr deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+                DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
     _busExtenderMgr(busExtenderMgr),
     _deviceIdentMgr(deviceIdentMgr),
@@ -282,4 +282,14 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentral
     bool isOnline = false;
     bool isChange = _busStatusMgr.updateBusElemState(RaftI2CAddrAndSlot(addr, slot), 
                     accessResult == RaftI2CCentralIF::ACCESS_RESULT_OK, isOnline);
+
+    // Change to online so start device identification
+    if (isChange && isOnline)
+    {
+        // Attempt to identify the device
+        DeviceIdent deviceIdent = _deviceIdentMgr.attemptDeviceIdent(RaftI2CAddrAndSlot(addr, slot));
+
+        // Set identity into bus status manager
+        _busStatusMgr.setBusElemIdent(RaftI2CAddrAndSlot(addr, slot), deviceIdent);
+    }
 }

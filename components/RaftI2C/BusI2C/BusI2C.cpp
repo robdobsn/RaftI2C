@@ -227,9 +227,6 @@ void BusI2C::service()
     // Service bus extender
     _busExtenderMgr.service();
 
-    // Service device ident manager
-    _deviceIdentMgr.service();
-
     // Service bus accessor
     _busAccessor.service();
 }

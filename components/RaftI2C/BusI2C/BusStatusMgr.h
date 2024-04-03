@@ -69,6 +69,14 @@ public:
         return false;
     }
 
+    // Set bus element ident for address
+    void setBusElemIdent(RaftI2CAddrAndSlot addrAndSlot, const DeviceIdent& deviceIdent)
+    {
+        I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+        if (pAddrStatus)
+            pAddrStatus->deviceIdent = deviceIdent;
+    }
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 
