@@ -427,7 +427,7 @@ void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevIn
 #endif
 
             // Set polling info
-            pAddrStatus->devicePollingInfo.setDeviceIdentPolling(pDevInfo->pollIntervalMs, pollRequests);
+            pAddrStatus->deviceIdentPolling.set(pDevInfo->pollIntervalMs, pollRequests);
         }
     }
 
@@ -449,15 +449,15 @@ bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::ve
     busReqRecs.clear();
     for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
-        // Iterate polling records
-        for (DevicePollingInfo::PollReqInfo& pollReqInfo : addrStatus.devicePollingInfo.devIdentPollReqInfos)
+        // Check if a poll is due
+        if (Raft::isTimeout(timeNowMs, addrStatus.deviceIdentPolling.lastPollTimeMs, addrStatus.deviceIdentPolling.pollIntervalMs))
         {
-            // Check if a poll is due
-            if (Raft::isTimeout(timeNowMs, pollReqInfo.lastPollTimeMs, pollReqInfo.pollIntervalMs))
+            // Iterate polling records
+            for (BusI2CRequestRec& reqRec : addrStatus.deviceIdentPolling.pollReqs)
             {
                 // Append to list
-                busReqRecs.push_back(pollReqInfo.pollReq);
-                pollReqInfo.lastPollTimeMs = timeNowMs;
+                busReqRecs.push_back(reqRec);
+                addrStatus.deviceIdentPolling.lastPollTimeMs = timeNowMs;
             }
         }
 

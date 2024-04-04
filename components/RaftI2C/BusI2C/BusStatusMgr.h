@@ -96,8 +96,10 @@ private:
         // Device ident
         DeviceIdent deviceIdent;
 
-        // Device polling
-        DevicePollingInfo devicePollingInfo;
+        // Device ident polling
+        // This is polling related to the device identification - i.e. specified in the device info record
+        // for the device type
+        DevicePollingInfo deviceIdentPolling;
 
         // Handle responding
         bool handleResponding(bool isResponding, bool& flagSpuriousRecord)

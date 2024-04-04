@@ -18,7 +18,7 @@ static const char* MODULE_PREFIX = "DeviceIdentMgr";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const std::vector<DevInfoRec> DeviceIdentMgr::_hwDevInfoRecs = {
-    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX"}
+    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=&0x000000", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX"}
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -46,9 +46,10 @@ void DeviceIdentMgr::setup(const RaftJsonIF& config)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Attempt device identification
+// Note that this is called from within the scanning code so the device should already be
+// selected if it is on a bus extender, etc.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Attempt device identification
 const DevInfoRec* DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAndSlot)
 {
     // Check if enabled
@@ -185,10 +186,6 @@ bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, co
     std::vector<RaftJson::NameValuePair> initWriteReadPairs;
     devInfoRec.getInitWriteReadPairs(initWriteReadPairs);
 
-    // Handle extender if relevant
-    if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
-
     // Initialise the device
     for (const auto& initNameValue : initWriteReadPairs)
     {
@@ -208,10 +205,6 @@ bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, co
                     this);
         _busI2CReqSyncFn(&reqRec, nullptr);
     }
-
-    // Restore the bus extender(s) if necessary
-    if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.setAllChannels(true);
 
     return true;
 }
