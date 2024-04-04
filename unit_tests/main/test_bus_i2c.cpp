@@ -82,7 +82,7 @@ BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t
     if(inOnlineList)
     {
         // Check if this is an extender
-        if (BusStatusMgr::isBusExtender(addr))
+        if ((addr >= I2C_BUS_EXTENDER_BASE) && (addr < I2C_BUS_EXTENDER_BASE + I2C_BUS_EXTENDERS_MAX))
         {
             uint32_t extenderIdx = addr - I2C_BUS_EXTENDER_BASE;
             // Check if data being written to extender

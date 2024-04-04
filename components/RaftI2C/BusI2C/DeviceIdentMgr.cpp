@@ -9,7 +9,7 @@
 #include "DeviceIdentMgr.h"
 #include "Logger.h"
 
-#define DEBUG_DEVICE_IDENT_MGR
+// #define DEBUG_DEVICE_IDENT_MGR
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
 
@@ -18,15 +18,15 @@ static const char* MODULE_PREFIX = "DeviceIdentMgr";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const std::vector<DevInfoRec> DeviceIdentMgr::_hwDevInfoRecs = {
-    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", ""}
+    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX"}
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DeviceIdentMgr::DeviceIdentMgr(BusBase& busBase, BusI2CReqSyncFn busI2CReqSyncFn) :
-    _busBase(busBase),
+DeviceIdentMgr::DeviceIdentMgr(BusExtenderMgr& busExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+    _busExtenderMgr(busExtenderMgr),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }
@@ -49,7 +49,7 @@ void DeviceIdentMgr::setup(const RaftJsonIF& config)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Attempt device identification
-DeviceIdent DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAndSlot)
+const DevInfoRec* DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAndSlot)
 {
     // Check if enabled
     if (!_isEnabled)
@@ -57,7 +57,7 @@ DeviceIdent DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAnd
 #ifdef DEBUG_DEVICE_IDENT_MGR
         LOG_I(MODULE_PREFIX, "Device ident not enabled");
 #endif
-        return DeviceIdent();
+        return nullptr;
     }
 
     // Check if this address is in the range of any known device
@@ -69,19 +69,9 @@ DeviceIdent DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAnd
             LOG_I(MODULE_PREFIX, "attemptDeviceIdent dev %s addr@slot+1 %s addrRange %s", 
                         devInfoRec.typeKey.c_str(), addrAndSlot.toString().c_str(), devInfoRec.addressRange.c_str());
 #endif
-            // Extract name-value pairs from the detection string
-            std::vector<RaftJson::NameValuePair> nameValuePairs;
-            RaftJson::extractNameValues(devInfoRec.detectionValues, "=", "&", ";", nameValuePairs);
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            for (const auto& nameValuePair : nameValuePairs)
-            {
-                LOG_I(MODULE_PREFIX, "attemptDeviceIdent reg %s value %s", nameValuePair.name.c_str(), nameValuePair.value.c_str());
-            }
-#endif
             // Check if the detection value(s) match responses from the device
             // Generate a bus request to read the detection value
-            if (accessDeviceAndCheckReponse(addrAndSlot, nameValuePairs))
+            if (accessDeviceAndCheckReponse(addrAndSlot, devInfoRec))
             {
 #ifdef DEBUG_DEVICE_IDENT_MGR
                 LOG_I(MODULE_PREFIX, "Device ident found %s", devInfoRec.typeKey.c_str());
@@ -90,29 +80,33 @@ DeviceIdent DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAnd
                 processDeviceInit(addrAndSlot, devInfoRec);
 
                 // Device detected
-                return DeviceIdent(devInfoRec.typeKey);
+                return &devInfoRec;
             }
         }
     } 
 
-    return DeviceIdent();
+    return nullptr;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrAndSlot, const std::vector<RaftJson::NameValuePair>& detectionNameValues)
+bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec)
 {
+    // Get the detection values
+    std::vector<RaftJson::NameValuePair> detectionWriteReadPairs;
+    devInfoRec.getDetectionWriteReadPairs(detectionWriteReadPairs);
+
     // Check if all values match
-    for (const auto& detectionNameValue : detectionNameValues)
+    for (const auto& detectionNameValue : detectionWriteReadPairs)
     {
         std::vector<uint8_t> writeData;
         std::vector<uint8_t> readDataMask;
         std::vector<uint8_t> readDataCheck;
-        if (!extractWriteData(detectionNameValue.name, writeData))
+        if (!DevInfoRec::extractBufferDataFromHexStr(detectionNameValue.name, writeData))
             continue;
-        if (!extractReadMaskAndCheck(detectionNameValue.value, readDataMask, readDataCheck))
+        if (!DevInfoRec::extractMaskAndDataFromHexStr(detectionNameValue.value, readDataMask, readDataCheck, true))
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
@@ -125,7 +119,9 @@ bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrA
                     addrAndSlot,
                     0, writeData.size(), 
                     writeData.data(),
-                    readDataCheck.size(), 0, 
+                    readDataCheck.size(),
+                    nullptr, 
+                    0, 
                     nullptr, 
                     this);
         std::vector<uint8_t> readData;
@@ -186,14 +182,18 @@ bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrA
 bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec)
 {
     // Extract initialisation records
-    std::vector<RaftJson::NameValuePair> initNameValues;
-    RaftJson::extractNameValues(devInfoRec.initValues, "=", "&", ";", initNameValues);
+    std::vector<RaftJson::NameValuePair> initWriteReadPairs;
+    devInfoRec.getInitWriteReadPairs(initWriteReadPairs);
+
+    // Handle extender if relevant
+    if (addrAndSlot.slotPlus1 > 0)
+        _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
 
     // Initialise the device
-    for (const auto& initNameValue : initNameValues)
+    for (const auto& initNameValue : initWriteReadPairs)
     {
         std::vector<uint8_t> writeData;
-        if (!extractWriteData(initNameValue.name, writeData))
+        if (!DevInfoRec::extractBufferDataFromHexStr(initNameValue.name, writeData))
             continue;
 
         // Create a bus request to write the initialisation value
@@ -201,11 +201,18 @@ bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, co
                     addrAndSlot,
                     0, writeData.size(), 
                     writeData.data(),
-                    0, 0, 
+                    0,
+                    nullptr,
+                    0, 
                     nullptr, 
                     this);
         _busI2CReqSyncFn(&reqRec, nullptr);
     }
+
+    // Restore the bus extender(s) if necessary
+    if (addrAndSlot.slotPlus1 > 0)
+        _busExtenderMgr.setAllChannels(true);
+
     return true;
 }
 

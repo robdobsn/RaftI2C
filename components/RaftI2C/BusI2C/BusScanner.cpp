@@ -210,7 +210,9 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
                 addrAndSlot,
                 0, 0, 
                 nullptr, 
-                0, 0, 
+                0, 
+                nullptr,
+                0, 
                 nullptr, 
                 this);
     return _busI2CReqSyncFn(&reqRec, nullptr);
@@ -287,9 +289,9 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentral
     if (isChange && isOnline)
     {
         // Attempt to identify the device
-        DeviceIdent deviceIdent = _deviceIdentMgr.attemptDeviceIdent(RaftI2CAddrAndSlot(addr, slot));
+        const DevInfoRec* pDevInfoRec = _deviceIdentMgr.attemptDeviceIdent(RaftI2CAddrAndSlot(addr, slot));
 
-        // Set identity into bus status manager
-        _busStatusMgr.setBusElemIdent(RaftI2CAddrAndSlot(addr, slot), deviceIdent);
+        // Set dev info into bus status manager
+        _busStatusMgr.setBusElemDevInfo(RaftI2CAddrAndSlot(addr, slot), pDevInfoRec);
     }
 }

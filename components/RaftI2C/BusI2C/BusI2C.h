@@ -16,6 +16,7 @@
 #include "BusExtenderMgr.h"
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
+#include "DevicePollingMgr.h"
 
 class RaftI2CCentralIF;
 
@@ -152,6 +153,9 @@ private:
 
     // Bus scanner
     BusScanner _busScanner;
+
+    // Device polling manager
+    DevicePollingMgr _devicePollingMgr;
 
     // Bus accessor
     BusAccessor _busAccessor;

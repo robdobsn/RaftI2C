@@ -16,8 +16,9 @@
 // #define WARN_ON_FAILED_TO_GET_SEMAPHORE
 // #define DEBUG_BUS_OPERATION_STATUS
 // #define DEBUG_NO_SCANNING
-#define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
+// #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_ACCESS_BARRING_FOR_MS
+// #define DEBUG_HANDLE_BUS_DEVICE_INFO
 
 static const char* MODULE_PREFIX = "BusStatusMgr";
 
@@ -190,8 +191,6 @@ bool BusStatusMgr::updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemR
             newAddrStatus.addrAndSlot = addrAndSlot;
             _i2cAddrStatus.push_back(newAddrStatus);
             pAddrStatus = &_i2cAddrStatus.back();
-            // TODO remove
-            LOG_I(MODULE_PREFIX, "updateBusElemState new addr@slot+1 %s", addrAndSlot.toString().c_str());
         }
 
         // Check if we found a record
@@ -290,44 +289,100 @@ BusOperationStatus BusStatusMgr::isElemOnline(RaftI2CAddrAndSlot addrAndSlot)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get count of address status records
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+uint32_t BusStatusMgr::getAddrStatusCount() const
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return 0;
+
+    // Get count
+    uint32_t count = _i2cAddrStatus.size();
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return count;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Check if address is already detected on an extender
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool BusStatusMgr::isAddrFoundOnAnyExtender(uint32_t addr)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return false;
+
+    // Check if address is found
+    bool rslt = false;
+    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        if ((addrStatus.addrAndSlot.addr == addr) && 
+                (addrStatus.addrAndSlot.slotPlus1 != 0))
+        {
+            rslt = true;
+            break;
+        }
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Bus element access barring
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusStatusMgr::barElemAccessSet(RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs)
+void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs)
 {
-    // Find address record
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
-    if (!pAddrStatus)
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return;
 
-    // Set access barring
-    pAddrStatus->barStartMs = millis();
-    pAddrStatus->barDurationMs = barAccessAfterSendMs;
-#ifdef DEBUG_ACCESS_BARRING_FOR_MS
-    LOG_W(MODULE_PREFIX, "i2cSendHelper barring bus access for addr@slot+1 %s for %dms", 
-                    addrAndSlot.toString().c_str(), barAccessAfterSendMs);
-#endif
-
-}
-
-bool BusStatusMgr::barElemAccessGet(RaftI2CAddrAndSlot addrAndSlot)
-{
     // Find address record
     I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
-    if (!pAddrStatus)
+    if (pAddrStatus)
+    {
+        // Set access barring
+        pAddrStatus->barStartMs = timeNowMs;
+        pAddrStatus->barDurationMs = barAccessAfterSendMs;
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+
+#ifdef DEBUG_ACCESS_BARRING_FOR_MS
+    LOG_W(MODULE_PREFIX, "i2cSendHelper %s barring bus access for addr@slot+1 %s for %dms",
+                    pAddrStatus ? "OK" : "FAIL", 
+                    addrAndSlot.toString().c_str(), barAccessAfterSendMs);
+#endif
+}
+
+bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
+    // Find address record
+    bool accessBarred = false;
+    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+
     // Check if access is barred
-    if (pAddrStatus->barDurationMs != 0)
+    if (pAddrStatus && pAddrStatus->barDurationMs != 0)
     {
         // Check if time has elapsed and ignore request if not
-        if (Raft::isTimeout(millis(), pAddrStatus->barStartMs, pAddrStatus->barDurationMs))
+        if (Raft::isTimeout(timeNowMs, pAddrStatus->barStartMs, pAddrStatus->barDurationMs))
         {
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
             LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slot+1 %s for %ldms", 
                             addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
 #endif
-            return true;
+            accessBarred = true;
         }
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
         LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slot+1 %s for %ldms", 
@@ -335,5 +390,83 @@ bool BusStatusMgr::barElemAccessGet(RaftI2CAddrAndSlot addrAndSlot)
 #endif
         pAddrStatus->barDurationMs = 0;
     }
-    return false;
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return accessBarred;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Set bus element device info (which can be null) for address
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevInfoRec* pDevInfo)
+{
+    // Obtain sempahore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Find address record
+    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    if (pAddrStatus)
+    {
+        // Set device ident
+        pAddrStatus->deviceIdent = pDevInfo ? pDevInfo->getDeviceIdent() : DeviceIdent();
+
+        // Check if polling is required
+        if (pDevInfo)
+        {
+            // Get polling requests
+            std::vector<BusI2CRequestRec> pollRequests;
+            pDevInfo->getDevicePollReqs(addrAndSlot, pollRequests);
+
+#ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
+            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollReqs %d", 
+                    addrAndSlot.toString().c_str(),
+                    pollRequests.size());
+#endif
+
+            // Set polling info
+            pAddrStatus->devicePollingInfo.setDeviceIdentPolling(pDevInfo->pollIntervalMs, pollRequests);
+        }
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get pending bus request
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return false;
+
+    // Check for any pending requests
+    busReqRecs.clear();
+    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        // Iterate polling records
+        for (DevicePollingInfo::PollReqInfo& pollReqInfo : addrStatus.devicePollingInfo.devIdentPollReqInfos)
+        {
+            // Check if a poll is due
+            if (Raft::isTimeout(timeNowMs, pollReqInfo.lastPollTimeMs, pollReqInfo.pollIntervalMs))
+            {
+                // Append to list
+                busReqRecs.push_back(pollReqInfo.pollReq);
+                pollReqInfo.lastPollTimeMs = timeNowMs;
+            }
+        }
+
+        // Break if we have a request (ensure all requests are for the same device)
+        if (busReqRecs.size() > 0)
+            break;
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return busReqRecs.size() > 0;
 }

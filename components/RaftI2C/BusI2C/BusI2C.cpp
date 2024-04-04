@@ -52,11 +52,14 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busExtenderMgr(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _deviceIdentMgr(*this,
+        _deviceIdentMgr(_busExtenderMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _busScanner(_busStatusMgr, _busExtenderMgr, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
+        ),
+        _devicePollingMgr(_busStatusMgr, _busExtenderMgr,
+            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _busAccessor(*this,
             std::bind(&BusI2C::i2cSendAsync, this, std::placeholders::_1, std::placeholders::_2)
@@ -80,7 +83,6 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
 #endif
         _i2cCentralNeedsToBeDeleted = true;
     }
-
 }
 
 BusI2C::~BusI2C()
@@ -132,6 +134,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
 
     // Setup bus scanner
     _busScanner.setup(config);
+
+    // Setup device polling manager
+    _devicePollingMgr.setup(config); 
 
     // Setup bus accessor
     _busAccessor.setup(config);
@@ -318,7 +323,11 @@ void BusI2C::i2cWorkerTask()
         continue;
 #endif
 
+        // Device polling
+        _devicePollingMgr.taskService(millis());
+
         // Perform polling
+        // TODO - remove
         _busAccessor.processPolling();
     }
 
@@ -354,7 +363,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
 
     // Check if this address is barred for a period
     RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    if (_busStatusMgr.barElemAccessGet(addrAndSlot))
+    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
         return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
     // Check if a bus extender slot is specified
@@ -391,7 +400,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
 
     // Bar access to element if requested
     if (barAccessAfterSendMs > 0)
-        _busStatusMgr.barElemAccessSet(addrAndSlot, barAccessAfterSendMs);
+        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
 
     // Record time of comms
     _lastI2CCommsUs = micros();
@@ -415,7 +424,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(BusI2CRequestRec* pReqRec
 
     // Check if this address is barred for a period
     RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    if (_busStatusMgr.barElemAccessGet(addrAndSlot))
+    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
         return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
     // Buffer for read
@@ -439,7 +448,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(BusI2CRequestRec* pReqRec
 
     // Bar access to element if requested
     if (barAccessAfterSendMs > 0)
-        _busStatusMgr.barElemAccessSet(addrAndSlot, barAccessAfterSendMs);
+        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
 
     // Record time of comms
     _lastI2CCommsUs = micros();

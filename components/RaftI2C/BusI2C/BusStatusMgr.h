@@ -16,6 +16,9 @@
 #include "BusI2CConsts.h"
 #include "BusExtenderMgr.h"
 #include "DeviceIdent.h"
+#include "DevicePollingInfo.h"
+#include "DevInfoRec.h"
+#include <list>
 
 class BusStatusMgr {
 
@@ -35,8 +38,8 @@ public:
     }
 
     // Bus element access barring
-    void barElemAccessSet(RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
-    bool barElemAccessGet(RaftI2CAddrAndSlot addrAndSlot);
+    void barElemAccessSet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
+    bool barElemAccessGet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot);
 
     // Check if element is online
     BusOperationStatus isElemOnline(RaftI2CAddrAndSlot addrAndSlot);
@@ -45,37 +48,17 @@ public:
     // Returns true if state has changed
     bool updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline);
 
-    // Check if address is a bus extender
-    static bool isBusExtender(uint8_t addr)
-    {
-        return (addr >= I2C_BUS_EXTENDER_BASE) && (addr < I2C_BUS_EXTENDER_BASE+I2C_BUS_EXTENDERS_MAX);
-    }
-
     // Get count of address status records
-    uint32_t getAddrStatusCount() const
-    {
-        return _i2cAddrStatus.size();
-    }
+    uint32_t getAddrStatusCount() const;
 
     // Check if address is already detected on an extender
-    bool isAddrFoundOnAnyExtender(uint32_t addr)
-    {
-        for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
-        {
-            if ((addrStatus.addrAndSlot.addr == addr) && 
-                    (addrStatus.addrAndSlot.slotPlus1 != 0))
-                return true;
-        }
-        return false;
-    }
+    bool isAddrFoundOnAnyExtender(uint32_t addr);
 
-    // Set bus element ident for address
-    void setBusElemIdent(RaftI2CAddrAndSlot addrAndSlot, const DeviceIdent& deviceIdent)
-    {
-        I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
-        if (pAddrStatus)
-            pAddrStatus->deviceIdent = deviceIdent;
-    }
+    // Set bus element device info (which can be null) for address
+    void setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevInfoRec* pDevInfoRec);
+
+    // Get pending bus request
+    bool getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
@@ -112,6 +95,9 @@ private:
 
         // Device ident
         DeviceIdent deviceIdent;
+
+        // Device polling
+        DevicePollingInfo devicePollingInfo;
 
         // Handle responding
         bool handleResponding(bool isResponding, bool& flagSpuriousRecord)
@@ -164,6 +150,7 @@ private:
     static const uint32_t I2C_ADDR_STATUS_MAX = 50;
 
     // Find address record
+    // Assumes semaphore already taken
     I2CAddrStatus* findAddrStatusRecord(RaftI2CAddrAndSlot addrAndSlot)
     {
         for (I2CAddrStatus& addrStatus : _i2cAddrStatus)

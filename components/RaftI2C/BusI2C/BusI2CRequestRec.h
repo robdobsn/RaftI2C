@@ -33,7 +33,7 @@ public:
         _barAccessForMsAfterSend = 0;
     };
     BusI2CRequestRec(BusReqType busReqType, RaftI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
-                uint8_t* pWriteData, uint32_t readReqLen, uint32_t barAccessForMsAfterSend,
+                uint8_t* pWriteData, uint32_t readReqLen, uint8_t* pReadDataMask, uint32_t barAccessForMsAfterSend,
                 BusRequestCallbackType busReqCallback, void* pCallbackData)
     {
         clear();
@@ -46,6 +46,8 @@ public:
         else
             _reqBuf.clear();
         _readReqLen = readReqLen;
+        if (pReadDataMask)
+            _readDataMask.assign(pReadDataMask, pReadDataMask+readReqLen);
         _pCallbackData = pCallbackData;
         _busReqCallback = busReqCallback;
         _pollFreqHz = 1;
@@ -67,6 +69,7 @@ public:
         _busReqType = reqInfo.getBusReqType();
         _pollFreqHz = reqInfo.getPollFreqHz();
         _barAccessForMsAfterSend = reqInfo.getBarAccessForMsAfterSend();
+        _readDataMask.clear();
     }
     uint32_t getReadReqLen()
     {
@@ -139,12 +142,18 @@ public:
     void* _pCallbackData = nullptr;
     BusRequestCallbackType _busReqCallback = nullptr;
     BusReqType _busReqType = BUS_REQ_TYPE_STD;
+
+    // TODO - decide if this is needed - or maybe should be ms interval
     float _pollFreqHz = 0;
     uint32_t _barAccessForMsAfterSend = 0;
 
     // Request buffer
-    static const uint32_t REQUEST_BUFFER_MAX_BYTES = 120;
+    static const uint32_t REQUEST_BUFFER_MAX_BYTES = 1000;
     std::vector<uint8_t> _reqBuf;
+
+    // Read data mask
+    // TODO - apply mask if present
+    std::vector<uint8_t> _readDataMask;
 };
 
 // Callback to send i2c message (async)
