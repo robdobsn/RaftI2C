@@ -416,6 +416,9 @@ void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevIn
         // Check if polling is required
         if (pDevInfo)
         {
+            // Set polling results size
+            pAddrStatus->dataAggregator.init(pDevInfo->numPollResultsToStore);
+
             // Get polling requests
             std::vector<BusI2CRequestRec> pollRequests;
             pDevInfo->getDevicePollReqs(addrAndSlot, pollRequests);
@@ -469,4 +472,26 @@ bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::ve
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return busReqRecs.size() > 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Store poll results
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void BusStatusMgr::pollResultStore(RaftI2CAddrAndSlot addrAndSlot)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Find address record
+    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    if (pAddrStatus)
+    {
+        // Add result to aggregator
+        pAddrStatus->dataAggregator.put(_pollDataResult);
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
 }

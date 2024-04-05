@@ -18,6 +18,7 @@
 #include "DeviceIdent.h"
 #include "DevicePollingInfo.h"
 #include "DevInfoRec.h"
+#include "PollDataAggregator.h"
 #include <list>
 
 class BusStatusMgr {
@@ -60,6 +61,20 @@ public:
     // Get pending bus request
     bool getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs);
 
+    // Poll result handling
+    void pollResultPrepare()
+    {
+        // Store the current time in ms in the poll data result
+        uint32_t timeNowMs = millis();
+        _pollDataResult.resize(sizeof(timeNowMs));
+        Raft::setBEUint32(_pollDataResult.data(), 0, timeNowMs);
+    }
+    void pollResultAdd(std::vector<uint8_t>& readData)
+    {
+        _pollDataResult.insert(_pollDataResult.end(), readData.begin(), readData.end());
+    }
+    void pollResultStore(RaftI2CAddrAndSlot addrAndSlot);
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 
@@ -100,6 +115,9 @@ private:
         // This is polling related to the device identification - i.e. specified in the device info record
         // for the device type
         DevicePollingInfo deviceIdentPolling;
+
+        // Data aggregator
+        PollDataAggregator dataAggregator;
 
         // Handle responding
         bool handleResponding(bool isResponding, bool& flagSpuriousRecord)
@@ -173,4 +191,7 @@ private:
 
     // Bus element status change detection
     bool _busElemStatusChangeDetected = false;
+
+    // Poll data result
+    std::vector<uint8_t> _pollDataResult; 
 };

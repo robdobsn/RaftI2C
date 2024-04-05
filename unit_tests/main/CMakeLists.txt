@@ -2,6 +2,7 @@ idf_component_register(
         SRCS
             "test_main.cpp"
             "test_bus_i2c.cpp"
+            "test_data_aggregator.cpp"
         INCLUDE_DIRS 
             "."
         REQUIRES

@@ -7,6 +7,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "DeviceIdentMgr.h"
+#include "DevIdentJson_generated.h"
 #include "Logger.h"
 
 // #define DEBUG_DEVICE_IDENT_MGR
@@ -17,8 +18,9 @@ static const char* MODULE_PREFIX = "DeviceIdentMgr";
 // Consts
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO - remove
 const std::vector<DevInfoRec> DeviceIdentMgr::_hwDevInfoRecs = {
-    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=&0x000000", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX"}
+    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=&0x000000", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX", 10}
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,6 +64,8 @@ const DevInfoRec* DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& a
     }
 
     // Check if this address is in the range of any known device
+    // std::vector<String> potentialDeviceTypes;
+    // getPotentialDeviceTypes(addrAndSlot, potentialDeviceTypes);
     for (const auto& devInfoRec : _hwDevInfoRecs)
     {
         if (devInfoRec.isAddrInRange(addrAndSlot))

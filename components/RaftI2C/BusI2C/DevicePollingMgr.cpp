@@ -48,12 +48,24 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
         if (addrAndSlot.slotPlus1 > 0)
             _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
 
+        // Prep poll req data
+        _busStatusMgr.pollResultPrepare();
+
         // Loop through the requests
+        bool allResultsOk = true;
         for (auto& busReqRec : busReqRecs)
         {
             // Perform the polling
             std::vector<uint8_t> readData;
             auto rslt = _busI2CReqSyncFn(&busReqRec, &readData);
+            if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            {
+                allResultsOk = false;
+                break;
+            }
+
+            // Add to data aggregator
+            _busStatusMgr.pollResultAdd(readData);
 
             // // TODO - remove
             // String sss;
@@ -64,8 +76,13 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
             //                 RaftI2CCentralIF::getAccessResultStr(rslt));
         }
 
+        // Store the poll result if all requests succeeded
+        if (allResultsOk)
+            _busStatusMgr.pollResultStore(addrAndSlot);
+
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)
             _busExtenderMgr.setAllChannels(true);
+
     }
 }

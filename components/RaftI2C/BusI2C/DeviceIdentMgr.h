@@ -40,6 +40,7 @@ private:
     bool _isEnabled = false;
 
     // Device info records
+    // TODO - remove
     static const std::vector<DevInfoRec> _hwDevInfoRecs;
 
     // Bus base

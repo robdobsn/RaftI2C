@@ -38,6 +38,9 @@ public:
     // Poll request
     String pollRequest;
 
+    // Num poll results to store
+    uint32_t numPollResultsToStore = 0;
+
     // Get device ident
     DeviceIdent getDeviceIdent() const
     {
