@@ -7,21 +7,12 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "DeviceIdentMgr.h"
-#include "DevIdentJson_generated.h"
+#include "BusRequestInfo.h"
 #include "Logger.h"
 
 // #define DEBUG_DEVICE_IDENT_MGR
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Consts
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// TODO - remove
-const std::vector<DevInfoRec> DeviceIdentMgr::_hwDevInfoRecs = {
-    {"VCNL4040", "VCNL4040", "Vishay", "VCNL4040", "0x60", "0x0c=0b100001100000XXXX", "0x041007=&0x030e08=&0x000000", 1000, "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX", 10}
-};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consructor
@@ -52,92 +43,109 @@ void DeviceIdentMgr::setup(const RaftJsonIF& config)
 // selected if it is on a bus extender, etc.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const DevInfoRec* DeviceIdentMgr::attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAndSlot)
+void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus)
 {
+    // Clear device status
+    deviceStatus.clear();
+
     // Check if enabled
     if (!_isEnabled)
     {
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "Device ident not enabled");
+        LOG_I(MODULE_PREFIX, "Device identification disabled");
 #endif
-        return nullptr;
+        return;
     }
 
     // Check if this address is in the range of any known device
-    // std::vector<String> potentialDeviceTypes;
-    // getPotentialDeviceTypes(addrAndSlot, potentialDeviceTypes);
-    for (const auto& devInfoRec : _hwDevInfoRecs)
+    std::vector<String> deviceTypesForAddr;
+    _devInfoRecords.getDeviceTypesForAddr(addrAndSlot, deviceTypesForAddr);
+    for (const auto& deviceType : deviceTypesForAddr)
     {
-        if (devInfoRec.isAddrInRange(addrAndSlot))
+#ifdef DEBUG_DEVICE_IDENT_MGR
+        LOG_I(MODULE_PREFIX, "identifyDevice deviceType %s addr@slot+1 %s", 
+                    deviceType.c_str(), addrAndSlot.toString().c_str());
+#endif
+
+        // Get JSON definition for device
+        RaftJson deviceInfoJson;
+        if (!_devInfoRecords.getDeviceInfo(deviceType, deviceInfoJson))
+            continue;
+
+        // Check if the detection value(s) match responses from the device
+        // Generate a bus request to read the detection value
+        if (checkDeviceTypeMatch(addrAndSlot, deviceInfoJson))
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "attemptDeviceIdent dev %s addr@slot+1 %s addrRange %s", 
-                        devInfoRec.typeKey.c_str(), addrAndSlot.toString().c_str(), devInfoRec.addressRange.c_str());
+            LOG_I(MODULE_PREFIX, "Device ident found %s", deviceInfoJson.c_str());
 #endif
-            // Check if the detection value(s) match responses from the device
-            // Generate a bus request to read the detection value
-            if (accessDeviceAndCheckReponse(addrAndSlot, devInfoRec))
-            {
-#ifdef DEBUG_DEVICE_IDENT_MGR
-                LOG_I(MODULE_PREFIX, "Device ident found %s", devInfoRec.typeKey.c_str());
-#endif
-                // Initialise the device if required
-                processDeviceInit(addrAndSlot, devInfoRec);
+            // Initialise the device if required
+            processDeviceInit(addrAndSlot, deviceInfoJson);
 
-                // Device detected
-                return &devInfoRec;
-            }
+            // Get polling info
+            _devInfoRecords.getPollInfo(addrAndSlot, deviceInfoJson, deviceStatus.deviceIdentPolling);
+
+            // Set polling results size
+            deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore);
+
+#ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
+            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollReqs %d", 
+                    addrAndSlot.toString().c_str(),
+                    pollRequests.size());
+#endif
         }
-    } 
-
-    return nullptr;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec)
+bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson)
 {
-    // Get the detection values
-    std::vector<RaftJson::NameValuePair> detectionWriteReadPairs;
-    devInfoRec.getDetectionWriteReadPairs(detectionWriteReadPairs);
+    // Get the detection records
+    std::vector<DevInfoRecords::DeviceDetectionRec> detectionRecs;
+    _devInfoRecords.getDetectionRecs(deviceInfoJson, detectionRecs);
 
     // Check if all values match
-    for (const auto& detectionNameValue : detectionWriteReadPairs)
+    for (const auto& detectionRec : detectionRecs)
     {
-        std::vector<uint8_t> writeData;
-        std::vector<uint8_t> readDataMask;
-        std::vector<uint8_t> readDataCheck;
-        if (!DevInfoRec::extractBufferDataFromHexStr(detectionNameValue.name, writeData))
-            continue;
-        if (!DevInfoRec::extractMaskAndDataFromHexStr(detectionNameValue.value, readDataMask, readDataCheck, true))
-            continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "accessDeviceAndCheckReponse addr@slot+1 %s reg %s value %s", 
-                    addrAndSlot.toString().c_str(), detectionNameValue.name.c_str(), detectionNameValue.value.c_str());
+        String writeStr;
+        Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
+        String readMaskStr;
+        Raft::getHexStrFromBytes(detectionRec.readDataMask.data(), detectionRec.readDataMask.size(), readMaskStr);
+        String readCheckStr;
+        Raft::getHexStrFromBytes(detectionRec.readDataCheck.data(), detectionRec.readDataCheck.size(), readCheckStr);
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s readDataMask %s readDataCheck %s", 
+                    addrAndSlot.toString().c_str(), 
+                    writeStr.c_str(),
+                    readMaskStr.c_str(),
+                    readCheckStr.c_str());
 #endif
 
         // Create a bus request to read the detection value
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_STD,
-                    addrAndSlot,
-                    0, writeData.size(), 
-                    writeData.data(),
-                    readDataCheck.size(),
-                    nullptr, 
-                    0, 
-                    nullptr, 
-                    this);
+        // Create the poll request
+        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                addrAndSlot,
+                0, 
+                detectionRec.writeData.size(), 
+                detectionRec.writeData.data(),
+                detectionRec.readDataCheck.size(),
+                detectionRec.readDataCheck.data(),
+                0, 
+                nullptr, 
+                this);
         std::vector<uint8_t> readData;
         RaftI2CCentralIF::AccessResultCode rslt = _busI2CReqSyncFn(&reqRec, &readData);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         String writeHexStr;
-        Raft::getHexStrFromBytes(writeData.data(), writeData.size(), writeHexStr);
+        Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeHexStr);
         String readHexStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readHexStr);
-        LOG_I(MODULE_PREFIX, "accessDeviceAndCheckReponse addr@slot+1 %s writeData %s rslt %d readData %s", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s rslt %d readData %s", 
                     addrAndSlot.toString().c_str(), writeHexStr.c_str(), rslt, readHexStr.c_str());
 #endif
 
@@ -146,33 +154,31 @@ bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrA
             return false;
 
         // Check the read data
-        if (readData.size() != readDataCheck.size())
+        if (readData.size() != detectionRec.readDataCheck.size())
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "accessDeviceAndCheckReponse addr@slot+1 %s reg %s value %s readData size mismatch", 
-                        addrAndSlot.toString().c_str(), detectionNameValue.name.c_str(), detectionNameValue.value.c_str());
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch SIZE MISMATCH addr@slot+1 %s", addrAndSlot.toString().c_str());
 #endif
             return false;
         }
         for (int i = 0; i < readData.size(); i++)
         {
-            uint8_t readDataMaskedVal = readData[i] & readDataMask[i];
+            uint8_t readDataMaskedVal = readData[i] & detectionRec.readDataMask[i];
 #ifdef DEBUG_DEVICE_IDENT_MGR
             String readMaskStr;
-            Raft::getHexStrFromBytes(readDataMask.data(), readDataMask.size(), readMaskStr);
+            Raft::getHexStrFromBytes(detectionRec.readDataMask.data(), detectionRec.readDataMask.size(), readMaskStr);
             String readCheckStr;
-            Raft::getHexStrFromBytes(readDataCheck.data(), readDataCheck.size(), readCheckStr);
-            LOG_I(MODULE_PREFIX, "accessDeviceAndCheckReponse %s idx %d addr@slot+1 %s readMask 0x%s readCheck 0x%s readData 0x%02x readDataMaskedVal 0x%02x readDataMsg 0x%02x readDataCheck 0x%02x", 
-                        readDataMaskedVal == readDataCheck[i] ? "OK" : "FAIL", i,
-                        addrAndSlot.toString().c_str(), readMaskStr, readCheckStr, readData[i], readDataMaskedVal, readDataMask[i], readDataCheck[i]);
+            Raft::getHexStrFromBytes(detectionRec.readDataCheck.data(), detectionRec.readDataCheck.size(), readCheckStr);
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s idx %d addr@slot+1 %s readMask 0x%s readCheck 0x%s readData 0x%02x readDataMaskedVal 0x%02x readDataMsg 0x%02x readDataCheck 0x%02x",
+                        readDataMaskedVal == detectionRec.readDataCheck[i] ? "OK" : "FAIL", i,
+                        addrAndSlot.toString().c_str(), readMaskStr, readCheckStr, readData[i], readDataMaskedVal, detectionRec.readDataMask[i], detectionRec.readDataCheck[i]);
 #endif
-            if (readDataMaskedVal != readDataCheck[i])
+            if (readDataMaskedVal != detectionRec.readDataCheck[i])
                 return false;
         }
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "accessDeviceAndCheckReponse addr@slot+1 %s reg %s value %s OK", 
-                    addrAndSlot.toString().c_str(), detectionNameValue.name.c_str(), detectionNameValue.value.c_str());
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s OK", addrAndSlot.toString().c_str());
 #endif
     }
 
@@ -184,32 +190,22 @@ bool DeviceIdentMgr::accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrA
 // Process initialisation of a device
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec)
+bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson)
 {
-    // Extract initialisation records
-    std::vector<RaftJson::NameValuePair> initWriteReadPairs;
-    devInfoRec.getInitWriteReadPairs(initWriteReadPairs);
+    // Get initialisation bus requests
+    std::vector<BusI2CRequestRec> initBusRequests;
+    _devInfoRecords.getInitBusRequests(addrAndSlot, deviceInfoJson, initBusRequests);
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+    LOG_I(MODULE_PREFIX, "processDeviceInit addr@slot+1 %s numInitBusRequests %d", 
+                addrAndSlot.toString().c_str(), initBusRequests.size());
+#endif
 
     // Initialise the device
-    for (const auto& initNameValue : initWriteReadPairs)
+    for (auto& initBusRequest : initBusRequests)
     {
-        std::vector<uint8_t> writeData;
-        if (!DevInfoRec::extractBufferDataFromHexStr(initNameValue.name, writeData))
-            continue;
-
-        // Create a bus request to write the initialisation value
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_STD,
-                    addrAndSlot,
-                    0, writeData.size(), 
-                    writeData.data(),
-                    0,
-                    nullptr,
-                    0, 
-                    nullptr, 
-                    this);
-        _busI2CReqSyncFn(&reqRec, nullptr);
+        _busI2CReqSyncFn(&initBusRequest, nullptr);
     }
 
     return true;
 }
-

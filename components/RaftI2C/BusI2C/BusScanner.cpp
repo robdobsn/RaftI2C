@@ -10,6 +10,8 @@
 #include "BusScanner.h"
 #include "BusI2CRequestRec.h"
 
+// #define DEBUG_BUS_SCANNER
+
 static const char* MODULE_PREFIX = "BusScanner";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -257,7 +259,7 @@ void BusScanner::scanElemSlots(uint32_t addr)
             
             // Access the device address again to test if it still reponds
             RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-
+            
             // Report result for each slot
             updateBusElemState(addr, slotPlus1, rslt);
         }
@@ -285,13 +287,19 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentral
     bool isChange = _busStatusMgr.updateBusElemState(RaftI2CAddrAndSlot(addr, slot), 
                     accessResult == RaftI2CCentralIF::ACCESS_RESULT_OK, isOnline);
 
+#ifdef DEBUG_BUS_SCANNER
+    LOG_I(MODULE_PREFIX, "updateBusElemState addr %02x slot %d accessResult %d isOnline %d isChange %d", 
+                addr, slot, accessResult, isOnline, isChange);
+#endif
+
     // Change to online so start device identification
     if (isChange && isOnline)
     {
         // Attempt to identify the device
-        const DevInfoRec* pDevInfoRec = _deviceIdentMgr.attemptDeviceIdent(RaftI2CAddrAndSlot(addr, slot));
+        DeviceStatus deviceStatus;
+        _deviceIdentMgr.identifyDevice(RaftI2CAddrAndSlot(addr, slot), deviceStatus);
 
-        // Set dev info into bus status manager
-        _busStatusMgr.setBusElemDevInfo(RaftI2CAddrAndSlot(addr, slot), pDevInfoRec);
+        // Set device status into bus status manager for this address
+        _busStatusMgr.setBusElemDeviceStatus(RaftI2CAddrAndSlot(addr, slot), deviceStatus);
     }
 }

@@ -23,9 +23,18 @@ public:
         _ringBufCount = 0;
     }
 
+    /// @brief Clear the circular buffer
+    void clear()
+    {
+        for (auto& data : _data)
+            data.clear();
+        _ringBufPos = 0;
+        _ringBufCount = 0;
+    }
+
     /// @brief Put a vector of uint8_t data to one slot in the circular buffer
     /// @param data Data to add
-    bool put(std::vector<uint8_t>& data)
+    bool put(const std::vector<uint8_t>& data)
     {
         // Check buffer size > 0
         if (_data.size() == 0)
@@ -65,13 +74,13 @@ public:
     }
 
     /// @brief Get the number of results stored
-    uint32_t count()
+    uint32_t count() const
     {
         return _ringBufCount;
     }
 
     /// @brief Get the max number of results stored
-    uint32_t getMaxCount()
+    uint32_t getMaxCount() const
     {
         return _data.size();
     }

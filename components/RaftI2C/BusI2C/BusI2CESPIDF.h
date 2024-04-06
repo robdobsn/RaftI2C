@@ -26,7 +26,7 @@ public:
     virtual bool isBusy() override final;
 
     // Access the bus
-    virtual RaftI2CCentralIF::AccessResultCode access(uint32_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual RaftI2CCentralIF::AccessResultCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) override final;
 
     // Check if bus operating ok

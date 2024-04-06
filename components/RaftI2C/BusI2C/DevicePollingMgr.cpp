@@ -8,7 +8,11 @@
 
 #include "DevicePollingMgr.h"
 
+// #define DEBUG_POLL_RESULT
+
+#ifdef DEBUG_POLL_RESULT
 static const char* MODULE_PREFIX = "DevicePollingMgr";
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -37,7 +41,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
 {
     // See if any devices need polling
     std::vector<BusI2CRequestRec> busReqRecs;
-    if (_busStatusMgr.getPendingBusRequestsForOneDevice(timeNowMs, busReqRecs))
+    if (_busStatusMgr.getPendingIdentPollRequestsForOneDevice(timeNowMs, busReqRecs))
     {
         // Get the address and slot
         if (busReqRecs.size() == 0)
@@ -49,7 +53,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
             _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
 
         // Prep poll req data
-        _busStatusMgr.pollResultPrepare();
+        pollResultPrepare();
 
         // Loop through the requests
         bool allResultsOk = true;
@@ -65,20 +69,21 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
             }
 
             // Add to data aggregator
-            _busStatusMgr.pollResultAdd(readData);
+            pollResultAdd(readData);
 
-            // // TODO - remove
-            // String sss;
-            // Raft::getHexStrFromBytes(readData.data(), readData.size(), sss);
-            // LOG_I(MODULE_PREFIX, "Polling device at %s readData %s rslt %s", 
-            //                 busReqRec.getAddrAndSlot().toString().c_str(),
-            //                 sss.c_str(),
-            //                 RaftI2CCentralIF::getAccessResultStr(rslt));
+#ifdef DEBUG_POLL_RESULT
+            String sss;
+            Raft::getHexStrFromBytes(readData.data(), readData.size(), sss);
+            LOG_I(MODULE_PREFIX, "Polling device at %s readData %s rslt %s", 
+                            busReqRec.getAddrAndSlot().toString().c_str(),
+                            sss.c_str(),
+                            RaftI2CCentralIF::getAccessResultStr(rslt));
+#endif
         }
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(addrAndSlot);
+            _busStatusMgr.pollResultStore(addrAndSlot, _pollDataResult);
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)

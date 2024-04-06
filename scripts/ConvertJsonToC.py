@@ -8,14 +8,11 @@ def json_to_header(json_path, header_path):
 
     with open(header_path, 'w') as header_file:
         header_file.write('#pragma once\n\n')
-        header_file.write('static const char* DevIdentJson = \n')
-        header_file.write('{\n')
         dev_ident_lines = json.dumps(dev_ident_json, separators=(',', ':'),indent="    ").splitlines()
         for line in dev_ident_lines:
             indentGrp = re.search(r'^\s*', line)
             indentText = indentGrp.group(0) if indentGrp else ""
             header_file.write(f'    {indentText}R"({line.strip()})"\n')
-        header_file.write('};\n')
 
 if __name__ == "__main__":
     json_to_header(sys.argv[1], sys.argv[2])

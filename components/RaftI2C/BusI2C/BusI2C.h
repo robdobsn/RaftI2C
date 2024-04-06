@@ -172,6 +172,6 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode i2cSendAsync(BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
-    RaftI2CCentralIF::AccessResultCode i2cSendSync(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
+    RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
+    RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
 };

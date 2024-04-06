@@ -1,0 +1,20 @@
+{
+    "devTypes":
+    {
+        "VCNL4040": {
+            "ad": "0x60",
+            "type": "VCNL4040",
+            "fr": "VCNL4040",
+            "man": "Vishay",
+            "prt": "VCNL4040",
+            "det": "0x0c=0b100001100000XXXX",
+            "ini": "0x041007=&0x030e08=&0x000000=",
+            "pol":
+            {
+                "dat": "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX",
+                "ms": 1000,
+                "sto": 10
+            }
+        }        
+    }
+}

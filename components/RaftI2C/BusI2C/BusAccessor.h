@@ -36,7 +36,7 @@ public:
     // Requests and responses
     bool addRequest(BusRequestInfo& busReqInfo);
     void processRequestQueue(bool isPaused);
-    void handleResponse(BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+    void handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead);
 
     // Polling

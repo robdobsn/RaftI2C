@@ -327,7 +327,7 @@ void BusI2C::i2cWorkerTask()
         _devicePollingMgr.taskService(millis());
 
         // Perform polling
-        // TODO - remove
+        // TODO - remove or reconsider how polling works
         _busAccessor.processPolling();
     }
 
@@ -345,7 +345,7 @@ void BusI2C::i2cWorkerTask()
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
+RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
 {
 #ifdef DEBUG_I2C_ASYNC_SEND_HELPER
     LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slot+1 %s writeLen %d readLen %d reqType %d pollListIdx %d",
@@ -414,7 +414,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(BusI2CRequestRec* pReqRe
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
+RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
 {
 #ifdef DEBUG_I2C_SYNC_SEND_HELPER
     LOG_I(MODULE_PREFIX, "I2CSendSync addr@slot+1 writeLen %d readLen %d reqType %d",

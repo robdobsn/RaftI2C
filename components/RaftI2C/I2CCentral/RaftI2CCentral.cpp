@@ -222,7 +222,7 @@ bool RaftI2CCentral::isOperatingOk() const
 // - a write of non-zero length and read of non-zero length is allowed - write occurs first and can only be of max 14 bytes
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, uint8_t *pWriteBuf, uint32_t numToWrite,
+RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
                                                           uint8_t *pReadBuf, uint32_t numToRead, uint32_t &numRead)
 {
     // Check valid

@@ -61,7 +61,7 @@ BusElemStatusCB busElemStatusCB = [](BusBase& bus, const std::vector<BusElemAddr
     }
 };
 
-BusI2CReqSyncFn busReqSyncFn = [](BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData) {
+BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData) {
     // LOG_I(MODULE_PREFIX, "busReqSyncFn addr@slot+1 %s pollListIdx %d", 
     //                 pReqRec->getAddrAndSlot().toString().c_str(), pollListIdx);
     

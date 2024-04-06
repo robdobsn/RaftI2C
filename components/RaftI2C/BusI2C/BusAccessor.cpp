@@ -235,7 +235,7 @@ void BusAccessor::processPolling()
 // Handle response to I2C request
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusAccessor::handleResponse(BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead)
 {
     // Check if a response was expected but read length doesn't match
@@ -255,12 +255,8 @@ void BusAccessor::handleResponse(BusI2CRequestRec* pReqRec, RaftI2CCentralIF::Ac
         return;
     }
 
-    // TODO handle addresses with slot specified
-    RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    uint16_t address = addrAndSlot.addr;
-
     // Create response
-    BusRequestResult reqResult(address, 
+    BusRequestResult reqResult(pReqRec->getAddrAndSlot().toCompositeAddrAndSlot(), 
                     pReqRec->getCmdId(), 
                     pReadBuf, 
                     numBytesRead, 

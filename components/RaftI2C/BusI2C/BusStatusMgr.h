@@ -15,10 +15,8 @@
 #include "BusBase.h"
 #include "BusI2CConsts.h"
 #include "BusExtenderMgr.h"
-#include "DeviceIdent.h"
-#include "DevicePollingInfo.h"
-#include "DevInfoRec.h"
-#include "PollDataAggregator.h"
+#include "RaftUtils.h"
+#include "DeviceStatus.h"
 #include <list>
 
 class BusStatusMgr {
@@ -55,25 +53,14 @@ public:
     // Check if address is already detected on an extender
     bool isAddrFoundOnAnyExtender(uint32_t addr);
 
-    // Set bus element device info (which can be null) for address
-    void setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevInfoRec* pDevInfoRec);
+    // Set bus element device status (which includes device type and can be empty) for an address
+    void setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus);
 
-    // Get pending bus request
-    bool getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs);
+    // Get pending ident poll requests
+    bool getPendingIdentPollRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs);
 
-    // Poll result handling
-    void pollResultPrepare()
-    {
-        // Store the current time in ms in the poll data result
-        uint32_t timeNowMs = millis();
-        _pollDataResult.resize(sizeof(timeNowMs));
-        Raft::setBEUint32(_pollDataResult.data(), 0, timeNowMs);
-    }
-    void pollResultAdd(std::vector<uint8_t>& readData)
-    {
-        _pollDataResult.insert(_pollDataResult.end(), readData.begin(), readData.end());
-    }
-    void pollResultStore(RaftI2CAddrAndSlot addrAndSlot);
+    // Store poll results
+    void pollResultStore(RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
@@ -108,16 +95,8 @@ private:
         uint32_t barStartMs = 0;
         uint16_t barDurationMs = 0;
 
-        // Device ident
-        DeviceIdent deviceIdent;
-
-        // Device ident polling
-        // This is polling related to the device identification - i.e. specified in the device info record
-        // for the device type
-        DevicePollingInfo deviceIdentPolling;
-
-        // Data aggregator
-        PollDataAggregator dataAggregator;
+        // Device status
+        DeviceStatus deviceStatus;
 
         // Handle responding
         bool handleResponding(bool isResponding, bool& flagSpuriousRecord)
@@ -191,7 +170,4 @@ private:
 
     // Bus element status change detection
     bool _busElemStatusChangeDetected = false;
-
-    // Poll data result
-    std::vector<uint8_t> _pollDataResult; 
 };

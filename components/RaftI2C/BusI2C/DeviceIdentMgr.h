@@ -8,11 +8,10 @@
 
 #pragma once
 
-#include "DevInfoRec.h"
+#include "DevInfoRecords.h"
 #include "DevProcRec.h"
-#include "BusI2CRequestRec.h"
-#include "DeviceIdent.h"
 #include "BusExtenderMgr.h"
+#include "DeviceStatus.h"
 #include "RaftJson.h"
 #include <vector>
 #include <list>
@@ -26,26 +25,26 @@ public:
     // Setup
     void setup(const RaftJsonIF& config);
   
-    // Attempt device identification
-    const DevInfoRec* attemptDeviceIdent(const RaftI2CAddrAndSlot& addrAndSlot);
+    // Identify device
+    void identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
 
     // Communicate with device to check identity
-    bool accessDeviceAndCheckReponse(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec);
+    bool checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceType);
 
     // Process device initialisation
-    bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const DevInfoRec& devInfoRec);
+    bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson);
 
 private:
     // Device indentification enabled
     bool _isEnabled = false;
-
-    // Device info records
-    // TODO - remove
-    static const std::vector<DevInfoRec> _hwDevInfoRecs;
 
     // Bus base
     BusExtenderMgr& _busExtenderMgr;
 
     // Bus i2c request function
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+
+    // Device information records
+    DevInfoRecords _devInfoRecords;
+
 };

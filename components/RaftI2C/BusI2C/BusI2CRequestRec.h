@@ -33,7 +33,7 @@ public:
         _barAccessForMsAfterSend = 0;
     };
     BusI2CRequestRec(BusReqType busReqType, RaftI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
-                uint8_t* pWriteData, uint32_t readReqLen, uint8_t* pReadDataMask, uint32_t barAccessForMsAfterSend,
+                const uint8_t* pWriteData, uint32_t readReqLen, const uint8_t* pReadDataMask, uint32_t barAccessForMsAfterSend,
                 BusRequestCallbackType busReqCallback, void* pCallbackData)
     {
         clear();
@@ -71,68 +71,68 @@ public:
         _barAccessForMsAfterSend = reqInfo.getBarAccessForMsAfterSend();
         _readDataMask.clear();
     }
-    uint32_t getReadReqLen()
+    uint32_t getReadReqLen() const
     {
         return _readReqLen;
     }
-    uint32_t getWriteDataLen()
+    uint32_t getWriteDataLen() const
     {
         return _reqBuf.size();
     }
-    uint8_t* getWriteData()
+    const uint8_t* getWriteData() const
     {
         return _reqBuf.data();
     }
-    BusRequestCallbackType getCallback()
+    BusRequestCallbackType getCallback() const
     {
         return _busReqCallback;
     }
 
-    float getPollFreqHz()
+    float getPollFreqHz() const
     {
         return _pollFreqHz;
     }
-    void* getCallbackParam()
+    void* getCallbackParam() const
     {
         return _pCallbackData; 
     }
-    bool isPolling()
+    bool isPolling() const
     {
         return _busReqType == BUS_REQ_TYPE_POLL;
     }
-    bool isFWUpdate()
+    bool isFWUpdate() const
     {
         return _busReqType == BUS_REQ_TYPE_FW_UPDATE;
     }
-    bool isFastScan()
+    bool isFastScan() const
     {
         return _busReqType == BUS_REQ_TYPE_FAST_SCAN;
     }
-    bool isSlowScan()
+    bool isSlowScan() const
     {
         return _busReqType == BUS_REQ_TYPE_SLOW_SCAN;
     }
-    bool shouldSendIfPaused()
+    bool shouldSendIfPaused() const
     {
         return _busReqType == BUS_REQ_TYPE_SEND_IF_PAUSED;
     }
-    bool isScan()
+    bool isScan() const
     {
         return (_busReqType == BUS_REQ_TYPE_FAST_SCAN) || (_busReqType == BUS_REQ_TYPE_SLOW_SCAN);
     }
-    uint32_t getReqType()
+    uint32_t getReqType() const
     {
         return _busReqType;
     }
-    RaftI2CAddrAndSlot getAddrAndSlot()
+    RaftI2CAddrAndSlot getAddrAndSlot() const
     {
         return _addrAndSlot;
     }
-    uint32_t getCmdId()
+    uint32_t getCmdId() const
     {
         return _cmdId;
     }
-    uint32_t getBarAccessForMsAfterSend()
+    uint32_t getBarAccessForMsAfterSend() const
     {
         return _barAccessForMsAfterSend;
     }
@@ -157,7 +157,7 @@ public:
 };
 
 // Callback to send i2c message (async)
-typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CReqAsyncFn;
+typedef std::function<RaftI2CCentralIF::AccessResultCode(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)> BusI2CReqAsyncFn;
 
 // Callback to send i2c message (sync)
-typedef std::function<RaftI2CCentralIF::AccessResultCode(BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)> BusI2CReqSyncFn;
+typedef std::function<RaftI2CCentralIF::AccessResultCode(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)> BusI2CReqSyncFn;

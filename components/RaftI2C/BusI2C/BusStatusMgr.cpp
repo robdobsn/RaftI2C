@@ -397,10 +397,10 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrA
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Set bus element device info (which can be null) for address
+// Set bus element device status (which includes device type and can be empty) for an address
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevInfoRec* pDevInfo)
+void BusStatusMgr::setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus)
 {
     // Obtain sempahore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -410,28 +410,8 @@ void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevIn
     I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
     if (pAddrStatus)
     {
-        // Set device ident
-        pAddrStatus->deviceIdent = pDevInfo ? pDevInfo->getDeviceIdent() : DeviceIdent();
-
-        // Check if polling is required
-        if (pDevInfo)
-        {
-            // Set polling results size
-            pAddrStatus->dataAggregator.init(pDevInfo->numPollResultsToStore);
-
-            // Get polling requests
-            std::vector<BusI2CRequestRec> pollRequests;
-            pDevInfo->getDevicePollReqs(addrAndSlot, pollRequests);
-
-#ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
-            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollReqs %d", 
-                    addrAndSlot.toString().c_str(),
-                    pollRequests.size());
-#endif
-
-            // Set polling info
-            pAddrStatus->deviceIdentPolling.set(pDevInfo->pollIntervalMs, pollRequests);
-        }
+        // Set device type
+        pAddrStatus->deviceStatus = deviceStatus;
     }
 
     // Return semaphore
@@ -439,10 +419,10 @@ void BusStatusMgr::setBusElemDevInfo(RaftI2CAddrAndSlot addrAndSlot, const DevIn
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Get pending bus request
+// Get pending ident poll requests for a single device
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs)
+bool BusStatusMgr::getPendingIdentPollRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -453,16 +433,7 @@ bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::ve
     for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         // Check if a poll is due
-        if (Raft::isTimeout(timeNowMs, addrStatus.deviceIdentPolling.lastPollTimeMs, addrStatus.deviceIdentPolling.pollIntervalMs))
-        {
-            // Iterate polling records
-            for (BusI2CRequestRec& reqRec : addrStatus.deviceIdentPolling.pollReqs)
-            {
-                // Append to list
-                busReqRecs.push_back(reqRec);
-                addrStatus.deviceIdentPolling.lastPollTimeMs = timeNowMs;
-            }
-        }
+        addrStatus.deviceStatus.getPendingIdentPollRequests(timeNowMs, busReqRecs);
 
         // Break if we have a request (ensure all requests are for the same device)
         if (busReqRecs.size() > 0)
@@ -478,7 +449,7 @@ bool BusStatusMgr::getPendingBusRequestsForOneDevice(uint32_t timeNowMs, std::ve
 // Store poll results
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusStatusMgr::pollResultStore(RaftI2CAddrAndSlot addrAndSlot)
+void BusStatusMgr::pollResultStore(RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -489,7 +460,7 @@ void BusStatusMgr::pollResultStore(RaftI2CAddrAndSlot addrAndSlot)
     if (pAddrStatus)
     {
         // Add result to aggregator
-        pAddrStatus->dataAggregator.put(_pollDataResult);
+        pAddrStatus->deviceStatus.pollResultStore(pollResultData);
     }
 
     // Return semaphore

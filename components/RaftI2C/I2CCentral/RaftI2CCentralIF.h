@@ -49,7 +49,7 @@ public:
     };
 
     // Access the bus
-    virtual AccessResultCode access(uint32_t address, uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual AccessResultCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) = 0;
 
     // Check if bus operating ok

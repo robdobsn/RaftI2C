@@ -24,6 +24,19 @@ public:
     // Service from I2C task
     void taskService(uint32_t timeNowMs);
 
+    // Poll result handling
+    void pollResultPrepare()
+    {
+        // Store the current time in ms in the poll data result
+        uint32_t timeNowMs = millis();
+        _pollDataResult.resize(sizeof(timeNowMs));
+        Raft::setBEUint32(_pollDataResult.data(), 0, timeNowMs);
+    }
+    void pollResultAdd(std::vector<uint8_t>& readData)
+    {
+        _pollDataResult.insert(_pollDataResult.end(), readData.begin(), readData.end());
+    }
+
 private:
 
     // Bus status manager
@@ -34,5 +47,9 @@ private:
 
     // I2C request sync function
     BusI2CReqSyncFn _busI2CReqSyncFn;
+
+    // Poll data result
+    std::vector<uint8_t> _pollDataResult; 
+
 
 };
