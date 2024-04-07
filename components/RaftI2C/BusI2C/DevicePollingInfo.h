@@ -23,13 +23,16 @@ public:
     {
         lastPollTimeMs = 0;
         pollIntervalMs = 0;
+        pollResultSizeIncTimestamp = 0;
         pollReqs.clear();
     }
 
-    void set(uint32_t pollIntervalMs, uint32_t numPollResultsToStore, std::vector<BusI2CRequestRec>& pollReqRecs)
+    void set(uint32_t pollIntervalMs, uint32_t numPollResultsToStore, uint32_t pollResultSizeIncTimestamp, 
+                    std::vector<BusI2CRequestRec>& pollReqRecs)
     {
         // Set poll info
         this->pollIntervalMs = pollIntervalMs;
+        this->pollResultSizeIncTimestamp = pollResultSizeIncTimestamp;
         this->numPollResultsToStore = numPollResultsToStore;
 
         // Add a new poll request for each poll request
@@ -50,6 +53,12 @@ public:
     // Num poll results to store
     uint32_t numPollResultsToStore = 1;
 
+    // Size of poll result (including timestamp)
+    uint32_t pollResultSizeIncTimestamp = 0;
+
     // Poll request rec
     std::vector<BusI2CRequestRec> pollReqs;
+
+    // Poll result timestamp size
+    static const uint32_t POLL_RESULT_TIMESTAMP_SIZE = 2;
 };

@@ -85,7 +85,8 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
             _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
-            deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore);
+            deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 
+                    deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 
 #ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
             LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollReqs %d", 

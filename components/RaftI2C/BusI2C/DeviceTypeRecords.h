@@ -16,7 +16,7 @@
 struct BusI2CDevTypeRecord
 {
     const char* deviceType;
-    const char* addressRange;
+    const char* addresses;
     const char* detectionValues;
     const char* initValues;
     const char* pollingConfigJson;
@@ -72,6 +72,6 @@ private:
     static bool extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
                 std::vector<uint8_t>& readDataCheck, bool maskToZeros);
 
-    bool isAddrInRange(const String& addressRange, RaftI2CAddrAndSlot addrAndSlot) const;
-    void convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const;
+    bool isAddrInRange(const String& addresses, RaftI2CAddrAndSlot addrAndSlot) const;
+    std::vector<uint8_t> convertAddressesToList(const String& addresses) const;
 };

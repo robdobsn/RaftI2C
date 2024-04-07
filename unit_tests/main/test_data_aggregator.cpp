@@ -20,7 +20,7 @@
 TEST_CASE("Test PollDataAggregator Initialization", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(10);
+    aggregator.init(10, 3);
     std::vector<uint8_t> data = {1, 2, 3};
     TEST_ASSERT_TRUE(aggregator.put(data));
 }
@@ -28,8 +28,8 @@ TEST_CASE("Test PollDataAggregator Initialization", "[PollDataAggregator]")
 TEST_CASE("Test PollDataAggregator Put and Get", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(10);
-    std::vector<uint8_t> data = {1, 2, 3};
+    aggregator.init(10, 4);
+    std::vector<uint8_t> data = {1, 2, 3, 4};
     TEST_ASSERT_TRUE(aggregator.put(data));
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
@@ -39,7 +39,7 @@ TEST_CASE("Test PollDataAggregator Put and Get", "[PollDataAggregator]")
 TEST_CASE("Test PollDataAggregator Put and Get Wrap", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(3);
+    aggregator.init(3, 3);
     std::vector<uint8_t> data1 = {1, 2, 3};
     std::vector<uint8_t> data2 = {4, 5, 6};
     std::vector<uint8_t> data3 = {7, 8, 9};
@@ -62,7 +62,7 @@ TEST_CASE("Test PollDataAggregator Put and Get Wrap", "[PollDataAggregator]")
 TEST_CASE("Test PollDataAggregator Put and Get Empty", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(3);
+    aggregator.init(10, 3);
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_FALSE(aggregator.get(dataOut));
 }
@@ -70,7 +70,7 @@ TEST_CASE("Test PollDataAggregator Put and Get Empty", "[PollDataAggregator]")
 TEST_CASE("Test PollDataAggregator Put and Get Full", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(3);
+    aggregator.init(3,3);
     std::vector<uint8_t> data1 = {1, 2, 3};
     std::vector<uint8_t> data2 = {4, 5, 6};
     std::vector<uint8_t> data3 = {7, 8, 9};
@@ -95,13 +95,13 @@ TEST_CASE("Test PollDataAggregator Put and Get Full", "[PollDataAggregator]")
 TEST_CASE("Test PollDataAggregator Put and Get Full Wrap", "[PollDataAggregator]") 
 {
     PollDataAggregator aggregator;
-    aggregator.init(3);
+    aggregator.init(3,3);
     std::vector<uint8_t> data1 = {1, 2, 3};
     std::vector<uint8_t> data2 = {4, 5, 6};
-    std::vector<uint8_t> data3 = {};
+    std::vector<uint8_t> data3 = {7, 8, 9};
     std::vector<uint8_t> data4 = {10, 11, 12};
-    std::vector<uint8_t> data5 = {13, 14, 15, 16, 17, 18};
-    std::vector<uint8_t> data6 = {19};
+    std::vector<uint8_t> data5 = {13, 14, 15};
+    std::vector<uint8_t> data6 = {19, 20, 21};
     TEST_ASSERT_TRUE(aggregator.put(data1));
     TEST_ASSERT_TRUE(aggregator.put(data2));
     TEST_ASSERT_TRUE(aggregator.put(data3));

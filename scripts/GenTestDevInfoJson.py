@@ -3,7 +3,7 @@ from random import randint
 
 # Base device type template
 base_dev_type = {
-    "addressRange": "0x60",
+    "addresses": "0x60",
     "deviceType": "VCNL4040",
     "detectionValues": "0x0c=0b100001100000XXXX",
     "initValues": "0x041007=&0x030e08=&0x000000=",
@@ -44,12 +44,14 @@ def gen_random_addr_range():
     base_addr = randint(0x04, 0x6f)
     if randint(0, 1):
         return f"0x{base_addr:02x}"
+    if randint(0, 1):
+        return f"0x{base_addr:02x},0x{base_addr+randint(0,7):02x}"
     return f"0x{base_addr:02x}-0x{base_addr+randint(0,7):02x}"
 
 # Function to generate a modified device type based on the base template
 def generate_dev_type(index):
     dev_type = base_dev_type.copy()
-    dev_type['addressRange'] = gen_random_addr_range()
+    dev_type['addresses'] = gen_random_addr_range()
     dev_type['deviceType'] += str(index)
     return dev_type
 

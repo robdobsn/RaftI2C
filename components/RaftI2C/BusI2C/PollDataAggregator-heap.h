@@ -18,18 +18,18 @@ public:
     /// @param numResultsToStore Number of results to store
     void init(uint32_t numResultsToStore, uint32_t resultSize)
     {
-        _ringBuffer.resize(numResultsToStore*resultSize);
-        _pRingBufBase = _ringBuffer.data();
-        _ringBufHeadOffset = 0;
+        _data.resize(numResultsToStore);
+        _ringBufPos = 0;
         _ringBufCount = 0;
-        _maxElems = numResultsToStore;
         _resultSize = resultSize;
     }
 
     /// @brief Clear the circular buffer
     void clear()
     {
-        _ringBufHeadOffset = 0;
+        for (auto& data : _data)
+            data.clear();
+        _ringBufPos = 0;
         _ringBufCount = 0;
     }
 
@@ -37,18 +37,18 @@ public:
     /// @param data Data to add
     bool put(const std::vector<uint8_t>& data)
     {
-        // Check buffer size > size of a single result
-        if (data.size() != _resultSize)
+        // Check buffer size > 0
+        if (_data.size() == 0)
             return false;
 
         // Add data
-        memcpy(_pRingBufBase + _ringBufHeadOffset, data.data(), _resultSize);
+        _data[_ringBufPos] = data;
 
         // Update ring buffer
-        _ringBufHeadOffset += _resultSize;
-        if (_ringBufHeadOffset >= _ringBuffer.size())
-            _ringBufHeadOffset = 0;
-        if (_ringBufCount < _maxElems)
+        _ringBufPos++;
+        if (_ringBufPos >= _data.size())
+            _ringBufPos = 0;
+        if (_ringBufCount < _data.size())
             _ringBufCount++;
         return true;
     }
@@ -64,14 +64,12 @@ public:
         if (_ringBufCount == 0)
             return false;
         
-        // Get position of tail
-        uint32_t pos = (_ringBufHeadOffset + _ringBuffer.size() - _ringBufCount*_resultSize) % _ringBuffer.size();
-
         // Copy data
-        data.resize(_resultSize);
-        memcpy(data.data(), _pRingBufBase + pos, _resultSize);
+        uint32_t pos = (_ringBufPos + _data.size() - _ringBufCount) % _data.size();
+        data = _data[pos];
+        _data[pos].clear();
 
-        // Update ring buffer count
+        // Update ring buffer
         _ringBufCount--;
         return true;
     }
@@ -85,14 +83,12 @@ public:
     /// @brief Get the max number of results stored
     uint32_t getMaxCount() const
     {
-        return _maxElems;
+        return _data.size();
     }
 
 private:
-    std::vector<uint8_t> _ringBuffer;
-    uint8_t* _pRingBufBase = nullptr;
-    uint16_t _ringBufHeadOffset = 0;
-    uint16_t _ringBufCount = 0;
-    uint16_t _resultSize = 0;
-    uint16_t _maxElems = 0;
+    std::vector<std::vector<uint8_t>> _data;
+    uint16_t _ringBufPos;
+    uint16_t _ringBufCount;
+    uint16_t _resultSize;
 };

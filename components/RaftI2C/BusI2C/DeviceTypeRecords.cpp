@@ -108,6 +108,7 @@ void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2C
     RaftJson::extractNameValues(pollRequest, "=", "&", ";", pollWriteReadPairs);
 
     // Create a polling request for each pair
+    uint16_t pollResultDataSize = 0;
     for (const auto& pollWriteReadPair : pollWriteReadPairs)
     {
         std::vector<uint8_t> writeData;
@@ -130,6 +131,9 @@ void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2C
                 NULL, 
                 NULL);
         pollingInfo.pollReqs.push_back(pollReq);
+
+        // Keep track of poll result size
+        pollResultDataSize += readData.size();
     }
 
     // Get number of polling results to store
@@ -137,6 +141,9 @@ void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2C
 
     // Get polling interval
     pollingInfo.pollIntervalMs = pollInfo.getLong("i", 0);
+
+    // Set the poll result size
+    pollingInfo.pollResultSizeIncTimestamp = pollResultDataSize + DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -180,35 +187,29 @@ void DeviceTypeRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check if device address is in range
-/// @param devType device type
+/// @brief Check if device address is in range of addresses used by device
+/// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
 /// @param addrAndSlot i2c address and slot
 /// @return true if address in range
-bool DeviceTypeRecords::isAddrInRange(const String& addressRange, RaftI2CAddrAndSlot addrAndSlot) const
+bool DeviceTypeRecords::isAddrInRange(const String& addresses, RaftI2CAddrAndSlot addrAndSlot) const
 {
-    // Check address range
-    if (addressRange.length() == 0)
+    // Check addresses
+    if (addresses.length() == 0)
     {
 #ifdef DEBUG_DEVICE_INFO_RECORDS
-        LOG_I(MODULE_PREFIX, "isAddrInRange %s no address range", addressRange.c_str());
+        LOG_I(MODULE_PREFIX, "isAddrInRange %s no address range", addresses.c_str());
 #endif
         return false;
     }
     // Convert address range to min and max addresses
-    uint32_t minAddr = 0;
-    uint32_t maxAddr = 0;
-    convertAddressRangeToMinMax(addressRange, minAddr, maxAddr);
+    std::vector<uint8_t> validAddresses = convertAddressesToList(addresses);
 
 #ifdef DEBUG_DEVICE_INFO_RECORDS
-    LOG_I(MODULE_PREFIX, "isAddrInRange %s 0x%02x-0x%02x 0x%02x", addressRange.c_str(), minAddr, maxAddr, addrAndSlot.addr);
+    LOG_I(MODULE_PREFIX, "isAddrInRange %s 0x%02x", addresses.c_str(), addrAndSlot.addr);
 #endif
 
     // Check if address in range
-    if (minAddr == 0 && maxAddr == 0)
-    {
-        return false;
-    }
-    if (addrAndSlot.addr < minAddr || addrAndSlot.addr > maxAddr)
+    if (std::find(validAddresses.begin(), validAddresses.end(), addrAndSlot.addr) == validAddresses.end())
     {
         return false;
     }
@@ -217,29 +218,22 @@ bool DeviceTypeRecords::isAddrInRange(const String& addressRange, RaftI2CAddrAnd
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Convert address range to min and max addresses
-/// @param addressRange a string of the form 0xXX or 0xXX-0xYY
+/// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
 /// @param minAddr lower end of the address range
 /// @param maxAddr upper end of the address range (which may be the same as the lower address)
-void DeviceTypeRecords::convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const
+std::vector<uint8_t> DeviceTypeRecords::convertAddressesToList(const String& addresses) const
 {
-    // Check if the address range is a single address
-    if (addressRange.length() == 4)
+    std::vector<uint8_t> validAddresses;
+    // Check addresses
+    if (addresses.length() == 0)
     {
-        minAddr = maxAddr = strtoul(addressRange.c_str(), NULL, 16);
-        return;
+#ifdef DEBUG_DEVICE_INFO_RECORDS
+        LOG_I(MODULE_PREFIX, "convertAddressesToList %s no address range", addresses.c_str());
+#endif
+        return validAddresses;
     }
-
-    // Check if the address range is a range
-    if (addressRange.length() == 9)
-    {
-        minAddr = strtoul(addressRange.c_str(), NULL, 16);
-        maxAddr = strtoul(addressRange.c_str() + 5, NULL, 16);
-        return;
-    }
-
-    // Invalid address range
-    minAddr = 0;
-    maxAddr = 0;
+    // TODO - Extract the addresses
+    return validAddresses;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

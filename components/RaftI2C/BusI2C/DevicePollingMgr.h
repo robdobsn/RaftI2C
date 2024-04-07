@@ -29,8 +29,8 @@ public:
     {
         // Store the current time in ms in the poll data result
         uint32_t timeNowMs = millis();
-        _pollDataResult.resize(sizeof(timeNowMs));
-        Raft::setBEUint32(_pollDataResult.data(), 0, timeNowMs);
+        _pollDataResult.resize(DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE);
+        Raft::setBEUint16(_pollDataResult.data(), 0, timeNowMs & 0xffff);
     }
     void pollResultAdd(std::vector<uint8_t>& readData)
     {
@@ -49,7 +49,5 @@ private:
     BusI2CReqSyncFn _busI2CReqSyncFn;
 
     // Poll data result
-    std::vector<uint8_t> _pollDataResult; 
-
-
+    std::vector<uint8_t> _pollDataResult;
 };

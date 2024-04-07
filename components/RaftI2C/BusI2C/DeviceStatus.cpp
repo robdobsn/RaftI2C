@@ -8,7 +8,11 @@
 
 #include "DeviceStatus.h"
 
+#define DEBUG_DEVICE_STATUS
+
+#ifdef DEBUG_DEVICE_STATUS
 static const char* MODULE_PREFIX = "DeviceStatus";
+#endif
 
 /// @brief Get pending ident poll requests 
 /// @param timeNowMs time in ms (passed in to aid testing)
@@ -26,7 +30,7 @@ void DeviceStatus::getPendingIdentPollRequests(uint32_t timeNowMs, std::vector<B
         {
             // Append to list
             busRequests.push_back(reqRec);
-            deviceIdentPolling.lastPollTimeMs = timeNowMs;
         }
+        deviceIdentPolling.lastPollTimeMs = timeNowMs;
     }
 }
