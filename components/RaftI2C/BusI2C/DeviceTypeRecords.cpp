@@ -1,26 +1,26 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// Device info records
+// Device type records
 //
 // Rob Dobson 2024
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "DevInfoRecords.h"
+#include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
 
 // #define DEBUG_DEVICE_INFO_RECORDS
 #define DEBUG_DEVICE_INFO_PERFORMANCE
 
 #if defined(DEBUG_DEVICE_INFO_RECORDS) || defined(DEBUG_DEVICE_INFO_PERFORMANCE) 
-static const char* MODULE_PREFIX = "DevInfoRecords";
+static const char* MODULE_PREFIX = "DeviceTypeRecords";
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Base device information records JSON
+// Base device type records
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "DevTypeRecords_generated.h"
+#include "DeviceTypeRecords_generated.h"
 
 static const uint32_t BASE_DEV_TYPE_ARRAY_SIZE = sizeof(baseDevTypeRecords) / sizeof(BusI2CDevTypeRecord);
 
@@ -28,7 +28,7 @@ static const uint32_t BASE_DEV_TYPE_ARRAY_SIZE = sizeof(baseDevTypeRecords) / si
 // Constructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DevInfoRecords::DevInfoRecords()
+DeviceTypeRecords::DeviceTypeRecords()
 {
 }
 
@@ -36,7 +36,7 @@ DevInfoRecords::DevInfoRecords()
 /// @brief get device types (strings) for an address
 /// @param addrAndSlot i2c address and slot
 /// @returns device type indexes (into generated baseDevTypeRecords array) that match the address
-std::vector<uint16_t> DevInfoRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot)
+std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot)
 {
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t startTimeUs = micros();
@@ -71,27 +71,11 @@ std::vector<uint16_t> DevInfoRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlo
     return devTypeIdxsForAddr;
 }
 
-// TODO - remove
-// ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Get device info for a device type
-// /// @param deviceType device type
-// /// @param devInfo (out) device info
-// /// @return true if device info found
-// bool DevInfoRecords::getDeviceInfo(const String& deviceType, RaftJson& devInfo)
-// {
-//     // Get the device info
-//     String devInfoStr = _baseDevInfo.getString(("devTypes/" + deviceType).c_str(), "");
-//     if (devInfoStr.length() == 0)
-//         return false;
-//     devInfo = devInfoStr;
-//     return true;
-// }
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get device info for a device type index
+/// @brief Get device type for a device type index
 /// @param deviceTypeIdx device type index
-/// @return pointer to info record if device info found, nullptr if not
-const BusI2CDevTypeRecord* DevInfoRecords::getDeviceInfo(uint16_t deviceTypeIdx)
+/// @return pointer to device type record if device type found, nullptr if not
+const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeIdx)
 {
     // Check if in range
     if (deviceTypeIdx >= BASE_DEV_TYPE_ARRAY_SIZE)
@@ -104,7 +88,7 @@ const BusI2CDevTypeRecord* DevInfoRecords::getDeviceInfo(uint16_t deviceTypeIdx)
 /// @param addrAndSlot i2c address and slot
 /// @param pDevTypeRec device type record
 /// @param pollRequests (out) polling info
-void DevInfoRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo)
+void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo)
 {
     // Clear initially
     pollingInfo.clear();
@@ -159,7 +143,7 @@ void DevInfoRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDev
 /// @brief Get initialisation bus requests
 /// @param deviceType device type
 /// @param initRequests (out) initialisation requests
-void DevInfoRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
+void DeviceTypeRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
 {
     // Clear initially
     initRequests.clear();
@@ -195,77 +179,74 @@ void DevInfoRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const Bu
     }
 }
 
-// TODO - remove
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if device address is in range
+/// @param devType device type
+/// @param addrAndSlot i2c address and slot
+/// @return true if address in range
+bool DeviceTypeRecords::isAddrInRange(const String& addressRange, RaftI2CAddrAndSlot addrAndSlot) const
+{
+    // Check address range
+    if (addressRange.length() == 0)
+    {
+#ifdef DEBUG_DEVICE_INFO_RECORDS
+        LOG_I(MODULE_PREFIX, "isAddrInRange %s no address range", addressRange.c_str());
+#endif
+        return false;
+    }
+    // Convert address range to min and max addresses
+    uint32_t minAddr = 0;
+    uint32_t maxAddr = 0;
+    convertAddressRangeToMinMax(addressRange, minAddr, maxAddr);
 
-// ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Check if device address is in range
-// /// @param devType device type
-// /// @param addrAndSlot i2c address and slot
-// /// @return true if address in range
-// bool DevInfoRecords::isAddrInRange(const String& devType, RaftI2CAddrAndSlot addrAndSlot) const
-// {
-//     // Extract address range
-//     String addressRange = _baseDevInfo.getString(("devTypes/" + devType + "/ad").c_str(), "");
-//     if (addressRange.length() == 0)
-//     {
-// #ifdef DEBUG_DEVICE_INFO_RECORDS
-//         LOG_I(MODULE_PREFIX, "isAddrInRange %s no address range", devType.c_str());
-// #endif
-//         return false;
-//     }
-//     // Convert address range to min and max addresses
-//     uint32_t minAddr = 0;
-//     uint32_t maxAddr = 0;
-//     convertAddressRangeToMinMax(addressRange, minAddr, maxAddr);
+#ifdef DEBUG_DEVICE_INFO_RECORDS
+    LOG_I(MODULE_PREFIX, "isAddrInRange %s 0x%02x-0x%02x 0x%02x", addressRange.c_str(), minAddr, maxAddr, addrAndSlot.addr);
+#endif
 
-// #ifdef DEBUG_DEVICE_INFO_RECORDS
-//     LOG_I(MODULE_PREFIX, "isAddrInRange %s 0x%02x-0x%02x 0x%02x", devType.c_str(), minAddr, maxAddr, addrAndSlot.addr);
-// #endif
+    // Check if address in range
+    if (minAddr == 0 && maxAddr == 0)
+    {
+        return false;
+    }
+    if (addrAndSlot.addr < minAddr || addrAndSlot.addr > maxAddr)
+    {
+        return false;
+    }
+    return true;
+}
 
-//     // Check if address in range
-//     if (minAddr == 0 && maxAddr == 0)
-//     {
-//         return false;
-//     }
-//     if (addrAndSlot.addr < minAddr || addrAndSlot.addr > maxAddr)
-//     {
-//         return false;
-//     }
-//     return true;
-// }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Convert address range to min and max addresses
+/// @param addressRange a string of the form 0xXX or 0xXX-0xYY
+/// @param minAddr lower end of the address range
+/// @param maxAddr upper end of the address range (which may be the same as the lower address)
+void DeviceTypeRecords::convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const
+{
+    // Check if the address range is a single address
+    if (addressRange.length() == 4)
+    {
+        minAddr = maxAddr = strtoul(addressRange.c_str(), NULL, 16);
+        return;
+    }
 
-// ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Convert address range to min and max addresses
-// /// @param addressRange a string of the form 0xXX or 0xXX-0xYY
-// /// @param minAddr lower end of the address range
-// /// @param maxAddr upper end of the address range (which may be the same as the lower address)
-// void DevInfoRecords::convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const
-// {
-//     // Check if the address range is a single address
-//     if (addressRange.length() == 4)
-//     {
-//         minAddr = maxAddr = strtoul(addressRange.c_str(), NULL, 16);
-//         return;
-//     }
+    // Check if the address range is a range
+    if (addressRange.length() == 9)
+    {
+        minAddr = strtoul(addressRange.c_str(), NULL, 16);
+        maxAddr = strtoul(addressRange.c_str() + 5, NULL, 16);
+        return;
+    }
 
-//     // Check if the address range is a range
-//     if (addressRange.length() == 9)
-//     {
-//         minAddr = strtoul(addressRange.c_str(), NULL, 16);
-//         maxAddr = strtoul(addressRange.c_str() + 5, NULL, 16);
-//         return;
-//     }
-
-//     // Invalid address range
-//     minAddr = 0;
-//     maxAddr = 0;
-// }
+    // Invalid address range
+    minAddr = 0;
+    maxAddr = 0;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Extract buffer data from hex string
 /// @param writeStr hex string
 /// @param writeData (out) buffer data
-bool DevInfoRecords::extractBufferDataFromHexStr(const String& writeStr, std::vector<uint8_t>& writeData)
+bool DeviceTypeRecords::extractBufferDataFromHexStr(const String& writeStr, std::vector<uint8_t>& writeData)
 {        
     const char* pStr = writeStr.c_str();
     uint32_t inStrLen = writeStr.length();
@@ -288,7 +269,7 @@ bool DevInfoRecords::extractBufferDataFromHexStr(const String& writeStr, std::ve
 /// @param readDataMask (out) mask data
 /// @param readDataCheck (out) check data
 /// @param maskToZeros true if mask should be set to zeros
-bool DevInfoRecords::extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
+bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
             std::vector<uint8_t>& readDataCheck, bool maskToZeros)
 {
     String readStrLC = readStr;
@@ -337,7 +318,7 @@ bool DevInfoRecords::extractMaskAndDataFromHexStr(const String& readStr, std::ve
 /// @brief Get detection records
 /// @param deviceType device type
 /// @param detectionRecs (out) detection records
-void DevInfoRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs)
+void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs)
 {
     // Clear initially
     detectionRecs.clear();

@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// Device Info Rec
+// Device Type Records
 //
 // Rob Dobson 2024
 //
@@ -23,26 +23,20 @@ struct BusI2CDevTypeRecord
     const char* devInfoJson;
 };
 
-class DevInfoRecords
+class DeviceTypeRecords
 {
 public:
-    DevInfoRecords();
+    DeviceTypeRecords();
 
     /// @brief Get device type for address
     /// @param addrAndSlot i2c address and slot
-    /// @returns device type indexes (into generated baseDevTypeRecords array) that match the address
+    /// @returns device type indexes that match the address
     std::vector<uint16_t> getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot);
 
-    // TODO - remove
-    // /// @brief Get device info for a device type
-    // /// @param deviceType device type
-    // /// @param devInfo (out) device info
-    // bool getDeviceInfo(const String& deviceType, RaftJson& devInfo);
-
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device info for a device type index
+    /// @brief Get device type for a device type index
     /// @param deviceTypeIdx device type index
-    /// @return pointer to info record if device info found, nullptr if not
+    /// @return pointer to info record if device type found, nullptr if not
     const BusI2CDevTypeRecord* getDeviceInfo(uint16_t deviceTypeIdx);
 
     /// @brief Get device polling info
@@ -78,7 +72,6 @@ private:
     static bool extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
                 std::vector<uint8_t>& readDataCheck, bool maskToZeros);
 
-    // TODO - remove
-    // bool isAddrInRange(const String& devKey, RaftI2CAddrAndSlot addrAndSlot) const;
-    // void convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const;
+    bool isAddrInRange(const String& addressRange, RaftI2CAddrAndSlot addrAndSlot) const;
+    void convertAddressRangeToMinMax(const String& addressRange, uint32_t& minAddr, uint32_t& maxAddr) const;
 };

@@ -12,7 +12,7 @@ idf_component_register(
                   "components/RaftI2C/BusI2C/BusExtenderMgr.cpp"
                   "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
                   "components/RaftI2C/BusI2C/DevicePollingMgr.cpp"
-                  "components/RaftI2C/BusI2C/DevInfoRecords.cpp"
+                  "components/RaftI2C/BusI2C/DeviceTypeRecords.cpp"
                   "components/RaftI2C/BusI2C/DeviceStatus.cpp"
                 INCLUDE_DIRS
                   "components/RaftI2C/I2CCentral"
@@ -25,16 +25,16 @@ idf_component_register(
 # Find Python
 find_package(Python3 REQUIRED)
 
-# # Define paths
-set(JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/DeviceIdentification/DevIdent.json")
-set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/DevTypeRecords_generated.h")
+# Device type record paths
+set(JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/DeviceTypeRecords/DeviceTypeRecords.json")
+set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/DeviceTypeRecords_generated.h")
 
-# Custom command to generate C++ header from JSON
+# Custom command to generate device type records header file from JSON
 add_custom_command(
     OUTPUT ${GENERATED_HEADER}
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ProcessDevTypeJsonToC.py" "${JSON_FILE}" "${GENERATED_HEADER}"
     DEPENDS ${JSON_FILE}
-    COMMENT "---------------------- Generating Device Identification C++ header from JSON ---------------------------"
+    COMMENT "---------------------- Generating Device Type Records header from JSON ---------------------------"
 )
 
 add_custom_target(generate_dev_ident_header DEPENDS ${GENERATED_HEADER})

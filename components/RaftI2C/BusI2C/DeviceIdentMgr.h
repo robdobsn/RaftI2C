@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "DevInfoRecords.h"
+#include "DeviceTypeRecords.h"
 #include "BusExtenderMgr.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
@@ -43,7 +43,7 @@ private:
     // Bus i2c request function
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
 
-    // Device information records
-    DevInfoRecords _devInfoRecords;
+    // Device type records
+    DeviceTypeRecords _deviceTypeRecords;
 
 };

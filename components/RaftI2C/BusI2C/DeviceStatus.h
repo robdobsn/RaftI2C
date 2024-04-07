@@ -36,9 +36,7 @@ public:
     // Device type
     String deviceType;
 
-    // Device ident polling
-    // This is polling related to the device identification - i.e. specified in the device info record
-    // for the device type
+    // Device ident polling - polling related to the device type
     DevicePollingInfo deviceIdentPolling;
 
     // Data aggregator

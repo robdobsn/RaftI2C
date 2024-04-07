@@ -72,7 +72,7 @@ def generate_dev_types_file(out_file):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Generate test device information JSON file')
+    parser = argparse.ArgumentParser(description='Generate test device type JSON file')
     parser.add_argument('output_file', type=str, help='Output file path')
     args = parser.parse_args()
     generate_dev_types_file(args.output_file)
