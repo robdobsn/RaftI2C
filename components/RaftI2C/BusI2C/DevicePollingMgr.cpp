@@ -8,7 +8,7 @@
 
 #include "DevicePollingMgr.h"
 
-// #define DEBUG_POLL_RESULT
+#define DEBUG_POLL_RESULT
 
 #ifdef DEBUG_POLL_RESULT
 static const char* MODULE_PREFIX = "DevicePollingMgr";

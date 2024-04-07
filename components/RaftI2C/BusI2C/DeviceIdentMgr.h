@@ -9,7 +9,6 @@
 #pragma once
 
 #include "DevInfoRecords.h"
-#include "DevProcRec.h"
 #include "BusExtenderMgr.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
@@ -29,10 +28,10 @@ public:
     void identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
 
     // Communicate with device to check identity
-    bool checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceType);
+    bool checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
     // Process device initialisation
-    bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson);
+    bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
 private:
     // Device indentification enabled

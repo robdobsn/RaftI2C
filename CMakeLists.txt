@@ -27,12 +27,12 @@ find_package(Python3 REQUIRED)
 
 # # Define paths
 set(JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/DeviceIdentification/DevIdent.json")
-set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/DevIdentJson_generated.h")
+set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/DevTypeRecords_generated.h")
 
 # Custom command to generate C++ header from JSON
 add_custom_command(
     OUTPUT ${GENERATED_HEADER}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ConvertJsonToC.py" "${JSON_FILE}" "${GENERATED_HEADER}"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ProcessDevTypeJsonToC.py" "${JSON_FILE}" "${GENERATED_HEADER}"
     DEPENDS ${JSON_FILE}
     COMMENT "---------------------- Generating Device Identification C++ header from JSON ---------------------------"
 )

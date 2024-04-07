@@ -58,9 +58,8 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
     }
 
     // Check if this address is in the range of any known device
-    std::vector<String> deviceTypesForAddr;
-    _devInfoRecords.getDeviceTypesForAddr(addrAndSlot, deviceTypesForAddr);
-    for (const auto& deviceType : deviceTypesForAddr)
+    std::vector<uint16_t> deviceTypesForAddr = _devInfoRecords.getDeviceTypeIdxsForAddr(addrAndSlot);
+    for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
 #ifdef DEBUG_DEVICE_IDENT_MGR
         LOG_I(MODULE_PREFIX, "identifyDevice deviceType %s addr@slot+1 %s", 
@@ -68,22 +67,22 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
 #endif
 
         // Get JSON definition for device
-        RaftJson deviceInfoJson;
-        if (!_devInfoRecords.getDeviceInfo(deviceType, deviceInfoJson))
+        const BusI2CDevTypeRecord* pDevTypeRec = _devInfoRecords.getDeviceInfo(deviceTypeIdx);
+        if (!pDevTypeRec)
             continue;
 
         // Check if the detection value(s) match responses from the device
         // Generate a bus request to read the detection value
-        if (checkDeviceTypeMatch(addrAndSlot, deviceInfoJson))
+        if (checkDeviceTypeMatch(addrAndSlot, pDevTypeRec))
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR
             LOG_I(MODULE_PREFIX, "Device ident found %s", deviceInfoJson.c_str());
 #endif
             // Initialise the device if required
-            processDeviceInit(addrAndSlot, deviceInfoJson);
+            processDeviceInit(addrAndSlot, pDevTypeRec);
 
             // Get polling info
-            _devInfoRecords.getPollInfo(addrAndSlot, deviceInfoJson, deviceStatus.deviceIdentPolling);
+            _devInfoRecords.getPollInfo(addrAndSlot, pDevTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore);
@@ -101,11 +100,11 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson)
+bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
 {
     // Get the detection records
     std::vector<DevInfoRecords::DeviceDetectionRec> detectionRecs;
-    _devInfoRecords.getDetectionRecs(deviceInfoJson, detectionRecs);
+    _devInfoRecords.getDetectionRecs(pDevTypeRec, detectionRecs);
 
     // Check if all values match
     for (const auto& detectionRec : detectionRecs)
@@ -190,11 +189,11 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot,
 // Process initialisation of a device
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const RaftJsonIF& deviceInfoJson)
+bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
 {
     // Get initialisation bus requests
     std::vector<BusI2CRequestRec> initBusRequests;
-    _devInfoRecords.getInitBusRequests(addrAndSlot, deviceInfoJson, initBusRequests);
+    _devInfoRecords.getInitBusRequests(addrAndSlot, pDevTypeRec, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "processDeviceInit addr@slot+1 %s numInitBusRequests %d", 
