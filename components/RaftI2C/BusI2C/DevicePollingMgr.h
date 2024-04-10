@@ -25,16 +25,29 @@ public:
     void taskService(uint32_t timeNowMs);
 
     // Poll result handling
-    void pollResultPrepare()
+    void pollResultPrepare(uint32_t timeNowMs, const DevicePollingInfo& pollInfo)
     {
+        // Set buffer size
+        _pollDataResult.resize(pollInfo.pollResultSizeIncTimestamp);
+        _pPollDataResult = _pollDataResult.data();
+        
         // Store the current time in ms in the poll data result
-        uint32_t timeNowMs = millis();
-        _pollDataResult.resize(DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE);
-        Raft::setBEUint16(_pollDataResult.data(), 0, timeNowMs & 0xffff);
+        if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 2)
+            Raft::setBEUint16(_pPollDataResult, 0, timeNowMs & 0xffff);
+        else if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 4)
+            Raft::setBEUint32(_pPollDataResult, 0, timeNowMs);
+
+        // Move the pointer to the start of the data
+        _pPollDataResult += DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
     }
-    void pollResultAdd(std::vector<uint8_t>& readData)
+    void pollResultAdd(const DevicePollingInfo& pollInfo, std::vector<uint8_t>& readData)
     {
-        _pollDataResult.insert(_pollDataResult.end(), readData.begin(), readData.end());
+        // Add the data to the poll data result
+        if (_pPollDataResult + readData.size() <= _pollDataResult.data() + _pollDataResult.size())
+        {
+            memcpy(_pPollDataResult, readData.data(), readData.size());
+            _pPollDataResult += readData.size();
+        }
     }
 
 private:
@@ -50,4 +63,5 @@ private:
 
     // Poll data result
     std::vector<uint8_t> _pollDataResult;
+    uint8_t* _pPollDataResult = nullptr;
 };

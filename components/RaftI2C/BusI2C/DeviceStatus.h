@@ -1,6 +1,7 @@
 
 #pragma once 
 
+#include "limits.h"
 #include "RaftUtils.h"
 #include "DevicePollingInfo.h"
 #include "PollDataAggregator.h"
@@ -14,27 +15,33 @@ public:
 
     void clear()
     {
-        deviceType.clear();
+        deviceTypeIndex = USHRT_MAX;
         deviceIdentPolling.clear();
         dataAggregator.clear();
     }
 
     bool isValid() const
     {
-        return deviceType.length() > 0;
+        return deviceTypeIndex != USHRT_MAX;
     }
 
-    // Get pending requests
-    void getPendingIdentPollRequests(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busRequests);
+    // Get pending ident poll info
+    bool getPendingIdentPollInfo(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    void pollResultStore(const std::vector<uint8_t>& pollResult)
+    bool pollResultStore(const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
     {
-        dataAggregator.put(pollResult);
+        return dataAggregator.put(pollResult);
     }
 
-    // Device type
-    String deviceType;
+    // Get device type index
+    uint16_t getDeviceTypeIndex() const
+    {
+        return deviceTypeIndex;
+    }
+
+    // Device type index
+    uint16_t deviceTypeIndex = USHRT_MAX;
 
     // Device ident polling - polling related to the device type
     DevicePollingInfo deviceIdentPolling;

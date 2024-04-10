@@ -341,3 +341,15 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
     LOG_I(MODULE_PREFIX, "getDetectionRecs %d recs detectionStr %s", detectionRecs.size(), detectionValues.c_str());
 #endif
 }
+
+/// @brief Convert poll response to JSON
+/// @param pDevTypeRec pointer to device type record
+/// @param devicePollResponseData device poll response data
+String DeviceTypeRecords::pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData)
+{
+    // Form a hex buffer
+    String hexOut;
+    Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
+
+    return "{\"a\":\"" + addrAndSlot.toString() + "\",\"x\":\"" + hexOut + "\"}";
+}

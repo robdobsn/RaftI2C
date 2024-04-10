@@ -65,6 +65,11 @@ public:
     /// @param initBusRequests (out) initialisation bus requests
     void getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
 
+    /// @brief Convert poll response to JSON
+    /// @param pDevTypeRec pointer to device type record
+    /// @param devicePollResponseData device poll response data
+    String pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData);
+
 private:
 
     static bool extractBufferDataFromHexStr(const String& writeStr, std::vector<uint8_t>& writeData);

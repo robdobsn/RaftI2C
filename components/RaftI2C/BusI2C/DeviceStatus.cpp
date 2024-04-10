@@ -8,7 +8,7 @@
 
 #include "DeviceStatus.h"
 
-#define DEBUG_DEVICE_STATUS
+// #define DEBUG_DEVICE_STATUS
 
 #ifdef DEBUG_DEVICE_STATUS
 static const char* MODULE_PREFIX = "DeviceStatus";
@@ -16,21 +16,27 @@ static const char* MODULE_PREFIX = "DeviceStatus";
 
 /// @brief Get pending ident poll requests 
 /// @param timeNowMs time in ms (passed in to aid testing)
-/// @param busRequests (out) bus requests
-void DeviceStatus::getPendingIdentPollRequests(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busRequests)
+/// @param pollInfo (out) polling info
+/// @return true if there is a pending request
+bool DeviceStatus::getPendingIdentPollInfo(uint32_t timeNowMs, DevicePollingInfo& pollInfo)
 {
-    // Clear the bus requests
-    busRequests.clear();
-
     // Check if any pending
     if (Raft::isTimeout(timeNowMs, deviceIdentPolling.lastPollTimeMs, deviceIdentPolling.pollIntervalMs))
     {
-        // Iterate polling records
-        for (BusI2CRequestRec& reqRec : deviceIdentPolling.pollReqs)
-        {
-            // Append to list
-            busRequests.push_back(reqRec);
-        }
+        // Update timestamp
         deviceIdentPolling.lastPollTimeMs = timeNowMs;
+
+        // Check poll requests isn't empty
+        if (deviceIdentPolling.pollReqs.size() == 0)
+            return false;
+
+        // Copy polling info
+        pollInfo = deviceIdentPolling;
+
+        // Return true
+        return true;
     }
+
+    // Nothing pending
+    return false;
 }

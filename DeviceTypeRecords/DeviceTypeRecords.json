@@ -53,7 +53,7 @@
             "addresses": "0x1d,0x53",
             "deviceType": "ADXL313",
             "detectionValues": "0x00=0b1010110100011101",
-            "initValues": "0x2d04=",
+            "initValues": "0x2d0c=",
             "pollingConfigJson": {
                 "c": "0x32=0bXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
                 "i": 100,

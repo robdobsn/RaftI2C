@@ -1,5 +1,6 @@
 
 export class DeviceState {
+    busName: string = "";
     i2cAddress: number = 0;
     i2cSlot: number = 0;
     deviceType: string = "";

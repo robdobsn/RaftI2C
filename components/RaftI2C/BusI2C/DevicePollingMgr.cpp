@@ -8,7 +8,7 @@
 
 #include "DevicePollingMgr.h"
 
-#define DEBUG_POLL_RESULT
+// #define DEBUG_POLL_RESULT
 
 #ifdef DEBUG_POLL_RESULT
 static const char* MODULE_PREFIX = "DevicePollingMgr";
@@ -40,24 +40,24 @@ void DevicePollingMgr::setup(const RaftJsonIF& config)
 void DevicePollingMgr::taskService(uint32_t timeNowMs)
 {
     // See if any devices need polling
-    std::vector<BusI2CRequestRec> busReqRecs;
-    if (_busStatusMgr.getPendingIdentPollRequestsForOneDevice(timeNowMs, busReqRecs))
+    DevicePollingInfo pollInfo;
+    if (_busStatusMgr.getPendingIdentPoll(timeNowMs, pollInfo))
     {
         // Get the address and slot
-        if (busReqRecs.size() == 0)
+        if (pollInfo.pollReqs.size() == 0)
             return;
-        RaftI2CAddrAndSlot addrAndSlot = busReqRecs[0].getAddrAndSlot();
+        RaftI2CAddrAndSlot addrAndSlot = pollInfo.pollReqs[0].getAddrAndSlot();
 
         // Check if a bus extender slot is specified
         if (addrAndSlot.slotPlus1 > 0)
             _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
 
         // Prep poll req data
-        pollResultPrepare();
+        pollResultPrepare(timeNowMs, pollInfo);
 
         // Loop through the requests
         bool allResultsOk = true;
-        for (auto& busReqRec : busReqRecs)
+        for (auto& busReqRec : pollInfo.pollReqs)
         {
             // Perform the polling
             std::vector<uint8_t> readData;
@@ -69,7 +69,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
             }
 
             // Add to data aggregator
-            pollResultAdd(readData);
+            pollResultAdd(pollInfo, readData);
 
 #ifdef DEBUG_POLL_RESULT
             String sss;
@@ -83,7 +83,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(addrAndSlot, _pollDataResult);
+            _busStatusMgr.pollResultStore(pollInfo, addrAndSlot, _pollDataResult);
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)

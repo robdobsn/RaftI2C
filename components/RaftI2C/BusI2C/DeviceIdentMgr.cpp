@@ -81,6 +81,9 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
             // Initialise the device if required
             processDeviceInit(addrAndSlot, pDevTypeRec);
 
+            // Set device type index
+            deviceStatus.deviceTypeIndex = deviceTypeIdx;
+
             // Get polling info
             _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, deviceStatus.deviceIdentPolling);
 
@@ -208,4 +211,24 @@ bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, co
     }
 
     return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Format device poll responses to JSON
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+String DeviceIdentMgr::identPollRespToJson(const RaftI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+                const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize)
+{
+    // Get device type info
+    const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
+    if (!pDevTypeRec)
+        return "{}";
+
+    // Get polling info
+    DevicePollingInfo pollingInfo;
+    _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, pollingInfo);
+
+    // Get the poll response JSON
+    return _deviceTypeRecords.pollRespToJson(addrAndSlot, pDevTypeRec, devicePollResponseData);
 }

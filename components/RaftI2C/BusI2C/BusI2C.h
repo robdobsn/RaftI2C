@@ -89,11 +89,35 @@ public:
     // Request (or suspend) slow scanning and optionally request a fast scan
     virtual void requestScan(bool enableSlowScan, bool requestFastScan) override final;
 
+    // TODO - make these override base-class methods
+    // Check if any ident poll responses are available and, if so, return addresses of devices that have responded
+    bool getIdentPollResponseAddresses(std::vector<uint32_t>& addresses)
+    {
+        return _busStatusMgr.pollResponseAddresses(addresses);
+    }
+
+    /// @brief Get ident poll responses
+    /// @param address - address of device to get responses for
+    /// @param devicePollResponseData - vector to store the device poll response data
+    /// @param responseSize - (out) size of the response data
+    /// @param deviceTypeIndex - (out) device type index
+    /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
+    /// @return number of responses returned
+    uint32_t getIdentPollResponses(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
+                uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn)
+    {
+        return _busStatusMgr.pollResponsesGet(address, devicePollResponseData, responseSize, deviceTypeIndex, maxResponsesToReturn);
+    }
+
     // Creator fn
     static BusBase* createFn(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB)
     {
         return new BusI2C(busElemStatusCB, busOperationStatusCB);
     }
+
+    /// @brief Get JSON for ident poll responses on this bus
+    /// @return JSON string
+    String getIdentPollResponsesJson();
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Get the bus element address as a string

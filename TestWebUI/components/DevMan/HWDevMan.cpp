@@ -127,11 +127,13 @@ void HWDevMan::loop()
 
 void HWDevMan::addRestAPIEndpoints(RestAPIEndpointManager &endpointManager)
 {
-    // Control shade
-    endpointManager.addEndpoint("devmantest", RestAPIEndpoint::ENDPOINT_CALLBACK, RestAPIEndpoint::ENDPOINT_GET,
-                            std::bind(&HWDevMan::apiControl, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
-                            "devmantest");
-    LOG_I(MODULE_PREFIX, "addRestAPIEndpoints devmantest");
+    // TODO - implement API
+
+    // Control
+    // endpointManager.addEndpoint("devmantest", RestAPIEndpoint::ENDPOINT_CALLBACK, RestAPIEndpoint::ENDPOINT_GET,
+    //                         std::bind(&HWDevMan::apiControl, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
+    //                         "devmantest");
+    // LOG_I(MODULE_PREFIX, "addRestAPIEndpoints devmantest");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -154,11 +156,49 @@ RaftRetCode HWDevMan::apiControl(const String &reqStr, String &respStr, const AP
 
 String HWDevMan::getStatusJSON()
 {
-    // Pulse count JSON if enabled
-    String pulseCountStr = R"("testingtesting":)" + String(123);
+    // TODO - implement changes to BusBase
 
-    // Add base JSON
-    return "{" + pulseCountStr + "}";
+    String jsonStr = "{";
+    for (BusBase* pBus : _busList)
+    {
+        if (pBus)
+        {
+            String jsonRespStr = ((BusI2C*)pBus)->getIdentPollResponsesJson();
+            if (jsonRespStr.length() > 0)
+            {
+                if (jsonStr.length() > 1)
+                    jsonStr += ",";
+                jsonStr += "\"" + pBus->getBusName() + "\":" + jsonRespStr;
+            }
+        }
+    }
+    jsonStr += "}";
+    return jsonStr;
+
+    // TODO - this is for non-JSON poll data
+
+    // // Get addresses with poll data
+    // std::vector<uint32_t> addresses;
+    // ((BusI2C*)pBus)->getIdentPollResponseAddresses(addresses);
+    // if (addresses.size() == 0)
+    // {
+    //     return "{}";
+    // }
+
+    // // Form a JSON reponse
+    // String jsonResponse;
+
+    // // Iterate addresses and get poll data
+    // for (uint32_t addr : addresses)
+    // {
+    //     // Get poll data
+    //     std::vector<uint8_t> pollResponseData;
+    //     const uint32_t responseSize = 0;
+    //     uint32_t numResponses = ((BusI2C*)pBus)->getIdentPollResponses(addr, pollResponseData, responseSize, 0);
+
+    //     // Add to JSON
+    //     jsonResponse += "\"" + String(addr) + "\":" + pollData.getJSON() + ",";
+    // }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -167,10 +207,22 @@ String HWDevMan::getStatusJSON()
 
 void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
 {
-    // TODO - implement state
-    int v = 0;
     stateHash.clear();
-    stateHash.push_back(v & 0xff);
+    // TODO - implement change to BusBase
+
+    // Check all buses for data
+    for (BusBase* pBus : _busList)
+    {
+        // Check bus
+        if (pBus)
+        {
+            // Check bus status
+            std::vector<uint32_t> addresses;
+            ((BusI2C*)pBus)->getIdentPollResponseAddresses(addresses);
+            stateHash.push_back(addresses.size() & 0xff);
+        }
+    }
+    stateHash.push_back(millis());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

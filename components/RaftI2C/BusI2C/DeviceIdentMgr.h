@@ -33,6 +33,10 @@ public:
     // Process device initialisation
     bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
+    // Format device poll responses to JSON
+    String identPollRespToJson(const RaftI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+                    const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize);
+
 private:
     // Device indentification enabled
     bool _isEnabled = false;

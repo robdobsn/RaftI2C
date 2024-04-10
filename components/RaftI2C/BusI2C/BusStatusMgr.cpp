@@ -422,47 +422,109 @@ void BusStatusMgr::setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const 
 // Get pending ident poll requests for a single device
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusStatusMgr::getPendingIdentPollRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs)
+bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
     // Check for any pending requests
-    busReqRecs.clear();
     for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         // Check if a poll is due
-        addrStatus.deviceStatus.getPendingIdentPollRequests(timeNowMs, busReqRecs);
-
-        // Break if we have a request (ensure all requests are for the same device)
-        if (busReqRecs.size() > 0)
-            break;
+        if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowMs, pollInfo))
+        {
+            // Return semaphore
+            xSemaphoreGive(_busElemStatusMutex);
+            return true;
+        }
     }
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
-    return busReqRecs.size() > 0;
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Store poll results
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusStatusMgr::pollResultStore(RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
+/// @brief Store poll results
+/// @param pollInfo device polling info 
+/// @param addrAndSlot address and slot of device
+/// @param pollResultData poll result data
+/// @return true if result stored
+bool BusStatusMgr::pollResultStore(const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
-        return;
+        return false;
 
     // Find address record
     I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    bool putResult = false;
     if (pAddrStatus)
     {
         // Add result to aggregator
-        pAddrStatus->deviceStatus.pollResultStore(pollResultData);
+        putResult = pAddrStatus->deviceStatus.pollResultStore(pollInfo, pollResultData);
     }
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+    return putResult;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if any ident poll responses are available and, if so, return addresses of devices that have responded
+/// @param addresses - vector to store the addresses of devices that have responded
+/// @return true if there are any ident poll responses available
+bool BusStatusMgr::pollResponseAddresses(std::vector<uint32_t>& addresses)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return false;
+
+    // Iterate address status records
+    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        // Check if any responses are pending
+        if (addrStatus.deviceStatus.dataAggregator.count() > 0)
+        {
+            // Add address to list
+            addresses.push_back(addrStatus.addrAndSlot.toCompositeAddrAndSlot());
+        }
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return addresses.size() > 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device poll responses
+/// @param address - address of device to get responses for
+/// @param devicePollResponseData - vector to store the device poll responses
+/// @param (out) responseSize - size of each response in bytes
+/// @param (out) deviceTypeIndex - index of device type
+/// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
+/// @return number of responses returned
+uint32_t BusStatusMgr::pollResponsesGet(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
+            uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return 0;
+
+    // Find address record
+    uint32_t numResponses = 0;
+    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
+    if (pAddrStatus)
+    {
+        // Get results from aggregator
+        numResponses = pAddrStatus->deviceStatus.dataAggregator.get(devicePollResponseData, responseSize, maxResponsesToReturn);
+
+        // Device type index
+        deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return numResponses;
 }

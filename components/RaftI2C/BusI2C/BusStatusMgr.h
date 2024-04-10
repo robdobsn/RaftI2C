@@ -56,11 +56,26 @@ public:
     // Set bus element device status (which includes device type and can be empty) for an address
     void setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus);
 
-    // Get pending ident poll requests
-    bool getPendingIdentPollRequestsForOneDevice(uint32_t timeNowMs, std::vector<BusI2CRequestRec>& busReqRecs);
+    // Get pending ident poll
+    bool getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    void pollResultStore(RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+    bool pollResultStore(const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+
+    /// @brief Check if any ident poll responses are available and, if so, return addresses of devices that have responded
+    /// @param addresses - vector to store the addresses of devices that have responded
+    /// @return true if there are any ident poll responses available
+    bool pollResponseAddresses(std::vector<uint32_t>& addresses);
+
+    /// @brief Get ident poll responses
+    /// @param address - address of device to get responses for
+    /// @param devicePollResponseData - vector to store the device poll responses
+    /// @param responseSize - (out) size of the response data
+    /// @param deviceTypeIndex - (out) index of the device type
+    /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
+    /// @return number of poll responses returned
+    uint32_t pollResponsesGet(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
+                uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
