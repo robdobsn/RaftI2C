@@ -223,7 +223,7 @@ String DeviceIdentMgr::identPollRespToJson(const RaftI2CAddrAndSlot& addrAndSlot
     // Get device type info
     const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
-        return "{}";
+        return "";
 
     // Get polling info
     DevicePollingInfo pollingInfo;

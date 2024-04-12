@@ -2,8 +2,8 @@ import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import './Main.css';
 import { DeviceManager } from './DeviceManager';
-import DeviceScreen from './DevicesScreen';
-import { DeviceConfig } from './DeviceConfig';
+import DevicesScreen from './DevicesScreen';
+import { DevicesConfig } from './DevicesConfig';
 
 export default function Main() {
 
@@ -22,7 +22,7 @@ export default function Main() {
 
   return (
     <div className="h-full">
-      <DeviceScreen isEditingMode={false} config={new DeviceConfig()} />
+      <DevicesScreen isEditingMode={false} config={new DevicesConfig()} />
     </div>
   );
 }

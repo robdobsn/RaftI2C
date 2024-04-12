@@ -96,7 +96,7 @@
                 "pingMs": 30000
             },
             {
-                "pfix": "devices",
+                "pfix": "devjson",
                 "pcol": "RICJSON",
                 "maxConn": 4,
                 "txQueueMax": 20,

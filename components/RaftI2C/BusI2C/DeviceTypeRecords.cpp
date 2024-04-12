@@ -351,5 +351,5 @@ String DeviceTypeRecords::pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const B
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
 
-    return "{\"a\":\"" + addrAndSlot.toString() + "\",\"x\":\"" + hexOut + "\"}";
+    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\"}";
 }

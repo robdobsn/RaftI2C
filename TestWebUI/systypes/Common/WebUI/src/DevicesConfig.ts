@@ -5,7 +5,7 @@ export class SingleDeviceConfig {
     name: string = "";
 }
 
-export class DeviceConfig {
+export class DevicesConfig {
     devices: Array<SingleDeviceConfig> = [];
 }
 

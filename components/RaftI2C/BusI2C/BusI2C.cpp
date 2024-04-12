@@ -500,7 +500,7 @@ String BusI2C::getIdentPollResponsesJson()
     if (_busStatusMgr.pollResponseAddresses(addresses))
     {
         // Return string
-        String jsonStr = "[";
+        String jsonStr = "{";
 
         // Get response data for each address
         for (uint32_t address : addresses)
@@ -523,7 +523,7 @@ String BusI2C::getIdentPollResponsesJson()
         }
 
         // End of JSON
-        jsonStr += "]";
+        jsonStr += "}";
         return jsonStr;
     }
     return "[]";

@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { DeviceStates } from './DeviceStates';
+import { DevicesState } from './DeviceStates';
 
 class DeviceListProps {
-    deviceStates: DeviceStates = new DeviceStates();
+    deviceStates: DevicesState = new DevicesState();
 }
 
-export default function DeviceList(props: DeviceListProps) {
-    const [devices, setDevices] = useState<DeviceStates>(new DeviceStates());
+export default function DevicesList(props: DeviceListProps) {
+    const [devices, setDevices] = useState<DevicesState>(new DevicesState());
 
     return (
         <div>
-            <h2>Device List</h2>
+            {/* <h2>Device List</h2>
             <ul>
-                {devices.devices.map((device) => {
+                {devices.devices.map((devices) => {
                     return (
                         <li key={device.i2cAddress}>
                             <span>{device.deviceType}</span>
@@ -24,7 +24,7 @@ export default function DeviceList(props: DeviceListProps) {
                         </li>
                     );
                 })}
-            </ul>
+            </ul> */}
         </div>
     );
 };
