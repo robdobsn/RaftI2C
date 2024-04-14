@@ -31,19 +31,25 @@ public:
     /// @brief Get device type for address
     /// @param addrAndSlot i2c address and slot
     /// @returns device type indexes that match the address
-    std::vector<uint16_t> getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot);
+    std::vector<uint16_t> getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device type for a device type index
+    /// @brief Get device type record for a device type index
     /// @param deviceTypeIdx device type index
     /// @return pointer to info record if device type found, nullptr if not
-    const BusI2CDevTypeRecord* getDeviceInfo(uint16_t deviceTypeIdx);
+    const BusI2CDevTypeRecord* getDeviceInfo(uint16_t deviceTypeIdx) const;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type record for a device type name
+    /// @param deviceType device type name
+    /// @return pointer to info record if device type found, nullptr if not
+    const BusI2CDevTypeRecord* getDeviceInfo(const String& deviceType) const;
 
     /// @brief Get device polling info
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
     /// @param pollRequests (out) polling info
-    void getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo);
+    void getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
 
     // Device detection record
     class DeviceDetectionRec

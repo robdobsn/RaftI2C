@@ -14,6 +14,7 @@
 static const char* MODULE_PREFIX = "DeviceStatus";
 #endif
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get pending ident poll requests 
 /// @param timeNowMs time in ms (passed in to aid testing)
 /// @param pollInfo (out) polling info

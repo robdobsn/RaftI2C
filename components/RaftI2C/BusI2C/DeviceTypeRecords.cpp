@@ -36,7 +36,7 @@ DeviceTypeRecords::DeviceTypeRecords()
 /// @brief get device types (strings) for an address
 /// @param addrAndSlot i2c address and slot
 /// @returns device type indexes (into generated baseDevTypeRecords array) that match the address
-std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot)
+std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot) const
 {
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t startTimeUs = micros();
@@ -75,7 +75,7 @@ std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAnd
 /// @brief Get device type for a device type index
 /// @param deviceTypeIdx device type index
 /// @return pointer to device type record if device type found, nullptr if not
-const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeIdx)
+const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeIdx) const
 {
     // Check if in range
     if (deviceTypeIdx >= BASE_DEV_TYPE_ARRAY_SIZE)
@@ -84,11 +84,26 @@ const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeI
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device type for a device type name
+/// @param deviceTypeName device type name
+/// @return pointer to device type record if device type found, nullptr if not
+const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& deviceTypeName) const
+{
+    // Iterate the device types
+    for (uint16_t i = 0; i < BASE_DEV_TYPE_ARRAY_SIZE; i++)
+    {
+        if (deviceTypeName == baseDevTypeRecords[i].deviceType)
+            return &baseDevTypeRecords[i];
+    }
+    return nullptr;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get device polling info
 /// @param addrAndSlot i2c address and slot
 /// @param pDevTypeRec device type record
 /// @param pollRequests (out) polling info
-void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo)
+void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
 {
     // Clear initially
     pollingInfo.clear();
@@ -126,7 +141,6 @@ void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2C
                 writeData.size(),
                 writeData.data(), 
                 readDataMask.size(),
-                readDataMask.data(), 
                 0, 
                 NULL, 
                 NULL);
@@ -178,7 +192,6 @@ void DeviceTypeRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const
                     writeData.size(), 
                     writeData.data(),
                     0,
-                    nullptr,
                     0, 
                     nullptr, 
                     this);
@@ -347,9 +360,11 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 /// @param devicePollResponseData device poll response data
 String DeviceTypeRecords::pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData)
 {
+    // Device type name
+    String devTypeName = pDevTypeRec ? pDevTypeRec->deviceType : "";
     // Form a hex buffer
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
 
-    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\"}";
+    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"t\":\"" + devTypeName + "\"}";
 }

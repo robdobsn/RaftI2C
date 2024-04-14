@@ -173,6 +173,9 @@ String HWDevMan::getStatusJSON()
         }
     }
     jsonStr += "}";
+
+    // LOG_I(MODULE_PREFIX, "getStatusJSON %s", jsonStr.c_str());
+
     return jsonStr;
 
     // TODO - this is for non-JSON poll data
@@ -217,12 +220,11 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
         if (pBus)
         {
             // Check bus status
-            std::vector<uint32_t> addresses;
-            ((BusI2C*)pBus)->getIdentPollResponseAddresses(addresses);
-            stateHash.push_back(addresses.size() & 0xff);
+            uint32_t identPollLastMs = ((BusI2C*)pBus)->getIdentPollLastUpdateMs();
+            stateHash.push_back(identPollLastMs & 0xff);
+            stateHash.push_back((identPollLastMs >> 8) & 0xff);
         }
     }
-    stateHash.push_back(millis());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -17,6 +17,7 @@
 #include "BusExtenderMgr.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
+#include "BusI2CAddrStatus.h"
 #include <list>
 
 class BusStatusMgr {
@@ -60,7 +61,11 @@ public:
     bool getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    bool pollResultStore(const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+
+    /// @brief Get ident poll last update time ms
+    /// @return ident poll last update time ms
+    uint32_t getIdentPollLastUpdateMs() const;
 
     /// @brief Check if any ident poll responses are available and, if so, return addresses of devices that have responded
     /// @param addresses - vector to store the addresses of devices that have responded
@@ -91,83 +96,17 @@ private:
     BusBase& _busBase;
 
     // I2C address status
-    class I2CAddrStatus
-    {
-    public:
-        // Address and slot
-        RaftI2CAddrAndSlot addrAndSlot;
-
-        // Online/offline count
-        int8_t count = 0;
-
-        // State
-        bool isChange : 1 = false;
-        bool isOnline : 1 = false;
-        bool wasOnline: 1 = false;
-        bool slotResolved: 1 = false;
-
-        // Access barring
-        uint32_t barStartMs = 0;
-        uint16_t barDurationMs = 0;
-
-        // Device status
-        DeviceStatus deviceStatus;
-
-        // Handle responding
-        bool handleResponding(bool isResponding, bool& flagSpuriousRecord)
-        {
-            // Handle is responding or not
-            if (isResponding)
-            {
-                // If not already online then count upwards
-                if (!isOnline)
-                {
-                    // Check if we've reached the threshold for online
-                    count = (count < I2C_ADDR_RESP_COUNT_OK_MAX) ? count+1 : count;
-                    if (count >= I2C_ADDR_RESP_COUNT_OK_MAX)
-                    {
-                        // Now online
-                        isChange = !isChange;
-                        count = 0;
-                        isOnline = true;
-                        wasOnline = true;
-                        return true;
-                    }
-                }
-            }
-            else
-            {
-                // Not responding - check for change to offline
-                if (isOnline || !wasOnline)
-                {
-                    // Count down to offline/spurious threshold
-                    count = (count < -I2C_ADDR_RESP_COUNT_FAIL_MAX) ? count : count-1;
-                    if (count <= -I2C_ADDR_RESP_COUNT_FAIL_MAX)
-                    {
-                        // Now offline/spurious
-                        count = 0;
-                        if (!wasOnline)
-                            flagSpuriousRecord = true;
-                        else
-                            isChange = !isChange;
-                        isOnline = false;
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-    };
-
-    // I2C address status
-    std::vector<I2CAddrStatus> _i2cAddrStatus;
+    std::vector<BusI2CAddrStatus> _i2cAddrStatus;
     static const uint32_t I2C_ADDR_STATUS_MAX = 50;
+
+    // Ident poll last update time ms
+    uint32_t _identPollLastUpdateTimeMs = 0;
 
     // Find address record
     // Assumes semaphore already taken
-    I2CAddrStatus* findAddrStatusRecord(RaftI2CAddrAndSlot addrAndSlot)
+    BusI2CAddrStatus* findAddrStatusRecord(RaftI2CAddrAndSlot addrAndSlot)
     {
-        for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+        for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
         {
             if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
                     (addrStatus.addrAndSlot.slotPlus1 == addrAndSlot.slotPlus1))

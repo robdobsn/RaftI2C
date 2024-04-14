@@ -83,7 +83,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(pollInfo, addrAndSlot, _pollDataResult);
+            _busStatusMgr.pollResultStore(timeNowMs, pollInfo, addrAndSlot, _pollDataResult);
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)

@@ -135,8 +135,7 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, ui
                 addrAndSlot,
                 0, sizeof(writeData),
                 writeData,
-                0, 
-                nullptr,
+                0,
                 0, 
                 nullptr, 
                 this);

@@ -1,7 +1,13 @@
 import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
-import { AttrTypeBytes, DeviceTypeInfo, DeviceTypeAttribute } from "./DeviceInfo";
+import { AttrTypeBytes, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile } from "./DeviceInfo";
+import struct from 'python-struct';
+
+let testingDeviceTypeRecsConditionalLoadPromise: Promise<any> | null = null;
+if (process.env.TEST_DATA) {
+    testingDeviceTypeRecsConditionalLoadPromise = import('../../../../../DeviceTypeRecords/DeviceTypeRecords.json');
+}
 
 export class DeviceManager {
 
@@ -49,6 +55,9 @@ export class DeviceManager {
         return DeviceManager._instance;
     }
 
+    // Test device type data
+    private _testDeviceTypeRecs: DeviceTypeInfoTestJsonFile | null = null;
+
     // Constructor
     private constructor() {
         console.log("DeviceManager constructed");
@@ -56,17 +65,39 @@ export class DeviceManager {
         // Check if test mode
         if (window.location.hostname === "localhost") {
             // Start timer for testing which sends randomized data
-            let lastReportTimeMs = 0;
+            let psVals = [1, 10000];
+            let iterCount = 0;
+            let psValAltCount = 0;
+            let alsVal = 1000;
+            let alsValInc = 1;
+            let whiteVal = 1000;
+            let whiteValInc = 10;
             setInterval(() => {
-                const timestamp = (Date.now() * 100) & 0xffff;
-                const var1 = Math.floor(Math.random() * 65535);
-                const var2 = Math.floor(Math.random() * 65535);
-                const var3 = Math.floor(Math.random() * 65535);
+                const var1 = psVals[psValAltCount];
+                const var2 = alsVal;
+                const var3 = whiteVal;
+                iterCount++;
+                if (iterCount % 10 === 0) {
+                    psValAltCount = (psValAltCount + 1) % 2;
+                }
+                alsVal += alsValInc;
+                if (iterCount % 1000 === 0) {
+                    alsValInc = -alsValInc;
+                }
+                whiteVal += whiteValInc;
+                if (iterCount % 100 === 0) {
+                    whiteValInc = -whiteValInc;
+                }
+                const tsHexHighLow = ((Date.now()) & 0xffff).toString(16).padStart(4, '0');
+                const psHexLowHigh = ((var1 & 0xff) << 8 | (var1 >> 8)).toString(16).padStart(4, '0');
+                const alsHexLowHigh = ((var2 & 0xff) << 8 | (var2 >> 8)).toString(16).padStart(4, '0');
+                const whiteHexLowHigh = ((var3 & 0xff) << 8 | (var3 >> 8)).toString(16).padStart(4, '0');
                 const msg = `{
                     "I2CA":
                         {
                             "0x60@1": {
-                                "x": "${timestamp.toString(16).padStart(4, '0')}${var1.toString(16).padStart(4, '0')}${var2.toString(16).padStart(4, '0')}${var3.toString(16).padStart(4, '0')}"
+                                "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
+                                "t": "VCNL4040"
                             }
                         }
                     }`;
@@ -104,9 +135,18 @@ export class DeviceManager {
         }
         console.log(`DeviceManager init - first time`)
 
+        // Get the configuration from the main server
         await this.getAppSettingsAndCheck();
 
+        // Open websocket
         const rslt = await this.connectWebSocket();
+
+        // Conditionally load the device type records
+        if (testingDeviceTypeRecsConditionalLoadPromise) {
+            testingDeviceTypeRecsConditionalLoadPromise.then((jsonData) => {
+                this._testDeviceTypeRecs = jsonData as DeviceTypeInfoTestJsonFile;
+            });
+        }
 
         // Start timer to check for websocket reconnection
         setInterval(async () => {
@@ -395,8 +435,11 @@ export class DeviceManager {
 
                     // Check if a device state already exists
                     if (!(devAddr in this._devicesState)) {
+
+                        const deviceTypeName = "t" in msgElem ? (msgElem.t === undefined ? "" : msgElem.t) : "";
+
                         // Get the device type info for this device
-                        const deviceTypeInfo = this.getDeviceTypeInfo(deviceKey);
+                        const deviceTypeInfo = this.getDeviceTypeInfo(deviceTypeName);
 
                         // Create device record
                         this._devicesState[devAddr] = {
@@ -448,12 +491,19 @@ export class DeviceManager {
                                 }
                                 const attr: DeviceTypeAttribute = devAttrDefinitions[attrIdx];
                                 if (!("t" in attr && attr.t in AttrTypeBytes)) {
-                                    console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)} value ${value}`);
+                                    console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
                                     break;
                                 }
                                 const attrBytes = AttrTypeBytes[attr.t];
                                 const attrHexChars = attrBytes * 2;
-                                const value = parseInt(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 16);
+                                // Convert the value using python-struct
+                                let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0];
+                                if ("m" in attr && attr.m != undefined) {
+                                    value = value & attr.m;
+                                }
+                                if ("d" in attr && attr.d != undefined && attr.d != 0) {
+                                    value = value / attr.d;
+                                }
                                 console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} value ${value}`);
                                 hexStrIdx += attrHexChars;
                                 attrIdx++;
@@ -639,92 +689,99 @@ export class DeviceManager {
     ////////////////////////////////////////////////////////////////////////////
 
     private getDeviceTypeInfo(deviceKey: string): DeviceTypeInfo {
-        // TODO - implement this
-       if (deviceKey === "I2CA_0x60@1") {
-            return {
-                "name": "VCNL4040",
-                "desc": "Prox&ALS",
-                "manu": "Vishay",
-                "type": "VCNL4040",
-                "attr": {
-                    "x" : 
-                    [
-                        {
-                            "n": "prox",
-                            "t": "uint16",
-                            "u": "mm",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        },
-                        {
-                            "n": "als",
-                            "t": "uint16",
-                            "u": "lux",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        },
-                        {
-                            "n": "white",
-                            "t": "uint16",
-                            "u": "lux",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        }
-                    ]
-                }
-            }
-        } else if (deviceKey === "I2CA_0x1d@1") {
-            return {
-                "name": "ADXL313",
-                "desc": "3-Axis Accel",
-                "manu": "Analog Devices",
-                "type": "ADXL313",
-                "attr": {
-                    "x": 
-                    [
-                        {
-                            "n": "x",
-                            "t": "uint16",
-                            "u": "",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        },
-                        {
-                            "n": "y",
-                            "t": "uint16",
-                            "u": "",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        },
-                        {
-                            "n": "z",
-                            "t": "uint16",
-                            "u": "",
-                            "r": [
-                                0,
-                                65535
-                            ],
-                            "d": 1
-                        }
-                    ]
-                }
-            }
+
+        if (this._testDeviceTypeRecs) {
+            return this._testDeviceTypeRecs.devTypes[deviceKey].devInfoJson;
         }
+
+        // TODO - implement REST API call
+
+        // // TODO - remove this
+        // if (deviceKey === "I2CA_0x60@1") {
+        //     return {
+        //         "name": "VCNL4040",
+        //         "desc": "Prox&ALS",
+        //         "manu": "Vishay",
+        //         "type": "VCNL4040",
+        //         "attr": {
+        //             "x" : 
+        //             [
+        //                 {
+        //                     "n": "prox",
+        //                     "t": "<H",
+        //                     "u": "prox",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 1
+        //                 },
+        //                 {
+        //                     "n": "als",
+        //                     "t": "<H",
+        //                     "u": "lux",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 10
+        //                 },
+        //                 {
+        //                     "n": "white",
+        //                     "t": "<H",
+        //                     "u": "lux",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 10
+        //                 }
+        //             ]
+        //         }
+        //     }
+        // } else if (deviceKey === "I2CA_0x1d@1") {
+        //     return {
+        //         "name": "ADXL313",
+        //         "desc": "3-Axis Accel",
+        //         "manu": "Analog Devices",
+        //         "type": "ADXL313",
+        //         "attr": {
+        //             "x": 
+        //             [
+        //                 {
+        //                     "n": "x",
+        //                     "t": "<H",
+        //                     "u": "",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 1
+        //                 },
+        //                 {
+        //                     "n": "y",
+        //                     "t": "<H",
+        //                     "u": "",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 1
+        //                 },
+        //                 {
+        //                     "n": "z",
+        //                     "t": "<H",
+        //                     "u": "",
+        //                     "r": [
+        //                         0,
+        //                         65535
+        //                     ],
+        //                     "d": 1
+        //                 }
+        //             ]
+        //         }
+        //     }
+        // }
 
         return {
             "name": "Unknown",

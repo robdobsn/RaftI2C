@@ -7,7 +7,7 @@
             "initValues": "0x041007=&0x030e08=&0x000000=",
             "pollingConfigJson": {
                 "c": "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX",
-                "i": 1000,
+                "i": 200,
                 "s": 10
             },
             "devInfoJson": {
@@ -20,33 +20,33 @@
                     [
                         {
                             "n": "prox",
-                            "t": "uint16",
-                            "u": "mm",
+                            "t": "<H",
+                            "u": "prox",
                             "r": [
                                 0,
                                 65535
                             ],
-                            "d": 1
+                            "d": 0
                         },
                         {
                             "n": "als",
-                            "t": "uint16",
+                            "t": "<H",
                             "u": "lux",
                             "r": [
                                 0,
                                 65535
                             ],
-                            "d": 1
+                            "d": 10
                         },
                         {
                             "n": "white",
-                            "t": "uint16",
+                            "t": "<H",
                             "u": "lux",
                             "r": [
                                 0,
                                 65535
                             ],
-                            "d": 1
+                            "d": 10
                         }
                     ]
                 }
@@ -72,7 +72,7 @@
                     [
                         {
                             "n": "x",
-                            "t": "uint16",
+                            "t": "<H",
                             "u": "",
                             "r": [
                                 0,
@@ -82,7 +82,7 @@
                         },
                         {
                             "n": "y",
-                            "t": "uint16",
+                            "t": "<H",
                             "u": "",
                             "r": [
                                 0,
@@ -92,7 +92,7 @@
                         },
                         {
                             "n": "z",
-                            "t": "uint16",
+                            "t": "<H",
                             "u": "",
                             "r": [
                                 0,

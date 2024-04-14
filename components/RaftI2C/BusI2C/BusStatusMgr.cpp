@@ -176,18 +176,18 @@ bool BusStatusMgr::updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemR
     {
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
         // Debug
-        I2CAddrStatus prevStatus;
-        I2CAddrStatus newStatus;
+        BusI2CAddrStatus prevStatus;
+        BusI2CAddrStatus newStatus;
 #endif
 
         // Find address record
-        I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+        BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
 
         // If not found and element is responding then add a new record
         if ((pAddrStatus == nullptr) && elemResponding && (_i2cAddrStatus.size() < I2C_ADDR_STATUS_MAX))
         {
             // Add new record
-            I2CAddrStatus newAddrStatus;
+            BusI2CAddrStatus newAddrStatus;
             newAddrStatus.addrAndSlot = addrAndSlot;
             _i2cAddrStatus.push_back(newAddrStatus);
             pAddrStatus = &_i2cAddrStatus.back();
@@ -226,7 +226,7 @@ bool BusStatusMgr::updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemR
         {
             // Remove the record
             _i2cAddrStatus.erase(std::remove_if(_i2cAddrStatus.begin(), _i2cAddrStatus.end(), 
-                [addrAndSlot](I2CAddrStatus& addrStatus) { return addrStatus.addrAndSlot == addrAndSlot; }), 
+                [addrAndSlot](BusI2CAddrStatus& addrStatus) { return addrStatus.addrAndSlot == addrAndSlot; }), 
                 _i2cAddrStatus.end());
         }
 
@@ -277,7 +277,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(RaftI2CAddrAndSlot addrAndSlot)
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
     {
         // Find address record
-        I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+        BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
         if (!pAddrStatus || !pAddrStatus->wasOnline)
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
@@ -318,7 +318,7 @@ bool BusStatusMgr::isAddrFoundOnAnyExtender(uint32_t addr)
 
     // Check if address is found
     bool rslt = false;
-    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         if ((addrStatus.addrAndSlot.addr == addr) && 
                 (addrStatus.addrAndSlot.slotPlus1 != 0))
@@ -344,7 +344,7 @@ void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrA
         return;
 
     // Find address record
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
     if (pAddrStatus)
     {
         // Set access barring
@@ -370,7 +370,7 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrA
 
     // Find address record
     bool accessBarred = false;
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
 
     // Check if access is barred
     if (pAddrStatus && pAddrStatus->barDurationMs != 0)
@@ -407,7 +407,7 @@ void BusStatusMgr::setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const 
         return;
 
     // Find address record
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
     if (pAddrStatus)
     {
         // Set device type
@@ -429,7 +429,7 @@ bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& po
         return false;
 
     // Check for any pending requests
-    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         // Check if a poll is due
         if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowMs, pollInfo))
@@ -451,24 +451,45 @@ bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& po
 /// @param addrAndSlot address and slot of device
 /// @param pollResultData poll result data
 /// @return true if result stored
-bool BusStatusMgr::pollResultStore(const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
+bool BusStatusMgr::pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, 
+                        RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
     // Find address record
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
     bool putResult = false;
     if (pAddrStatus)
     {
         // Add result to aggregator
-        putResult = pAddrStatus->deviceStatus.pollResultStore(pollInfo, pollResultData);
+        putResult = pAddrStatus->deviceStatus.pollResultStore(timeNowMs, pollInfo, pollResultData);
     }
+
+    // Store time of last update
+    _identPollLastUpdateTimeMs = timeNowMs;
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return putResult;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get ident poll last update time
+/// @return last update time
+uint32_t BusStatusMgr::getIdentPollLastUpdateMs() const
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return 0;
+
+    // Get last update time
+    uint32_t lastUpdateTime = _identPollLastUpdateTimeMs;
+    
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return lastUpdateTime;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -482,7 +503,7 @@ bool BusStatusMgr::pollResponseAddresses(std::vector<uint32_t>& addresses)
         return false;
 
     // Iterate address status records
-    for (I2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         // Check if any responses are pending
         if (addrStatus.deviceStatus.dataAggregator.count() > 0)
@@ -514,7 +535,7 @@ uint32_t BusStatusMgr::pollResponsesGet(uint32_t address, std::vector<uint8_t>& 
 
     // Find address record
     uint32_t numResponses = 0;
-    I2CAddrStatus* pAddrStatus = findAddrStatusRecord(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
     if (pAddrStatus)
     {
         // Get results from aggregator

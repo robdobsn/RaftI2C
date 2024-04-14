@@ -136,7 +136,6 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot,
                 detectionRec.writeData.size(), 
                 detectionRec.writeData.data(),
                 detectionRec.readDataCheck.size(),
-                detectionRec.readDataCheck.data(),
                 0, 
                 nullptr, 
                 this);

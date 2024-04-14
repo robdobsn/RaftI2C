@@ -90,6 +90,13 @@ public:
     virtual void requestScan(bool enableSlowScan, bool requestFastScan) override final;
 
     // TODO - make these override base-class methods
+
+    // Get time of last update to ident poll data
+    uint32_t getIdentPollLastUpdateMs()
+    {
+        return _busStatusMgr.getIdentPollLastUpdateMs();
+    }
+    
     // Check if any ident poll responses are available and, if so, return addresses of devices that have responded
     bool getIdentPollResponseAddresses(std::vector<uint32_t>& addresses)
     {

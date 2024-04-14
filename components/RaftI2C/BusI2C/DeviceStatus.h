@@ -29,7 +29,7 @@ public:
     bool getPendingIdentPollInfo(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    bool pollResultStore(const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
+    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
     {
         return dataAggregator.put(pollResult);
     }

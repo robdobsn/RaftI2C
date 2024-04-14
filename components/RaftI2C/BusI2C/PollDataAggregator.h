@@ -30,7 +30,6 @@ public:
     void init(uint32_t numResultsToStore, uint32_t resultSize)
     {
         _ringBuffer.resize(numResultsToStore*resultSize);
-        _pRingBufBase = _ringBuffer.data();
         _ringBufHeadOffset = 0;
         _ringBufCount = 0;
         _maxElems = numResultsToStore;
@@ -63,7 +62,7 @@ public:
             return false;
 
         // Add data
-        memcpy(_pRingBufBase + _ringBufHeadOffset, data.data(), _resultSize);
+        memcpy(_ringBuffer.data() + _ringBufHeadOffset, data.data(), _resultSize);
 
         // Update ring buffer
         _ringBufHeadOffset += _resultSize;
@@ -99,7 +98,7 @@ public:
 
             // Copy data
             data.resize(_resultSize);
-            memcpy(data.data(), _pRingBufBase + pos, _resultSize);
+            memcpy(data.data(), _ringBuffer.data() + pos, _resultSize);
 
             // Update ring buffer count
             _ringBufCount--;
@@ -148,7 +147,7 @@ public:
         for (uint32_t i = 0; i < numResponsesToReturn; i++)
         {
             // Copy data
-            memcpy(pOutData, _pRingBufBase + pos, _resultSize);
+            memcpy(pOutData, _ringBuffer.data() + pos, _resultSize);
 
             // Update positions
             pOutData += _resultSize;
@@ -184,7 +183,6 @@ public:
 
 private:
     std::vector<uint8_t> _ringBuffer;
-    uint8_t* _pRingBufBase = nullptr;
     uint16_t _ringBufHeadOffset = 0;
     uint16_t _ringBufCount = 0;
     uint16_t _resultSize = 0;

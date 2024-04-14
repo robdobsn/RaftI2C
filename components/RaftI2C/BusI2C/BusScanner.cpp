@@ -213,8 +213,7 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
                 0, 0, 
                 nullptr, 
                 0, 
-                nullptr,
-                0, 
+                0,
                 nullptr, 
                 this);
     return _busI2CReqSyncFn(&reqRec, nullptr);

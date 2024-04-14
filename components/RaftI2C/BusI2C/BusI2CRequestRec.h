@@ -33,7 +33,7 @@ public:
         _barAccessForMsAfterSend = 0;
     };
     BusI2CRequestRec(BusReqType busReqType, RaftI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
-                const uint8_t* pWriteData, uint32_t readReqLen, const uint8_t* pReadDataMask, uint32_t barAccessForMsAfterSend,
+                const uint8_t* pWriteData, uint32_t readReqLen, uint32_t barAccessForMsAfterSend,
                 BusRequestCallbackType busReqCallback, void* pCallbackData)
     {
         clear();
@@ -46,8 +46,6 @@ public:
         else
             _reqBuf.clear();
         _readReqLen = readReqLen;
-        if (pReadDataMask)
-            _readDataMask.assign(pReadDataMask, pReadDataMask+readReqLen);
         _pCallbackData = pCallbackData;
         _busReqCallback = busReqCallback;
         _pollFreqHz = 1;
@@ -69,7 +67,6 @@ public:
         _busReqType = reqInfo.getBusReqType();
         _pollFreqHz = reqInfo.getPollFreqHz();
         _barAccessForMsAfterSend = reqInfo.getBarAccessForMsAfterSend();
-        _readDataMask.clear();
     }
     uint32_t getReadReqLen() const
     {
@@ -150,10 +147,6 @@ public:
     // Request buffer
     static const uint32_t REQUEST_BUFFER_MAX_BYTES = 1000;
     std::vector<uint8_t> _reqBuf;
-
-    // Read data mask
-    // TODO - apply mask if present
-    std::vector<uint8_t> _readDataMask;
 };
 
 // Callback to send i2c message (async)
