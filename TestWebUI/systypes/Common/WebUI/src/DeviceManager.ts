@@ -65,7 +65,7 @@ export class DeviceManager {
         // Check if test mode
         if (window.location.hostname === "localhost") {
             // Start timer for testing which sends randomized data
-            let psVals = [1, 10000];
+            let psVals = [50, 150];
             let iterCount = 0;
             let psValAltCount = 0;
             let alsVal = 1000;
@@ -478,8 +478,8 @@ export class DeviceManager {
 
                         // TODO - impose a limit on the number of elements to store in the deviceTimeline and deviceAttributes[].values arrays
 
-                        // Add to timeline
-                        this._devicesState[devAddr].deviceTimeline.push(timestamp);
+                        // Flag indicating any attrs added
+                        let attrsAdded = false;
 
                         // Check for the attrGroup name in the device type info
                         if (attrGroup in this._devicesState[devAddr].deviceTypeInfo.attr) {
@@ -524,106 +524,20 @@ export class DeviceManager {
                                         values: [value]
                                     };
                                 }
+                                attrsAdded = true;
                             }
-
-                            // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} data ${JSON.stringify(data)}`);
-
-                            // // Iterate over data
-                            // Object.entries(data).forEach(([key, values]) => {
-                            //     if (key in this._devicesState[devAddr].deviceAttributes) {
-                            //         this._devicesState[devAddr].deviceAttributes[key].values.push(values[0]);
-                            //     } else {
-                            //         this._devicesState[devAddr].deviceAttributes[key] = {
-                            //             name: key,
-                            //             values: [values[0]]
-                            //         };
-                            //     }
-                            // });
-
-                            // // Update the state
-                            // this._devicesState[devAddr] = {
-                            //     ...this._devicesState[devAddr],
-                            //     deviceStateChanged: true
-                            // };
-                            // this._devicesState[devAddr].deviceTimeline.push(timestamp);
                         }
 
-                        // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} data ${JSON.stringify(data)}`);
-
-
-
-
-                    //     // Extract the data which is the remaining bytes
-                    //     interface AttrDataType {
-                    //         [x: string] : number[];
-                    //     }
-                        
-                    //     const data: AttrDataType = {
-                    //         x: [parseInt(msgHexStr.slice(4),16)]
-                    //     }
-                        
-                    //     // Check if there is a device state already
-                    //     if (devAddr in this._devicesState) {
-                            
-                    //         // Update the state
-                    //         this._devicesState[devAddr] = {
-                    //             ...this._devicesState[devAddr],
-                    //             deviceStateChanged: true
-                    //             }
-                    //         }
-                    //         this._devicesState[devAddr].deviceTimeline.push(timestamp);
-                            
-                    //         // Iterate over data
-                    //         Object.entries(data).forEach(([key, values]) => {
-                    //             if (key in this._devicesState[devAddr].deviceAttributes) {
-                    //                 this._devicesState[devAddr].deviceAttributes[key].values.
-                    //             } else {
-                    //                 this._devicesState[devAddr].deviceAttributes[key] = {
-                    //                     name: key,
-                    //                     values: [value]
-                    //                 };
-                    //             }
-                    //         });
-                    //     }
-                    // }
-
-                    });                    
+                        // If any attributes added then add the timestamp to the device timeline
+                        if (attrsAdded) {
+                            this._devicesState[devAddr].deviceTimeline.push(timestamp);
+                        }
+                    });
                 });
             });
         // } catch (error) {
         //     console.error(`DeviceManager websocket message error ${error} msg ${jsonMsg}`);
         //     return;
-        // }
-
-        
-        //     Object.entries(devices).forEach(([devAddr, msgElem]) => {
-        //       // Transform DeviceMsgJsonElem to DeviceState here
-        //       // This is a placeholder transformation. You need to adjust this logic
-        //       // based on how you want to interpret the message data (`x`) and convert
-        //       // it into `DeviceState`.
-        //       const deviceState: DeviceState = {
-        //         lastStateChangeTime: Date.now(), // Assuming current time as the last state change
-        //         deviceTimeline: [], // You would fill this based on your specific logic
-        //         deviceAttributes: [], // Convert `x` or other properties into `DeviceAttribute` array
-        //       };
-        
-        //       devicesState.devices[devAddr] = deviceState;
-        //     });
-        
-        //     busesState.buses[busName] = devicesState;
-        //   });
-
-        // // Iterate over the buses
-        // let busName: string;
-        // for (busName in data) {
-        //     // Iterate over the devices
-        //     let devAddr: string;
-        //     for (devAddr in data[busName]) {
-        //         // Get the message data
-        //         const msgData = data[busName][devAddr].x;
-        //         console.log(`DeviceManager handleDeviceMsgJson bus ${busName} devAddr ${devAddr} msgData ${msgData}`);
-        //         // TODO - update the state
-        //     }
         // }
 
         // Update the last state update time
@@ -672,20 +586,6 @@ export class DeviceManager {
                 }
             });
         });
-
-
-        // TODO - improve this - maybe a flag to say which devices have changed 
-        // call the _devicesStateCallback on each device
-        // Object.entries(this._device).forEach(([deviceKey, deviceConfig]) => {
-        //     this._deviceStateCallback(deviceKey, deviceConfig.state);
-        // }
-
-        // // Iterate over _deviceStates object
-        // let deviceKey: string;
-        // for (deviceKey in this._deviceStates) {
-
-        // // Call the callback
-        // this._deviceStateCallback(this._devicesConfig);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -694,13 +594,22 @@ export class DeviceManager {
 
     private async getDeviceTypeInfo(busName: string, devAddr: string, deviceType: string): Promise<DeviceTypeInfo> {
 
+        const emptyRec = {
+            "name": "Unknown",
+            "desc": "Unknown",
+            "manu": "Unknown",
+            "type": "Unknown",
+            "attr": {}
+        };
         // Ensure that this._testDeviceTypeRecs and devTypes[deviceType] are properly initialized
-        if (this._testDeviceTypeRecs && this._testDeviceTypeRecs.devTypes[deviceType]) {
-            return this._testDeviceTypeRecs.devTypes[deviceType].devInfoJson;
-        } else {
-            // Handle the case where the necessary data isn't available
-            console.error("Device type info not available for:", deviceType);
-            throw new Error("Device type info not available");
+        if (process.env.TEST_DATA) {
+            if (this._testDeviceTypeRecs && this._testDeviceTypeRecs.devTypes[deviceType]) {
+                return this._testDeviceTypeRecs.devTypes[deviceType].devInfoJson;
+            } else {
+                // Handle the case where the necessary data isn't available
+                console.error("Device type info not available for:", deviceType);
+                return emptyRec;
+            }
         }
 
         // Get the device type info from the server
@@ -708,25 +617,13 @@ export class DeviceManager {
             const getDevTypeInfoResponse = await fetch(this._serverAddressPrefix + this._urlPrefix + "/devman/typeinfo?bus=" + busName + "&type=" + deviceType);
             if (!getDevTypeInfoResponse.ok) {
                 console.error(`DeviceManager getDeviceTypeInfo response not ok ${getDevTypeInfoResponse.status}`);
-                return {
-                    "name": "Unknown",
-                    "desc": "Unknown",
-                    "manu": "Unknown",
-                    "type": "Unknown",
-                    "attr": {}
-                };
+                return emptyRec;
             }
             const devTypeInfo = await getDevTypeInfoResponse.json();
             return devTypeInfo;
         } catch (error) {
             console.error(`DeviceManager getDeviceTypeInfo error ${error}`);
-            return {
-                "name": "Unknown",
-                "desc": "Unknown",
-                "manu": "Unknown",
-                "type": "Unknown",
-                "attr": {}
-            };
+            return emptyRec;
         }
     }
 }

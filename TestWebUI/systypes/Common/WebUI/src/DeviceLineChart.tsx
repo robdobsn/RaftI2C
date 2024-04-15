@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
@@ -13,37 +13,80 @@ ChartJS.register(
     Legend
 );
 
-
 export interface DeviceLineChartProps {
     deviceState: DeviceState;
 }
 
+interface ChartJSData {
+    labels: string[];
+    datasets: {
+        label: string;
+        data: number[];
+        fill: boolean;
+        borderColor: string;
+        backgroundColor: string;
+    }[];
+}
+
+
 export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState }) => {
     const { deviceAttributes } = deviceState;
     const MAX_DATA_POINTS = 100;
-
-    // Extract the data series (attribute values)
-    const dataLabels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS);
-
-    // Create a dataset for each attribute found in deviceAttributes
-    const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-        const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
-        // Generate a random color for each attribute line
-        const color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-
-        return {
-            label: attributeName,
-            data: data,
-            fill: false,
-            borderColor: color,
-            backgroundColor: color
-        };
+    const [chartData, setChartData] = useState<ChartJSData>({
+        labels: [],
+        datasets: []
     });
 
-    const chartData = {
-        labels: dataLabels,
-        datasets: datasets
+    const options = {
+        animation: {
+            duration: 100, // default is 1000ms
+        },
     };
 
-    return <Line data={chartData} />;
+    const colourMap: { [key: string]: string } = {
+        prox: "hsl(60, 70%, 60%)",
+        als: "hsl(0, 70%, 60%)",
+        white: "hsl(120, 70%, 60%)",
+        x: "hsl(240, 70%, 60%)",
+        y: "hsl(300, 70%, 60%)",
+        z: "hsl(0, 70%, 60%)",
+        temperature: "hsl(360, 70%, 60%)",
+        humidity: "hsl(200, 70%, 60%)",
+    };
+
+    // Initialize the chart data
+    useEffect(() => {
+        const labels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+        const datasets = Object.entries(deviceState.deviceAttributes).map(([attributeName, attributeDetails]) => {
+            const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
+            // Generate a consistent color for each attribute line
+            const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
+            return {
+                label: attributeName,
+                data: data,
+                fill: false,
+                borderColor: colour,
+                backgroundColor: colour
+            };
+        });
+
+        setChartData({ labels, datasets });
+    }, []);
+    
+    // Update chart data when deviceState changes
+    useEffect(() => {
+        setChartData(prevChartData => {
+            const dataLabels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+            const newData = {
+                ...prevChartData,
+                labels: dataLabels,
+                datasets: prevChartData.datasets.map(dataset => {
+                    const newValues = deviceState.deviceAttributes[dataset.label].values.slice(-MAX_DATA_POINTS);
+                    return { ...dataset, data: newValues };
+                })
+            };
+            return newData;
+        });
+    }, [deviceState, chartData]);
+    return <Line data={chartData} options={options} />;
 };
