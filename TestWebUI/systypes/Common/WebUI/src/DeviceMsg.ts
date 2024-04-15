@@ -8,7 +8,7 @@
 
 export interface DeviceMsgJsonElem {
     x: string; // Message data in hexadecimal
-    t?: string; // Type of device
+    _t?: string; // Type of device
 }
 
 export interface DeviceMsgJsonBus {

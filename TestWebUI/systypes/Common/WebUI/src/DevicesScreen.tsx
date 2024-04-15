@@ -5,6 +5,7 @@ import { DeviceAttribute, DevicesState, DeviceState } from './DeviceStates';
 import { DeviceManager } from './DeviceManager';
 import DeviceScreen from './DeviceScreen';
 import { DevicesConfig } from './DevicesConfig';
+import './styles.css';
 
 const deviceManager = DeviceManager.getInstance();
 
@@ -67,7 +68,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
     }, [devicesState]);
 
     return (
-        <div>
+        <div className="devices-container">
         {Object.entries(devicesState).filter(([key, _]) => key !== 'getDeviceKey').map(([deviceKey, data]) => (
             <DeviceScreen key={deviceKey} deviceKey={deviceKey} data={data} />
         ))}

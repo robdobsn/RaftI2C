@@ -73,18 +73,18 @@ export class DeviceManager {
             let whiteVal = 1000;
             let whiteValInc = 10;
             setInterval(() => {
-                const var1 = psVals[psValAltCount];
+                const var1 = psVals[psValAltCount] + Math.floor(Math.random() * 10);
                 const var2 = alsVal;
                 const var3 = whiteVal;
                 iterCount++;
                 if (iterCount % 10 === 0) {
                     psValAltCount = (psValAltCount + 1) % 2;
                 }
-                alsVal += alsValInc;
+                alsVal += alsValInc + Math.floor(Math.random() * 10);
                 if (iterCount % 1000 === 0) {
                     alsValInc = -alsValInc;
                 }
-                whiteVal += whiteValInc;
+                whiteVal += whiteValInc + Math.floor(Math.random() * 10);
                 if (iterCount % 100 === 0) {
                     whiteValInc = -whiteValInc;
                 }
@@ -97,7 +97,7 @@ export class DeviceManager {
                         {
                             "0x60@1": {
                                 "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
-                                "t": "VCNL4040"
+                                "_t": "VCNL4040"
                             }
                         }
                     }`;
@@ -435,8 +435,13 @@ export class DeviceManager {
 
                     // Check if a device state already exists
                     if (!(devAddr in this._devicesState)) {
-
-                        const deviceTypeName = "t" in msgElem ? (msgElem.t === undefined ? "" : msgElem.t) : "";
+                        
+                        let deviceTypeName = "";
+                        if (msgElem && typeof msgElem === 'object' && "_t" in msgElem) {
+                            deviceTypeName = msgElem._t || "";
+                        } else {
+                            console.warn(`DeviceManager msgElem ${JSON.stringify(msgElem)}`);
+                        }
 
                         // Create device record
                         this._devicesState[devAddr] = {
@@ -454,7 +459,7 @@ export class DeviceManager {
                     Object.entries(msgElem).forEach(([attrGroup, msgHexStr]) => {
 
                         // Check valid
-                        if ((typeof msgHexStr != 'string') || (msgHexStr.length < 4)) {
+                        if (attrGroup.startsWith("_") || (typeof msgHexStr != 'string') || (msgHexStr.length < 4)) {
                             return;
                         }
 
@@ -470,6 +475,11 @@ export class DeviceManager {
                         // Offset timestamp
                         const origTimestamp = timestamp;
                         timestamp += this._devicesState[devAddr].reportTimestampOffsetMs;
+
+                        // TODO - impose a limit on the number of elements to store in the deviceTimeline and deviceAttributes[].values arrays
+
+                        // Add to timeline
+                        this._devicesState[devAddr].deviceTimeline.push(timestamp);
 
                         // Check for the attrGroup name in the device type info
                         if (attrGroup in this._devicesState[devAddr].deviceTypeInfo.attr) {
@@ -684,8 +694,13 @@ export class DeviceManager {
 
     private async getDeviceTypeInfo(busName: string, devAddr: string, deviceType: string): Promise<DeviceTypeInfo> {
 
-        if (this._testDeviceTypeRecs) {
+        // Ensure that this._testDeviceTypeRecs and devTypes[deviceType] are properly initialized
+        if (this._testDeviceTypeRecs && this._testDeviceTypeRecs.devTypes[deviceType]) {
             return this._testDeviceTypeRecs.devTypes[deviceType].devInfoJson;
+        } else {
+            // Handle the case where the necessary data isn't available
+            console.error("Device type info not available for:", deviceType);
+            throw new Error("Device type info not available");
         }
 
         // Get the device type info from the server

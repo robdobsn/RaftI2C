@@ -366,7 +366,7 @@ String DeviceTypeRecords::pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const Bu
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
 
-    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"t\":\"" + devTypeName + "\"}";
+    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"_t\":\"" + devTypeName + "\"}";
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

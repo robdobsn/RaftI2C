@@ -1,0 +1,73 @@
+/* styles.css */
+
+/* General styling for the dark theme */
+body, .device-screen, .device-block-heading, .device-attrs-form, .device-line-chart {
+    background-color: #333; /* Dark background for all components */
+    color: #fff; /* Light text for better readability */
+}
+
+/* Style for the overall container that holds all devices */
+.devices-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;  /* Adds space between each DeviceScreen */
+    padding: 20px;
+}
+
+/* Style for each individual device screen */
+.device-screen {
+    display: flex;
+    flex-direction: column; /* Stack heading and data blocks vertically */
+    gap: 10px;  /* Adds space between the heading and the data block */
+    padding: 10px;
+    border: 1px solid #666; /* Adjusting border color for dark theme */
+    border-radius: 8px;
+}
+
+/* Style for the device heading */
+.device-block-heading {
+    padding: 5px 10px; /* Padding inside the heading block */
+    background: #444; /* Slightly lighter dark background for distinction */
+    border-radius: 4px; /* Slight rounding of corners */
+}
+
+/* Style for the text inside the heading */
+.device-block-heading-text {
+    font-weight: bold; /* Keep heading text bold */
+}
+
+/* Style for the data block containing the form and chart */
+.device-block-data {
+    display: flex;
+    gap: 20px;  /* Space between the form and the chart */
+    align-items: flex-start;  /* Align items at their top edge */
+    min-height: 10rem;  /* Minimum height to ensure sufficient visibility */    
+}
+
+/* Styles for the form and chart to adjust space */
+.device-attrs-form {
+    flex: 0 0 auto; /* Form takes only as much space as it needs */
+    padding: 10px;
+    border: 1px solid #666; /* Adjusting border color for dark theme */
+    border-radius: 4px;
+    background: #444; /* Slightly lighter dark background for distinction */    
+}
+
+.device-line-chart {
+    flex: 1; /* Chart takes the rest of the space */
+    padding: 10px;
+    border: 1px solid #666; /* Adjusting border color for dark theme */
+    border-radius: 4px;
+    min-height: 10rem;  /* Setting a minimum height to ensure the chart is clearly visible */
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 600px) {
+    .device-block-data {
+        flex-direction: column;
+    }
+    .device-line-chart, .device-attrs-form {
+        width: 100%; /* Full width on smaller screens */
+        min-height: 8rem; /* Smaller minimum height for smaller screens */
+    }
+}

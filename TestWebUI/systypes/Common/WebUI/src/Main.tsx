@@ -4,6 +4,7 @@ import './Main.css';
 import { DeviceManager } from './DeviceManager';
 import DevicesScreen from './DevicesScreen';
 import { DevicesConfig } from './DevicesConfig';
+import './styles.css';
 
 export default function Main() {
 
