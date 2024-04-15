@@ -36,7 +36,7 @@ DeviceTypeRecords::DeviceTypeRecords()
 /// @brief get device types (strings) for an address
 /// @param addrAndSlot i2c address and slot
 /// @returns device type indexes (into generated baseDevTypeRecords array) that match the address
-std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot) const
+std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusI2CAddrAndSlot addrAndSlot) const
 {
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t startTimeUs = micros();
@@ -103,7 +103,7 @@ const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& device
 /// @param addrAndSlot i2c address and slot
 /// @param pDevTypeRec device type record
 /// @param pollRequests (out) polling info
-void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
+void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
 {
     // Clear initially
     pollingInfo.clear();
@@ -164,7 +164,7 @@ void DeviceTypeRecords::getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2C
 /// @brief Get initialisation bus requests
 /// @param deviceType device type
 /// @param initRequests (out) initialisation requests
-void DeviceTypeRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
+void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
 {
     // Clear initially
     initRequests.clear();
@@ -204,7 +204,7 @@ void DeviceTypeRecords::getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const
 /// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
 /// @param addrAndSlot i2c address and slot
 /// @return true if address in range
-bool DeviceTypeRecords::isAddrInRange(const String& addresses, RaftI2CAddrAndSlot addrAndSlot) const
+bool DeviceTypeRecords::isAddrInRange(const String& addresses, BusI2CAddrAndSlot addrAndSlot) const
 {
     // Check addresses
     if (addresses.length() == 0)
@@ -358,7 +358,7 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 /// @brief Convert poll response to JSON
 /// @param pDevTypeRec pointer to device type record
 /// @param devicePollResponseData device poll response data
-String DeviceTypeRecords::pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData)
+String DeviceTypeRecords::pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData)
 {
     // Device type name
     String devTypeName = pDevTypeRec ? pDevTypeRec->deviceType : "";
@@ -367,4 +367,38 @@ String DeviceTypeRecords::pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const B
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
 
     return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"t\":\"" + devTypeName + "\"}";
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device type info JSON by device type index
+/// @param deviceTypeIdx device type index
+/// @param includePlugAndPlayInfo include plug and play info
+/// @return JSON string
+String DeviceTypeRecords::getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bool includePlugAndPlayInfo) const
+{
+    // Check if in range
+    if (deviceTypeIdx >= BASE_DEV_TYPE_ARRAY_SIZE)
+        return "{}";
+
+    // Get the device type record
+    const BusI2CDevTypeRecord* pDevTypeRec = &baseDevTypeRecords[deviceTypeIdx];
+    if (!pDevTypeRec)
+        return "{}";
+
+    // Get JSON for device type
+    return pDevTypeRec->getJson(includePlugAndPlayInfo);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device type info JSON by device type name
+/// @param deviceTypeName device type name
+/// @param includePlugAndPlayInfo include plug and play info
+/// @return JSON string
+String DeviceTypeRecords::getDevTypeInfoJsonByTypeName(const String& deviceTypeName, bool includePlugAndPlayInfo) const
+{
+    // Get the device type info
+    const BusI2CDevTypeRecord* pDevTypeRec = getDeviceInfo(deviceTypeName);
+
+    // Get JSON for device type
+    return pDevTypeRec ? pDevTypeRec->getJson(includePlugAndPlayInfo) : "{}";
 }

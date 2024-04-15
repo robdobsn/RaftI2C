@@ -38,30 +38,33 @@ public:
     }
 
     // Bus element access barring
-    void barElemAccessSet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
-    bool barElemAccessGet(uint32_t timeNowMs, RaftI2CAddrAndSlot addrAndSlot);
+    void barElemAccessSet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
+    bool barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot);
 
     // Check if element is online
-    BusOperationStatus isElemOnline(RaftI2CAddrAndSlot addrAndSlot);
+    BusOperationStatus isElemOnline(BusI2CAddrAndSlot addrAndSlot) const;
 
     // Update bus element state
     // Returns true if state has changed
-    bool updateBusElemState(RaftI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline);
+    bool updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline);
 
     // Get count of address status records
     uint32_t getAddrStatusCount() const;
 
     // Check if address is already detected on an extender
-    bool isAddrFoundOnAnyExtender(uint32_t addr);
+    bool isAddrFoundOnAnyExtender(uint32_t addr) const;
 
     // Set bus element device status (which includes device type and can be empty) for an address
-    void setBusElemDeviceStatus(RaftI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus);
+    void setBusElemDeviceStatus(BusI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus);
+
+    // Get device type index by address
+    uint16_t getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) const;
 
     // Get pending ident poll
     bool getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, RaftI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
 
     /// @brief Get ident poll last update time ms
     /// @return ident poll last update time ms
@@ -104,7 +107,20 @@ private:
 
     // Find address record
     // Assumes semaphore already taken
-    BusI2CAddrStatus* findAddrStatusRecord(RaftI2CAddrAndSlot addrAndSlot)
+    const BusI2CAddrStatus* findAddrStatusRecord(BusI2CAddrAndSlot addrAndSlot) const
+    {
+        for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+        {
+            if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
+                    (addrStatus.addrAndSlot.slotPlus1 == addrAndSlot.slotPlus1))
+                return &addrStatus;
+        }
+        return nullptr;
+    }
+
+    // Find address record editable
+    // Assumes semaphore already taken
+    BusI2CAddrStatus* findAddrStatusRecordEditable(BusI2CAddrAndSlot addrAndSlot)
     {
         for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
         {

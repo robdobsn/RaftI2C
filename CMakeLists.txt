@@ -1,27 +1,29 @@
 
 # Resister the component
 idf_component_register(
-                SRCS 
-                  "components/RaftI2C/I2CCentral/RaftI2CCentral.cpp"
-                  "components/RaftI2C/BusI2C/BusAccessor.cpp"
-                  "components/RaftI2C/BusI2C/BusI2C.cpp"
-                  "components/RaftI2C/BusI2C/BusI2CAddrStatus.cpp"
-                  "components/RaftI2C/BusI2C/BusI2CESPIDF.cpp"
-                  "components/RaftI2C/BusI2C/BusI2CScheduler.cpp"
-                  "components/RaftI2C/BusI2C/BusScanner.cpp"
-                  "components/RaftI2C/BusI2C/BusStatusMgr.cpp"
-                  "components/RaftI2C/BusI2C/BusExtenderMgr.cpp"
-                  "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
-                  "components/RaftI2C/BusI2C/DevicePollingMgr.cpp"
-                  "components/RaftI2C/BusI2C/DeviceTypeRecords.cpp"
-                  "components/RaftI2C/BusI2C/DeviceStatus.cpp"
-                INCLUDE_DIRS
-                  "components/RaftI2C/I2CCentral"
-                  "components/RaftI2C/BusI2C"
-                  "${CMAKE_BINARY_DIR}"
-                REQUIRES
-                  raftcore-src
-                )
+    NAME
+      RaftI2C
+    SRCS 
+      "components/RaftI2C/I2CCentral/RaftI2CCentral.cpp"
+      "components/RaftI2C/BusI2C/BusAccessor.cpp"
+      "components/RaftI2C/BusI2C/BusI2C.cpp"
+      "components/RaftI2C/BusI2C/BusI2CAddrStatus.cpp"
+      "components/RaftI2C/BusI2C/BusI2CESPIDF.cpp"
+      "components/RaftI2C/BusI2C/BusI2CScheduler.cpp"
+      "components/RaftI2C/BusI2C/BusScanner.cpp"
+      "components/RaftI2C/BusI2C/BusStatusMgr.cpp"
+      "components/RaftI2C/BusI2C/BusExtenderMgr.cpp"
+      "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
+      "components/RaftI2C/BusI2C/DevicePollingMgr.cpp"
+      "components/RaftI2C/BusI2C/DeviceTypeRecords.cpp"
+      "components/RaftI2C/BusI2C/DeviceStatus.cpp"
+    INCLUDE_DIRS
+      "components/RaftI2C/I2CCentral"
+      "components/RaftI2C/BusI2C"
+      "${CMAKE_BINARY_DIR}"
+    REQUIRES
+      RaftCore
+    )
 
 # Find Python
 find_package(Python3 REQUIRED)

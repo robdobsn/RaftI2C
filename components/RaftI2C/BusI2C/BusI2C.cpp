@@ -362,7 +362,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 #endif
 
     // Check if this address is barred for a period
-    RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
     if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
         return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
@@ -423,7 +423,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
 #endif
 
     // Check if this address is barred for a period
-    RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
     if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
         return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
 
@@ -463,7 +463,7 @@ bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
 {
     if (pIsValid)
         *pIsValid = true;
-    return _busStatusMgr.isElemOnline(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address)) == BusOperationStatus::BUS_OPERATION_OK;
+    return _busStatusMgr.isElemOnline(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address)) == BusOperationStatus::BUS_OPERATION_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -490,6 +490,31 @@ void BusI2C::hiatus(uint32_t forPeriodMs)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get JSON for device type info
+/// @param address Address of element
+/// @return JSON string
+String BusI2C::getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const
+{
+    // Get device type index
+    uint16_t deviceTypeIdx = _busStatusMgr.getDeviceTypeIndexByAddr(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
+    if (deviceTypeIdx == DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
+        return "{}";
+
+    // Get device type info
+    return _deviceIdentMgr.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get JSON for device type info
+/// @param deviceType Device type
+/// @return JSON string
+String BusI2C::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const
+{
+    // Get device type info
+    return _deviceIdentMgr.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for ident poll responses
 /// @return JSON string
 
@@ -512,7 +537,7 @@ String BusI2C::getIdentPollResponsesJson()
             _busStatusMgr.pollResponsesGet(address, devicePollResponseData, responseSize, deviceTypeIndex, 0);
 
             // Use device identity manager to convert to JSON
-            String jsonData = _deviceIdentMgr.identPollRespToJson(RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 
+            String jsonData = _deviceIdentMgr.identPollRespToJson(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 
                             deviceTypeIndex, devicePollResponseData, responseSize);
             if (jsonData.length() > 0)
             {

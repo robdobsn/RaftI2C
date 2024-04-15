@@ -25,17 +25,29 @@ public:
     void setup(const RaftJsonIF& config);
   
     // Identify device
-    void identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
+    void identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
 
     // Communicate with device to check identity
-    bool checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
+    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
     // Process device initialisation
-    bool processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
+    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
     // Format device poll responses to JSON
-    String identPollRespToJson(const RaftI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+    String identPollRespToJson(const BusI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
                     const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize);
+
+    // Get device type info JSON by device type index
+    const String getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bool includePlugAndPlayInfo) const
+    {
+        return _deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+    }
+
+    // Get device type info JSON by device type name
+    const String getDevTypeInfoJsonByTypeName(const String& deviceTypeName, bool includePlugAndPlayInfo) const
+    {
+        return _deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceTypeName, includePlugAndPlayInfo);
+    }
 
 private:
     // Device indentification enabled

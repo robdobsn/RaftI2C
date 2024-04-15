@@ -46,7 +46,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
         // Get the address and slot
         if (pollInfo.pollReqs.size() == 0)
             return;
-        RaftI2CAddrAndSlot addrAndSlot = pollInfo.pollReqs[0].getAddrAndSlot();
+        BusI2CAddrAndSlot addrAndSlot = pollInfo.pollReqs[0].getAddrAndSlot();
 
         // Check if a bus extender slot is specified
         if (addrAndSlot.slotPlus1 > 0)

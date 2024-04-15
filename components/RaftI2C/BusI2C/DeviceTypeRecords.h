@@ -13,14 +13,35 @@
 #include "DevicePollingInfo.h"
 #include "RaftJson.h"
 
-struct BusI2CDevTypeRecord
+class BusI2CDevTypeRecord
 {
+public:
     const char* deviceType;
     const char* addresses;
     const char* detectionValues;
     const char* initValues;
     const char* pollingConfigJson;
     const char* devInfoJson;
+
+    String getJson(bool includePlugAndPlayInfo) const
+    {
+        // Check if plug and play info required
+        if (!includePlugAndPlayInfo)
+        {
+            return devInfoJson;
+        }
+
+        // Form JSON string
+        String devTypeInfo = "{";
+        devTypeInfo += "\"type\":\"" + String(deviceType) + "\",";
+        devTypeInfo += "\"addr\":\"" + String(addresses) + "\",";
+        devTypeInfo += "\"det\":\"" + String(detectionValues) + "\",";
+        devTypeInfo += "\"init\":\"" + String(initValues) + "\",";
+        devTypeInfo += "\"poll\":\"" + String(pollingConfigJson) + "\",";
+        devTypeInfo += "\"info\":" + String(devInfoJson);
+        devTypeInfo += "}";
+        return devTypeInfo;
+    }
 };
 
 class DeviceTypeRecords
@@ -31,7 +52,7 @@ public:
     /// @brief Get device type for address
     /// @param addrAndSlot i2c address and slot
     /// @returns device type indexes that match the address
-    std::vector<uint16_t> getDeviceTypeIdxsForAddr(RaftI2CAddrAndSlot addrAndSlot) const;
+    std::vector<uint16_t> getDeviceTypeIdxsForAddr(BusI2CAddrAndSlot addrAndSlot) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type record for a device type index
@@ -49,7 +70,21 @@ public:
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
     /// @param pollRequests (out) polling info
-    void getPollInfo(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
+    void getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type info JSON by device type index
+    /// @param deviceTypeIdx device type index
+    /// @param includePlugAndPlayInfo include plug and play info
+    /// @return JSON string
+    String getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bool includePlugAndPlayInfo) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type info JSON by device type name
+    /// @param deviceType device type name
+    /// @param includePlugAndPlayInfo include plug and play info
+    /// @return JSON string
+    String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const;
 
     // Device detection record
     class DeviceDetectionRec
@@ -69,12 +104,12 @@ public:
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
     /// @param initBusRequests (out) initialisation bus requests
-    void getInitBusRequests(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
+    void getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
 
     /// @brief Convert poll response to JSON
     /// @param pDevTypeRec pointer to device type record
     /// @param devicePollResponseData device poll response data
-    String pollRespToJson(RaftI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData);
+    String pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData);
 
 private:
 
@@ -83,6 +118,6 @@ private:
     static bool extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
                 std::vector<uint8_t>& readDataCheck, bool maskToZeros);
 
-    bool isAddrInRange(const String& addresses, RaftI2CAddrAndSlot addrAndSlot) const;
+    bool isAddrInRange(const String& addresses, BusI2CAddrAndSlot addrAndSlot) const;
     std::vector<uint8_t> convertAddressesToList(const String& addresses) const;
 };

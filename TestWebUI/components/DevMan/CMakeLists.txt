@@ -4,6 +4,6 @@ idf_component_register(
     INCLUDE_DIRS
         "."
     REQUIRES
-        raftcore-src
+        RaftCore
         RaftI2C
 )

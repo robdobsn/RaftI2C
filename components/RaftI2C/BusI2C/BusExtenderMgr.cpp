@@ -129,7 +129,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, uint32_t channelMask)
 {
     // Initialise bus extender
-    RaftI2CAddrAndSlot addrAndSlot(addr, 0);
+    BusI2CAddrAndSlot addrAndSlot(addr, 0);
     uint8_t writeData[1] = { uint8_t(channelMask) };
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
                 addrAndSlot,

@@ -43,7 +43,7 @@ void DeviceIdentMgr::setup(const RaftJsonIF& config)
 // selected if it is on a bus extender, etc.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus)
+void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus)
 {
     // Clear device status
     deviceStatus.clear();
@@ -104,7 +104,7 @@ void DeviceIdentMgr::identifyDevice(const RaftI2CAddrAndSlot& addrAndSlot, Devic
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
+bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
 {
     // Get the detection records
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
@@ -192,7 +192,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const RaftI2CAddrAndSlot& addrAndSlot,
 // Process initialisation of a device
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
+bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
 {
     // Get initialisation bus requests
     std::vector<BusI2CRequestRec> initBusRequests;
@@ -216,7 +216,7 @@ bool DeviceIdentMgr::processDeviceInit(const RaftI2CAddrAndSlot& addrAndSlot, co
 // Format device poll responses to JSON
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-String DeviceIdentMgr::identPollRespToJson(const RaftI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+String DeviceIdentMgr::identPollRespToJson(const BusI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize)
 {
     // Get device type info

@@ -339,7 +339,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
         for (PollingVectorItem& pollItem : _pollingVector)
         {
             if (pollItem.pollReq.getAddrAndSlot() == 
-                        RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddressUint32()))
+                        BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddressUint32()))
             {
                 // Replace request record
                 addedOk = true;

@@ -127,27 +127,72 @@ void HWDevMan::loop()
 
 void HWDevMan::addRestAPIEndpoints(RestAPIEndpointManager &endpointManager)
 {
-    // TODO - implement API
-
-    // Control
-    // endpointManager.addEndpoint("devmantest", RestAPIEndpoint::ENDPOINT_CALLBACK, RestAPIEndpoint::ENDPOINT_GET,
-    //                         std::bind(&HWDevMan::apiControl, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
-    //                         "devmantest");
-    // LOG_I(MODULE_PREFIX, "addRestAPIEndpoints devmantest");
+    // REST API endpoints
+    endpointManager.addEndpoint("devman", RestAPIEndpoint::ENDPOINT_CALLBACK, RestAPIEndpoint::ENDPOINT_GET,
+                            std::bind(&HWDevMan::apiDevMan, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
+                            "devman/typeinfo?bus=<busName>&type=<typename> - Get device info for type");
+    LOG_I(MODULE_PREFIX, "addRestAPIEndpoints added devman");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Control via API
+// REST API DevMan
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftRetCode HWDevMan::apiControl(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo)
+RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo)
 {
-    // Check for set pulse count
-    String cmdStr = RestAPIEndpointManager::getNthArgStr(reqStr.c_str(), 1);
-    LOG_I(MODULE_PREFIX, "apiControl cmdStr %s", cmdStr.c_str());
+    // Get device info
+    std::vector<String> params;
+    std::vector<RaftJson::NameValuePair> nameValues;
+    RestAPIEndpointManager::getParamsAndNameValues(reqStr.c_str(), params, nameValues);
+    RaftJson jsonParams = RaftJson::getJSONFromNVPairs(nameValues, true); 
+
+    // Get command
+    String cmdName = reqStr;
+    if (params.size() > 1)
+        cmdName = params[1];
+
+    // Check command
+    if (cmdName.equalsIgnoreCase("typeinfo"))
+    {
+        // Get bus name
+        String busName = jsonParams.getString("bus", "");
+        if (busName.length() == 0)
+        {
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusMissing");
+        }
+
+        // Get device name
+        String devTypeName = jsonParams.getString("type", "");
+        if (devTypeName.length() == 0)
+        {
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeMissing");
+        }
+
+        // Find the bus
+        String devInfo;
+        for (BusBase* pBusElem : _busList)
+        {
+            if (pBusElem && pBusElem->getBusName().equalsIgnoreCase(busName))
+            {
+                // Access the bus
+                // TODO - refactor
+                devInfo = ((BusI2C*)pBusElem)->getDevTypeInfoJsonByTypeName(devTypeName, false);
+                break;
+            }
+        }
+
+        // Check device info
+        if (devInfo.length() == 0)
+        {
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
+        }
+
+        // Set result
+        return Raft::setJsonBoolResult(reqStr.c_str(), respStr, true, ("\"devinfo\":" + devInfo).c_str());
+    }
 
     // Set result
-    return Raft::setJsonBoolResult(reqStr.c_str(), respStr, false);
+    return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failUnknownCmd");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

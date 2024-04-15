@@ -16,7 +16,7 @@ class BusI2CAddrStatus
 {
 public:
     // Address and slot
-    RaftI2CAddrAndSlot addrAndSlot;
+    BusI2CAddrAndSlot addrAndSlot;
 
     // Online/offline count
     int8_t count = 0;

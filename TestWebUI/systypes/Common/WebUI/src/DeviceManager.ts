@@ -428,7 +428,7 @@ export class DeviceManager {
             Object.entries(data).forEach(([busName, devices]) => {
                 
                 // Iterate over the devices
-                Object.entries(devices).forEach(([devAddr, msgElem]) => {
+                Object.entries(devices).forEach(async ([devAddr, msgElem]) => {
 
                     // Device key
                     const deviceKey = getDeviceKey(busName, devAddr);
@@ -438,12 +438,9 @@ export class DeviceManager {
 
                         const deviceTypeName = "t" in msgElem ? (msgElem.t === undefined ? "" : msgElem.t) : "";
 
-                        // Get the device type info for this device
-                        const deviceTypeInfo = this.getDeviceTypeInfo(deviceTypeName);
-
                         // Create device record
                         this._devicesState[devAddr] = {
-                            deviceTypeInfo: deviceTypeInfo,
+                            deviceTypeInfo: await this.getDeviceTypeInfo(busName, devAddr, deviceTypeName),
                             deviceTimeline: [],
                             deviceAttributes: {},
                             deviceRecordNew: true,
@@ -498,13 +495,10 @@ export class DeviceManager {
                                 const attrHexChars = attrBytes * 2;
                                 // Convert the value using python-struct
                                 let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0];
-                                if ("m" in attr && attr.m != undefined) {
-                                    value = value & attr.m;
-                                }
                                 if ("d" in attr && attr.d != undefined && attr.d != 0) {
                                     value = value / attr.d;
                                 }
-                                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} value ${value}`);
+                                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
                                 hexStrIdx += attrHexChars;
                                 attrIdx++;
 
@@ -688,107 +682,36 @@ export class DeviceManager {
     // Get device type info
     ////////////////////////////////////////////////////////////////////////////
 
-    private getDeviceTypeInfo(deviceKey: string): DeviceTypeInfo {
+    private async getDeviceTypeInfo(busName: string, devAddr: string, deviceType: string): Promise<DeviceTypeInfo> {
 
         if (this._testDeviceTypeRecs) {
-            return this._testDeviceTypeRecs.devTypes[deviceKey].devInfoJson;
+            return this._testDeviceTypeRecs.devTypes[deviceType].devInfoJson;
         }
 
-        // TODO - implement REST API call
-
-        // // TODO - remove this
-        // if (deviceKey === "I2CA_0x60@1") {
-        //     return {
-        //         "name": "VCNL4040",
-        //         "desc": "Prox&ALS",
-        //         "manu": "Vishay",
-        //         "type": "VCNL4040",
-        //         "attr": {
-        //             "x" : 
-        //             [
-        //                 {
-        //                     "n": "prox",
-        //                     "t": "<H",
-        //                     "u": "prox",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 1
-        //                 },
-        //                 {
-        //                     "n": "als",
-        //                     "t": "<H",
-        //                     "u": "lux",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 10
-        //                 },
-        //                 {
-        //                     "n": "white",
-        //                     "t": "<H",
-        //                     "u": "lux",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 10
-        //                 }
-        //             ]
-        //         }
-        //     }
-        // } else if (deviceKey === "I2CA_0x1d@1") {
-        //     return {
-        //         "name": "ADXL313",
-        //         "desc": "3-Axis Accel",
-        //         "manu": "Analog Devices",
-        //         "type": "ADXL313",
-        //         "attr": {
-        //             "x": 
-        //             [
-        //                 {
-        //                     "n": "x",
-        //                     "t": "<H",
-        //                     "u": "",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 1
-        //                 },
-        //                 {
-        //                     "n": "y",
-        //                     "t": "<H",
-        //                     "u": "",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 1
-        //                 },
-        //                 {
-        //                     "n": "z",
-        //                     "t": "<H",
-        //                     "u": "",
-        //                     "r": [
-        //                         0,
-        //                         65535
-        //                     ],
-        //                     "d": 1
-        //                 }
-        //             ]
-        //         }
-        //     }
-        // }
-
-        return {
-            "name": "Unknown",
-            "desc": "Unknown",
-            "manu": "Unknown",
-            "type": "Unknown",
-            "attr": {}
-        };
+        // Get the device type info from the server
+        try {
+            const getDevTypeInfoResponse = await fetch(this._serverAddressPrefix + this._urlPrefix + "/devman/typeinfo?bus=" + busName + "&type=" + deviceType);
+            if (!getDevTypeInfoResponse.ok) {
+                console.error(`DeviceManager getDeviceTypeInfo response not ok ${getDevTypeInfoResponse.status}`);
+                return {
+                    "name": "Unknown",
+                    "desc": "Unknown",
+                    "manu": "Unknown",
+                    "type": "Unknown",
+                    "attr": {}
+                };
+            }
+            const devTypeInfo = await getDevTypeInfoResponse.json();
+            return devTypeInfo;
+        } catch (error) {
+            console.error(`DeviceManager getDeviceTypeInfo error ${error}`);
+            return {
+                "name": "Unknown",
+                "desc": "Unknown",
+                "manu": "Unknown",
+                "type": "Unknown",
+                "attr": {}
+            };
+        }
     }
 }

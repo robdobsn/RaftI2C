@@ -9,20 +9,22 @@
 class DeviceStatus
 {
 public:
+    static const uint16_t DEVICE_TYPE_INDEX_INVALID = USHRT_MAX;
+
     DeviceStatus()
     {
     }
 
     void clear()
     {
-        deviceTypeIndex = USHRT_MAX;
+        deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
         deviceIdentPolling.clear();
         dataAggregator.clear();
     }
 
     bool isValid() const
     {
-        return deviceTypeIndex != USHRT_MAX;
+        return deviceTypeIndex != DEVICE_TYPE_INDEX_INVALID;
     }
 
     // Get pending ident poll info
@@ -41,7 +43,7 @@ public:
     }
 
     // Device type index
-    uint16_t deviceTypeIndex = USHRT_MAX;
+    uint16_t deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
 
     // Device ident polling - polling related to the device type
     DevicePollingInfo deviceIdentPolling;

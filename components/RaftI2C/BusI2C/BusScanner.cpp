@@ -207,7 +207,7 @@ void BusScanner::discoverAddressElems(uint8_t addr)
 
 RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
 {
-    RaftI2CAddrAndSlot addrAndSlot(addr, 0);
+    BusI2CAddrAndSlot addrAndSlot(addr, 0);
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_SLOW_SCAN,
                 addrAndSlot,
                 0, 0, 
@@ -283,7 +283,7 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentral
 {
     // Update bus element state
     bool isOnline = false;
-    bool isChange = _busStatusMgr.updateBusElemState(RaftI2CAddrAndSlot(addr, slot), 
+    bool isChange = _busStatusMgr.updateBusElemState(BusI2CAddrAndSlot(addr, slot), 
                     accessResult == RaftI2CCentralIF::ACCESS_RESULT_OK, isOnline);
 
 #ifdef DEBUG_BUS_SCANNER
@@ -296,9 +296,9 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentral
     {
         // Attempt to identify the device
         DeviceStatus deviceStatus;
-        _deviceIdentMgr.identifyDevice(RaftI2CAddrAndSlot(addr, slot), deviceStatus);
+        _deviceIdentMgr.identifyDevice(BusI2CAddrAndSlot(addr, slot), deviceStatus);
 
         // Set device status into bus status manager for this address
-        _busStatusMgr.setBusElemDeviceStatus(RaftI2CAddrAndSlot(addr, slot), deviceStatus);
+        _busStatusMgr.setBusElemDeviceStatus(BusI2CAddrAndSlot(addr, slot), deviceStatus);
     }
 }

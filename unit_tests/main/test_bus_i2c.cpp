@@ -31,7 +31,7 @@ std::vector<BusElemAddrAndStatus> statusChangesList;
 BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
 
 // Test configuration
-std::vector<RaftI2CAddrAndSlot> testConfigOnlineAddrList;
+std::vector<BusI2CAddrAndSlot> testConfigOnlineAddrList;
 uint32_t busExtenderStatusChanMask[I2C_BUS_EXTENDERS_MAX] = {0};
 
 // Callback for bus operating
@@ -65,7 +65,7 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
     // LOG_I(MODULE_PREFIX, "busReqSyncFn addr@slot+1 %s pollListIdx %d", 
     //                 pReqRec->getAddrAndSlot().toString().c_str(), pollListIdx);
     
-    RaftI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
     uint32_t addr = addrAndSlot.addr;
     RaftI2CCentralIF::AccessResultCode reslt = RaftI2CCentralIF::ACCESS_RESULT_ACK_ERROR;
 
@@ -169,12 +169,12 @@ void helper_reset_status_changes_list()
     statusChangesList.clear();
 }
 
-void helper_set_online_addrs(const std::vector<RaftI2CAddrAndSlot>& onlineAddrs)
+void helper_set_online_addrs(const std::vector<BusI2CAddrAndSlot& onlineAddrs)
 {
     testConfigOnlineAddrList = onlineAddrs;
 }
 
-void helper_setup_i2c_tests(std::vector<RaftI2CAddrAndSlot> onlineAddrs)
+void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
 {    
     busStatus = BUS_OPERATION_UNKNOWN;
     statusChangesList.clear();
@@ -202,7 +202,7 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
     }
 }
 
-void helper_elem_states_handle(const std::vector<RaftI2CAddrAndSlot>& addrs, bool elemResponding, uint32_t count)
+void helper_elem_states_handle(const std::vector<BusI2CAddrAndSlot>& addrs, bool elemResponding, uint32_t count)
 {
     for (int i = 0; i < count; i++)
     {
@@ -245,12 +245,12 @@ bool helper_check_bus_extender_list(std::vector<uint32_t> busExtenderList)
     return true;
 }
 
-bool helper_check_online_offline_elems(std::vector<RaftI2CAddrAndSlot> onlineElems)
+bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElems)
 {
     // Create a list of all addresses
-    std::vector<RaftI2CAddrAndSlot> offlineAddrs;
+    std::vector<BusI2CAddrAndSlot> offlineAddrs;
     for (int i = I2C_BUS_ADDRESS_MIN; i < I2C_BUS_ADDRESS_MAX; i++)
-        offlineAddrs.push_back(RaftI2CAddrAndSlot(i,0));
+        offlineAddrs.push_back(BusI2CAddrAndSlot(i,0));
 
     // Go through addresses that should be online
     for (auto addr : onlineElems)
@@ -393,9 +393,9 @@ TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
 TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
 {
     // Setup test
-    RaftI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
-    RaftI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    RaftI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
+    BusI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
+    BusI2CAddrAndSlot extenderAddr1 = {0x73, 0};
+    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -414,8 +414,8 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr1.addr}), "busExtenderInitialised not true");
 
     // Add two further slotted addresses
-    RaftI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
-    RaftI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
+    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
+    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time

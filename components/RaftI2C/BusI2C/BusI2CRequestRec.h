@@ -9,7 +9,7 @@
 #pragma once
 
 #include "BusRequestInfo.h"
-#include "BusI2CConsts.h"
+#include "BusI2CAddrAndSlot.h"
 #include "RaftI2CCentralIF.h"
 #include <functional>
 
@@ -32,7 +32,7 @@ public:
         _pollFreqHz = 1;
         _barAccessForMsAfterSend = 0;
     };
-    BusI2CRequestRec(BusReqType busReqType, RaftI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
+    BusI2CRequestRec(BusReqType busReqType, BusI2CAddrAndSlot addrAndSlot, uint32_t cmdId, uint32_t writeDataLen, 
                 const uint8_t* pWriteData, uint32_t readReqLen, uint32_t barAccessForMsAfterSend,
                 BusRequestCallbackType busReqCallback, void* pCallbackData)
     {
@@ -60,7 +60,7 @@ public:
         clear();
         _readReqLen = reqInfo.getReadReqLen();
         _reqBuf.assign(reqInfo.getWriteData(), reqInfo.getWriteData()+reqInfo.getWriteDataLen());
-        _addrAndSlot = RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(reqInfo.getAddressUint32());
+        _addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqInfo.getAddressUint32());
         _cmdId = reqInfo.getCmdId();
         _pCallbackData = reqInfo.getCallbackParam();
         _busReqCallback = reqInfo.getCallback();
@@ -121,7 +121,7 @@ public:
     {
         return _busReqType;
     }
-    RaftI2CAddrAndSlot getAddrAndSlot() const
+    BusI2CAddrAndSlot getAddrAndSlot() const
     {
         return _addrAndSlot;
     }
@@ -133,7 +133,7 @@ public:
     {
         return _barAccessForMsAfterSend;
     }
-    RaftI2CAddrAndSlot _addrAndSlot;
+    BusI2CAddrAndSlot _addrAndSlot;
     uint32_t _cmdId = 0;
     uint32_t _readReqLen = 0;
     void* _pCallbackData = nullptr;

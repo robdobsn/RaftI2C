@@ -93,7 +93,7 @@ private:
 
     // Helper functions
     void deinit();
-    RaftRetCode apiControl(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo);
+    RaftRetCode apiDevMan(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo);
     void saveMutableData();
     void debugShowCurrentState();
     void getStatusHash(std::vector<uint8_t>& stateHash);

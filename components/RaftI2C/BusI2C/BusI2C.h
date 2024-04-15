@@ -91,6 +91,12 @@ public:
 
     // TODO - make these override base-class methods
 
+    // Get device type information by address
+    String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const;
+
+    // Get device type inforamtion by type name
+    String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const;
+
     // Get time of last update to ident poll data
     uint32_t getIdentPollLastUpdateMs()
     {
@@ -132,8 +138,9 @@ public:
 
     virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) override
     {
-        RaftI2CAddrAndSlot addrAndSlot = RaftI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
-        return addrAndSlot.toString() + "=" + (busElemAddr.isChangeToOnline ? "Online" : "Offline");
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
+        return addrAndSlot.toString() + ":" +
+                        (busElemAddr.isChangeToOnline ? "Online" : "Offline" + String(busElemAddr.isChangeToOffline ? " (was online)" : ""));
     }     
 
 private:
