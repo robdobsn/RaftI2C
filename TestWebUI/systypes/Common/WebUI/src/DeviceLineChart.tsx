@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
@@ -41,7 +41,7 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
         responsive: true,
         maintainAspectRatio: false,
         animation: {
-            duration: 10, // default is 1000ms
+            duration: 1, // default is 1000ms
         },
     };
 
@@ -56,6 +56,9 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
         humidity: "hsl(200, 70%, 60%)",
     };
 
+    const updateTimer = useRef<NodeJS.Timeout | null>(null);
+    const latestData = useRef({ deviceAttributes, deviceTimeline });
+    
     // Initialize the chart data
     useEffect(() => {
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
@@ -74,22 +77,35 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
 
         setChartData({ labels, datasets });
     }, []);
-    
-    // Update chart data when deviceState changes
+
+    // Using state to track whether an update is scheduled
+    const [isUpdateScheduled, setIsUpdateScheduled] = useState(false);
+
     useEffect(() => {
-        setChartData(prevChartData => {
-            const dataLabels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-            const newDataSets = prevChartData.datasets.map(dataset => {
-                const newValues = deviceAttributes[dataset.label]?.values.slice(-MAX_DATA_POINTS) || [];
-                return { ...dataset, data: newValues };
-            });
-    
-            return {
-                ...prevChartData,
-                labels: dataLabels,
-                datasets: newDataSets
-            };
-        });
+        latestData.current = { deviceAttributes, deviceTimeline };
+
+        if (!isUpdateScheduled) {
+            setIsUpdateScheduled(true);
+            setTimeout(() => {
+                const { deviceAttributes, deviceTimeline } = latestData.current;
+                const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+                const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
+                    const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
+                    const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
+                    return {
+                        label: attributeName,
+                        data: data,
+                        fill: false,
+                        borderColor: colour,
+                        backgroundColor: colour
+                    };
+                });
+
+                setChartData({ labels, datasets });
+                setIsUpdateScheduled(false);
+            }, 500);
+        }
     }, [lastUpdated]);
+
     return <Line data={chartData} options={options} />;
 };
