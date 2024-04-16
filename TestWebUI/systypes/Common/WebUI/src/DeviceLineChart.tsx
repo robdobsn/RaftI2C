@@ -103,7 +103,7 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
 
                 setChartData({ labels, datasets });
                 setIsUpdateScheduled(false);
-            }, 500);
+            }, 1000);
         }
     }, [lastUpdated]);
 

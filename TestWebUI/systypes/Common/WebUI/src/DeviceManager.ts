@@ -45,6 +45,9 @@ export class DeviceManager {
     private _lastStateUpdate: number = 0;
     private MAX_TIME_BETWEEN_STATE_UPDATES_MS: number = 60000;
 
+    // Device data series max values to store
+    private MAX_DATA_POINTS_TO_STORE = 100;
+
     // Websocket
     private _websocket: WebSocket | null = null;
 
@@ -460,8 +463,6 @@ export class DeviceManager {
                         const origTimestamp = timestamp;
                         timestamp += this._devicesState[devAddr].reportTimestampOffsetMs;
 
-                        // TODO - impose a limit on the number of elements to store in the deviceTimeline and deviceAttributes[].values arrays
-
                         // Flag indicating any attrs added
                         let attrsAdded = false;
 
@@ -498,6 +499,11 @@ export class DeviceManager {
 
                                 // Check if attribute already exists in the device state
                                 if (attr.n in this._devicesState[devAddr].deviceAttributes) {
+
+                                    // Limit to MAX_DATA_POINTS_TO_STORE
+                                    if (this._devicesState[devAddr].deviceAttributes[attr.n].values.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                                        this._devicesState[devAddr].deviceAttributes[attr.n].values.shift();
+                                    }
                                     this._devicesState[devAddr].deviceAttributes[attr.n].values.push(value);
                                     this._devicesState[devAddr].deviceAttributes[attr.n].newData = true;
                                 } else {
@@ -516,6 +522,10 @@ export class DeviceManager {
 
                         // If any attributes added then add the timestamp to the device timeline
                         if (attrsAdded) {
+                            // Limit to MAX_DATA_POINTS_TO_STORE
+                            if (this._devicesState[devAddr].deviceTimeline.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                                this._devicesState[devAddr].deviceTimeline.shift();
+                            }
                             this._devicesState[devAddr].deviceTimeline.push(timestamp);
                         }
                     });
