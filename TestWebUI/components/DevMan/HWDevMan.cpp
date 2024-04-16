@@ -264,6 +264,8 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
         // Check bus
         if (pBus)
         {
+            // TODO - maybe change getIdentPollLastUpdateMs to a more generic function that gets last update of any kind
+
             // Check bus status
             uint32_t identPollLastMs = ((BusI2C*)pBus)->getIdentPollLastUpdateMs();
             stateHash.push_back(identPollLastMs & 0xff);

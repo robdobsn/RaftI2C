@@ -30,7 +30,7 @@ interface ChartJSData {
 }
 
 export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, lastUpdated }) => {
-    const { deviceAttributes } = deviceState;
+    const { deviceAttributes, deviceTimeline } = deviceState;
     const MAX_DATA_POINTS = 100;
     const [chartData, setChartData] = useState<ChartJSData>({
         labels: [],
@@ -58,8 +58,8 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
 
     // Initialize the chart data
     useEffect(() => {
-        const labels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-        const datasets = Object.entries(deviceState.deviceAttributes).map(([attributeName, attributeDetails]) => {
+        const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+        const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
             const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
             // Generate a consistent color for each attribute line
             const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
@@ -78,9 +78,9 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
     // Update chart data when deviceState changes
     useEffect(() => {
         setChartData(prevChartData => {
-            const dataLabels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+            const dataLabels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
             const newDataSets = prevChartData.datasets.map(dataset => {
-                const newValues = deviceState.deviceAttributes[dataset.label]?.values.slice(-MAX_DATA_POINTS) || [];
+                const newValues = deviceAttributes[dataset.label]?.values.slice(-MAX_DATA_POINTS) || [];
                 return { ...dataset, data: newValues };
             });
     
