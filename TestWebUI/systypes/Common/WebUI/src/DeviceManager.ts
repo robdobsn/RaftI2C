@@ -3,6 +3,7 @@ import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./Devi
 import { DeviceMsgJson } from "./DeviceMsg";
 import { AttrTypeBytes, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile } from "./DeviceInfo";
 import struct from 'python-struct';
+import TestDataGen from "./TestDataGen";
 
 let testingDeviceTypeRecsConditionalLoadPromise: Promise<any> | null = null;
 if (process.env.TEST_DATA) {
@@ -57,6 +58,7 @@ export class DeviceManager {
 
     // Test device type data
     private _testDeviceTypeRecs: DeviceTypeInfoTestJsonFile | null = null;
+    private _testDataGen = new TestDataGen();
 
     // Constructor
     private constructor() {
@@ -64,45 +66,9 @@ export class DeviceManager {
 
         // Check if test mode
         if (window.location.hostname === "localhost") {
-            // Start timer for testing which sends randomized data
-            let psVals = [50, 150];
-            let iterCount = 0;
-            let psValAltCount = 0;
-            let alsVal = 1000;
-            let alsValInc = 1;
-            let whiteVal = 1000;
-            let whiteValInc = 10;
-            setInterval(() => {
-                const var1 = psVals[psValAltCount] + Math.floor(Math.random() * 10);
-                const var2 = alsVal;
-                const var3 = whiteVal;
-                iterCount++;
-                if (iterCount % 10 === 0) {
-                    psValAltCount = (psValAltCount + 1) % 2;
-                }
-                alsVal += alsValInc + Math.floor(Math.random() * 10);
-                if (iterCount % 1000 === 0) {
-                    alsValInc = -alsValInc;
-                }
-                whiteVal += whiteValInc + Math.floor(Math.random() * 10);
-                if (iterCount % 100 === 0) {
-                    whiteValInc = -whiteValInc;
-                }
-                const tsHexHighLow = ((Date.now()) & 0xffff).toString(16).padStart(4, '0');
-                const psHexLowHigh = ((var1 & 0xff) << 8 | (var1 >> 8)).toString(16).padStart(4, '0');
-                const alsHexLowHigh = ((var2 & 0xff) << 8 | (var2 >> 8)).toString(16).padStart(4, '0');
-                const whiteHexLowHigh = ((var3 & 0xff) << 8 | (var3 >> 8)).toString(16).padStart(4, '0');
-                const msg = `{
-                    "I2CA":
-                        {
-                            "0x60@1": {
-                                "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
-                                "_t": "VCNL4040"
-                            }
-                        }
-                    }`;
-                this.handleDeviceMsgJson(msg);
-            }, 1000);
+            this._testDataGen.start((msg: string) => {
+                this.handleClientMsgJson(msg);
+            });
         }
     }
 
@@ -234,7 +200,7 @@ export class DeviceManager {
                 }, 1000);
             }
             this._websocket.onmessage = (event) => {
-                this.handleDeviceMsgJson(event.data);
+                this.handleClientMsgJson(event.data);
             }
             this._websocket.onclose = () => {
                 console.log(`DeviceManager websocket closed`);
@@ -417,7 +383,7 @@ export class DeviceManager {
     // Handle device message JSON
     ////////////////////////////////////////////////////////////////////////////
 
-    private handleDeviceMsgJson(jsonMsg: string) {
+    private handleClientMsgJson(jsonMsg: string) {
 
         // TODO - put back try/catch
         // try {
@@ -426,10 +392,21 @@ export class DeviceManager {
 
             // Iterate over the buses
             Object.entries(data).forEach(([busName, devices]) => {
+
+                // Check for bus status info
+                if (devices && typeof devices === "object" && "_s" in devices) {
+                    console.log(`DeviceManager bus status ${JSON.stringify(devices._s)}`);
+                    return;
+                }
                 
                 // Iterate over the devices
-                Object.entries(devices).forEach(async ([devAddr, msgElem]) => {
+                Object.entries(devices).forEach(async ([devAddr, attrGroups]) => {
 
+                    // Check for non-device info (starts with _)
+                    if (devAddr.startsWith("_")) {
+                        return;
+                    }
+                    
                     // Device key
                     const deviceKey = getDeviceKey(busName, devAddr);
 
@@ -437,10 +414,10 @@ export class DeviceManager {
                     if (!(devAddr in this._devicesState)) {
                         
                         let deviceTypeName = "";
-                        if (msgElem && typeof msgElem === 'object' && "_t" in msgElem) {
-                            deviceTypeName = msgElem._t || "";
+                        if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups) {
+                            deviceTypeName = attrGroups._t || "";
                         } else {
-                            console.warn(`DeviceManager msgElem ${JSON.stringify(msgElem)}`);
+                            console.warn(`DeviceManager attrGroups ${JSON.stringify(attrGroups)}`);
                         }
 
                         // Create device record
@@ -451,14 +428,21 @@ export class DeviceManager {
                             deviceRecordNew: true,
                             deviceStateChanged: false,
                             lastReportTimestampMs: 0,
-                            reportTimestampOffsetMs: 0
+                            reportTimestampOffsetMs: 0,
+                            deviceIsOnline: true
                         };
                     }
                     
+                    // Check for online/offline state information
+                    if (attrGroups && typeof attrGroups === "object" && "_o" in attrGroups) {
+                        this._devicesState[devAddr].deviceIsOnline = attrGroups._o == "1";
+                    }
+
                     // Iterate attribute groups
-                    Object.entries(msgElem).forEach(([attrGroup, msgHexStr]) => {
+                    Object.entries(attrGroups).forEach(([attrGroup, msgHexStr]) => {
 
                         // Check valid
+                        // TODO - change 4 to number of chars in timestamp hex
                         if (attrGroup.startsWith("_") || (typeof msgHexStr != 'string') || (msgHexStr.length < 4)) {
                             return;
                         }
@@ -521,7 +505,9 @@ export class DeviceManager {
                                         name: attr.n,
                                         newAttribute: true,
                                         newData: true,
-                                        values: [value]
+                                        values: [value],
+                                        units: attr.u || "",
+                                        range: attr.r || [0, 0]
                                     };
                                 }
                                 attrsAdded = true;

@@ -15,6 +15,7 @@ ChartJS.register(
 
 export interface DeviceLineChartProps {
     deviceState: DeviceState;
+    lastUpdated: number;
 }
 
 interface ChartJSData {
@@ -28,8 +29,7 @@ interface ChartJSData {
     }[];
 }
 
-
-export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState }) => {
+export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, lastUpdated }) => {
     const { deviceAttributes } = deviceState;
     const MAX_DATA_POINTS = 100;
     const [chartData, setChartData] = useState<ChartJSData>({
@@ -38,8 +38,10 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState })
     });
 
     const options = {
+        responsive: true,
+        maintainAspectRatio: false,
         animation: {
-            duration: 100, // default is 1000ms
+            duration: 10, // default is 1000ms
         },
     };
 
@@ -77,16 +79,17 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState })
     useEffect(() => {
         setChartData(prevChartData => {
             const dataLabels = deviceState.deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-            const newData = {
+            const newDataSets = prevChartData.datasets.map(dataset => {
+                const newValues = deviceState.deviceAttributes[dataset.label]?.values.slice(-MAX_DATA_POINTS) || [];
+                return { ...dataset, data: newValues };
+            });
+    
+            return {
                 ...prevChartData,
                 labels: dataLabels,
-                datasets: prevChartData.datasets.map(dataset => {
-                    const newValues = deviceState.deviceAttributes[dataset.label].values.slice(-MAX_DATA_POINTS);
-                    return { ...dataset, data: newValues };
-                })
+                datasets: newDataSets
             };
-            return newData;
         });
-    }, [deviceState, chartData]);
+    }, [lastUpdated]);
     return <Line data={chartData} options={options} />;
 };

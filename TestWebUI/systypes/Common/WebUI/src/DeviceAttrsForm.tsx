@@ -12,8 +12,9 @@ const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceState }) 
         <table>
             <thead>
                 <tr>
-                    <th>Attribute Name</th>
-                    <th>Latest Value</th>
+                    <th>Name</th>
+                    <th>Value</th>
+                    <th>Units</th>
                 </tr>
             </thead>
             <tbody>
@@ -23,6 +24,7 @@ const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceState }) 
                         <tr key={attributeName}>
                             <td>{attributeName}</td>
                             <td>{latestValue}</td>
+                            <td>{attributeDetails.units}</td>
                         </tr>
                     );
                 })}

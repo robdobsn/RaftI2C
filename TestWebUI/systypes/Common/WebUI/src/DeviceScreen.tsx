@@ -8,21 +8,27 @@ import './styles.css';
 export interface DeviceScreenProps {
     deviceKey: string;
     data: DeviceState;
+    lastUpdated: number;
 }
 
-const DeviceScreen = (props: DeviceScreenProps) => {
+const DeviceScreen = ({ deviceKey, data, lastUpdated }: DeviceScreenProps) => {
+
+    // Gray out the device screen if the device is offline
+    const isOnline = data.deviceIsOnline;
+    const offlineClass = isOnline ? '' : 'offline';
+
     return (
-      <div className="device-screen">
+      <div className={`device-screen ${offlineClass}`}>
         <div className="device-block-heading">
-          <div className="device-block-heading-text">Device {props.data.deviceTypeInfo.name} Address {props.deviceKey}</div>
+          <div className="device-block-heading-text">Device {data.deviceTypeInfo.name} Address {deviceKey}</div>
         </div>
         <div className="device-block-data">
-          {/* <p>Data: {JSON.stringify(props.data)}</p> */}
+          {/* <p>Data: {JSON.stringify(data)}</p> */}
           <div  className="device-attrs-form">
-            <DeviceAttrsForm deviceState={props.data} />
+            <DeviceAttrsForm deviceState={data} />
           </div>
           <div className="device-line-chart">
-            <DeviceLineChart deviceState={props.data} />
+            <DeviceLineChart deviceState={data} lastUpdated={lastUpdated} />
           </div>
         </div>
       </div>

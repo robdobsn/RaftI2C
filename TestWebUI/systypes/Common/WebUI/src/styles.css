@@ -24,6 +24,15 @@ body, .device-screen, .device-block-heading, .device-attrs-form, .device-line-ch
     border-radius: 8px;
 }
 
+.device-screen.offline {
+    opacity: 0.5; /* Reduces the opacity to 50% */
+    background-color: rgba(50, 50, 50, 0.8); /* Optional: Adds a grey tint */
+}
+
+.device-screen.offline * {
+    pointer-events: none; /* Disables interactions with all child elements */
+}
+
 /* Style for the device heading */
 .device-block-heading {
     padding: 5px 10px; /* Padding inside the heading block */
@@ -54,20 +63,37 @@ body, .device-screen, .device-block-heading, .device-attrs-form, .device-line-ch
 }
 
 .device-line-chart {
+    width: 100%; /* Chart takes the rest of the space */
     flex: 1; /* Chart takes the rest of the space */
     padding: 10px;
     border: 1px solid #666; /* Adjusting border color for dark theme */
     border-radius: 4px;
-    min-height: 10rem;  /* Setting a minimum height to ensure the chart is clearly visible */
+    min-height: 15rem;  /* Setting a minimum height to ensure the chart is clearly visible */
+}
+
+/* Default height for the chart, suitable for landscape orientation */
+.device-line-chart {
+    height: 25vh; /* Chart is approximately 1/4 of the viewport height in landscape */
+}
+
+/* Adjust height for portrait orientation */
+@media (orientation: portrait) {
+    .device-line-chart {
+        height: 16.67vh; /* Chart is approximately 1/6 of the viewport height in portrait */
+    }
 }
 
 /* Responsive adjustments for smaller screens */
 @media (max-width: 600px) {
-    .device-block-data {
-        flex-direction: column;
-    }
     .device-line-chart, .device-attrs-form {
         width: 100%; /* Full width on smaller screens */
-        min-height: 8rem; /* Smaller minimum height for smaller screens */
+        height: 25vh; /* Adjust height to a suitable value on small screens */
+    }
+}
+
+/* Considerations for very large screens or high aspect ratios */
+@media (min-width: 1200px) {
+    .device-line-chart {
+        height: 20vh; /* Slightly reduce the height for very wide screens */
     }
 }

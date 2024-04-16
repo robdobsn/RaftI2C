@@ -16,6 +16,8 @@ export interface DeviceAttribute {
     newAttribute: boolean;
     newData: boolean;
     values: number[];
+    units: string;
+    range: number[];
 }
 
 export interface DeviceAttributes {
@@ -28,6 +30,7 @@ export interface DeviceState {
     deviceAttributes: DeviceAttributes;
     deviceRecordNew: boolean;
     deviceStateChanged: boolean;
+    deviceIsOnline: boolean;
     lastReportTimestampMs: number;
     reportTimestampOffsetMs: number;
 }

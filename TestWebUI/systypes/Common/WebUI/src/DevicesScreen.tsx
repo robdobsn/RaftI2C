@@ -18,6 +18,7 @@ export class DevicesScreenProps {
 
 export default function DevicesScreen(props: DevicesScreenProps) {
     const [devicesState, setDevicesState] = useState<DevicesState>(new DevicesState());
+    const [lastUpdated, setLastUpdated] = useState<number>(0);
     
     useEffect(() => {
         const onNewDevice = (deviceKey: string, newDeviceState: DeviceState) => {
@@ -28,6 +29,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 newState[deviceKey] = newDeviceState;
                 return newState;
             });
+            setLastUpdated(Date.now());
         };
 
         deviceManager.onNewDevice(onNewDevice);
@@ -43,6 +45,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 newState[deviceKey].deviceAttributes[attribute.name] = attribute;
                 return newState;
             });
+            setLastUpdated(Date.now());
         }
 
         deviceManager.onNewDeviceAttribute(onNewAttribute);
@@ -58,6 +61,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 newState[deviceKey].deviceAttributes[attribute.name] = attribute;
                 return newState;
             });
+            setLastUpdated(Date.now());
         }
 
         deviceManager.onNewAttributeData(onNewAttributeData);
@@ -70,7 +74,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
     return (
         <div className="devices-container">
         {Object.entries(devicesState).filter(([key, _]) => key !== 'getDeviceKey').map(([deviceKey, data]) => (
-            <DeviceScreen key={deviceKey} deviceKey={deviceKey} data={data} />
+            <DeviceScreen key={deviceKey} deviceKey={deviceKey} data={data} lastUpdated={lastUpdated} />
         ))}
       </div>
     );
