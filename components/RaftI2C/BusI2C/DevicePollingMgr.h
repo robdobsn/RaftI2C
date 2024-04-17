@@ -22,16 +22,17 @@ public:
     void setup(const RaftJsonIF& config);
 
     // Service from I2C task
-    void taskService(uint32_t timeNowMs);
+    void taskService(uint64_t timeNowUs);
 
     // Poll result handling
-    void pollResultPrepare(uint32_t timeNowMs, const DevicePollingInfo& pollInfo)
+    void pollResultPrepare(uint64_t timeNowUs, const DevicePollingInfo& pollInfo)
     {
         // Set buffer size
         _pollDataResult.resize(pollInfo.pollResultSizeIncTimestamp);
         _pPollDataResult = _pollDataResult.data();
         
         // Store the current time in ms in the poll data result
+        uint32_t timeNowMs = timeNowUs / 1000;
         if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 2)
             Raft::setBEUint16(_pPollDataResult, 0, timeNowMs & 0xffff);
         else if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 4)

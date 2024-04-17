@@ -154,7 +154,7 @@ void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CD
     pollingInfo.numPollResultsToStore = pollInfo.getLong("s", 0);
 
     // Get polling interval
-    pollingInfo.pollIntervalMs = pollInfo.getLong("i", 0);
+    pollingInfo.pollIntervalUs = pollInfo.getLong("i", 0) * 1000;
 
     // Set the poll result size
     pollingInfo.pollResultSizeIncTimestamp = pollResultDataSize + DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
@@ -356,9 +356,12 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 }
 
 /// @brief Convert poll response to JSON
+/// @param addrAndSlot i2c address and slot
+/// @param isOnline true if device is online
 /// @param pDevTypeRec pointer to device type record
 /// @param devicePollResponseData device poll response data
-String DeviceTypeRecords::pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData)
+String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
+        const std::vector<uint8_t>& devicePollResponseData)
 {
     // Device type name
     String devTypeName = pDevTypeRec ? pDevTypeRec->deviceType : "";
@@ -366,7 +369,7 @@ String DeviceTypeRecords::pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const Bu
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
 
-    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"_t\":\"" + devTypeName + "\"}";
+    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"_o\":" + String(isOnline ? "1" : "0") + ",\"_t\":\"" + devTypeName + "\"}";
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -16,16 +16,16 @@ static const char* MODULE_PREFIX = "DeviceStatus";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get pending ident poll requests 
-/// @param timeNowMs time in ms (passed in to aid testing)
+/// @param timeNowUs time in us (passed in to aid testing)
 /// @param pollInfo (out) polling info
 /// @return true if there is a pending request
-bool DeviceStatus::getPendingIdentPollInfo(uint32_t timeNowMs, DevicePollingInfo& pollInfo)
+bool DeviceStatus::getPendingIdentPollInfo(uint64_t timeNowUs, DevicePollingInfo& pollInfo)
 {
     // Check if any pending
-    if (Raft::isTimeout(timeNowMs, deviceIdentPolling.lastPollTimeMs, deviceIdentPolling.pollIntervalMs))
+    if (Raft::isTimeout(timeNowUs, deviceIdentPolling.lastPollTimeUs, deviceIdentPolling.pollIntervalUs))
     {
         // Update timestamp
-        deviceIdentPolling.lastPollTimeMs = timeNowMs;
+        deviceIdentPolling.lastPollTimeUs = timeNowUs;
 
         // Check poll requests isn't empty
         if (deviceIdentPolling.pollReqs.size() == 0)

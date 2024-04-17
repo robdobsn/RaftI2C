@@ -324,7 +324,7 @@ void BusI2C::i2cWorkerTask()
 #endif
 
         // Device polling
-        _devicePollingMgr.taskService(millis());
+        _devicePollingMgr.taskService(micros());
 
         // Perform polling
         // TODO - remove or reconsider how polling works
@@ -514,42 +514,3 @@ String BusI2C::getDevTypeInfoJsonByTypeName(const String& deviceType, bool inclu
     return _deviceIdentMgr.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get JSON for ident poll responses
-/// @return JSON string
-
-String BusI2C::getIdentPollResponsesJson()
-{
-    // Get addresses with data
-    std::vector<uint32_t> addresses;
-    if (_busStatusMgr.pollResponseAddresses(addresses))
-    {
-        // Return string
-        String jsonStr = "{";
-
-        // Get response data for each address
-        for (uint32_t address : addresses)
-        {
-            // Get responses
-            std::vector<uint8_t> devicePollResponseData;
-            uint32_t responseSize = 0;
-            uint16_t deviceTypeIndex = 0;
-            _busStatusMgr.pollResponsesGet(address, devicePollResponseData, responseSize, deviceTypeIndex, 0);
-
-            // Use device identity manager to convert to JSON
-            String jsonData = _deviceIdentMgr.identPollRespToJson(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 
-                            deviceTypeIndex, devicePollResponseData, responseSize);
-            if (jsonData.length() > 0)
-            {
-                if (jsonStr.length() > 1)
-                    jsonStr += ",";
-                jsonStr += jsonData;
-            }
-        }
-
-        // End of JSON
-        jsonStr += "}";
-        return jsonStr;
-    }
-    return "[]";
-}

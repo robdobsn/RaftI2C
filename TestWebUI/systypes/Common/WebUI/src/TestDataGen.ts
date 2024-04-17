@@ -14,6 +14,10 @@ class TestDataGen {
         let y = 0;
         let z = 0;
         setInterval(() => {
+            // Performance testing
+            const debugPerfTimerStart = performance.now();
+
+            // Vars for VSNL4040
             const psVar = psVals[psValAltCount] + Math.floor(Math.random() * 10) - 5;
             const alsVar = alsVal;
             const whiteVar = whiteVal;
@@ -34,6 +38,7 @@ class TestDataGen {
             const alsHexLowHigh = ((alsVar & 0xff) << 8 | (alsVar >> 8)).toString(16).padStart(4, '0');
             const whiteHexLowHigh = ((whiteVar & 0xff) << 8 | (whiteVar >> 8)).toString(16).padStart(4, '0');
 
+            // Vars for ADXL313
             x += Math.floor(Math.random() * 10) - 5;
             y += Math.floor(Math.random() * 10) - 5;
             z += Math.floor(Math.random() * 10) - 5;
@@ -49,10 +54,12 @@ class TestDataGen {
             const yHexLowHigh = ((y & 0xff) << 8 | (y >> 8)).toString(16).padStart(4, '0');
             const zHexLowHigh = ((z & 0xff) << 8 | (z >> 8)).toString(16).padStart(4, '0');
             
+            // Online / offline status
             const online1Value = Math.floor(iterCount / 100) % 2 === 0;
             const online2Value = Math.floor(iterCount / 150) % 2 === 1;
             const dev2MsgPresent = iterCount % 500 > 250;
 
+            // Templates
             const dev1Msg = `
                     "0x60@1": {
                         "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
@@ -74,9 +81,19 @@ class TestDataGen {
                         ${dev2MsgPresent ? ',' + dev2Msg : ''}
                     }
                 }`;
+
+            // Performance testing
+            const debugPerfTimerEnd = performance.now();
+
+            // Call the callback to handle the data JSON string
+            const debugHandleMsgStart = performance.now();
             handleDeviceMsgJson(msg);
-            console.log(`iterCount ${iterCount} x ${x} Test message sent: ${JSON.stringify(JSON.parse(msg))}`);
-        }, 100);
+            const debugHandleMsgEnd = performance.now();
+
+            console.log(`iterCount ${iterCount} genTestDataTime ${debugPerfTimerEnd - debugPerfTimerStart} handleTestDataTime ${debugHandleMsgEnd - debugHandleMsgStart}`);
+
+            // console.log(`iterCount ${iterCount} x ${x} Test message sent: ${JSON.stringify(JSON.parse(msg))}`);
+        }, 1000);
     }
 }
 

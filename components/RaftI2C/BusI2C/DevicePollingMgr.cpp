@@ -37,11 +37,11 @@ void DevicePollingMgr::setup(const RaftJsonIF& config)
 // Service from I2C task
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void DevicePollingMgr::taskService(uint32_t timeNowMs)
+void DevicePollingMgr::taskService(uint64_t timeNowUs)
 {
     // See if any devices need polling
     DevicePollingInfo pollInfo;
-    if (_busStatusMgr.getPendingIdentPoll(timeNowMs, pollInfo))
+    if (_busStatusMgr.getPendingIdentPoll(timeNowUs, pollInfo))
     {
         // Get the address and slot
         if (pollInfo.pollReqs.size() == 0)
@@ -53,7 +53,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
             _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
 
         // Prep poll req data
-        pollResultPrepare(timeNowMs, pollInfo);
+        pollResultPrepare(timeNowUs, pollInfo);
 
         // Loop through the requests
         bool allResultsOk = true;
@@ -83,7 +83,7 @@ void DevicePollingMgr::taskService(uint32_t timeNowMs)
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(timeNowMs, pollInfo, addrAndSlot, _pollDataResult);
+            _busStatusMgr.pollResultStore(timeNowUs, pollInfo, addrAndSlot, _pollDataResult);
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)

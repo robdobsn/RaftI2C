@@ -23,24 +23,50 @@ class RaftI2CCentralIF;
 class BusI2C : public BusBase
 {
 public:
-    // Constructor
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Constructor
+    /// @param busElemStatusCB - callback for bus element status changes
+    /// @param busOperationStatusCB - callback for bus operation status changes
+    /// @param pI2CCentralIF - pointer to I2C central interface (if nullptr then use default I2C interface)
     BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
                 RaftI2CCentralIF* pI2CCentralIF = nullptr);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Destructor
     virtual ~BusI2C();
 
-    // Setup
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Create function to create a new instance of this class
+    /// @param busElemStatusCB - callback for bus element status changes
+    /// @param busOperationStatusCB - callback for bus operation status changes
+    static BusBase* createFn(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB)
+    {
+        return new BusI2C(busElemStatusCB, busOperationStatusCB);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief setup
+    /// @param config - configuration
+    /// @return true if setup was successful
     virtual bool setup(const RaftJsonIF& config) override final;
 
-    // Close bus
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Close bus
+    /// @return true if close was successful
     virtual void close() override final;
 
-    // Service
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief service (should be called frequently to service the bus)
     virtual void service() override final;
 
-    // Clear
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief clear response queue (and optionally clear polling data)
+    /// @param incPolling - clear polling data
     virtual void clear(bool incPolling) override final;
 
-    // Pause
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief pause or resume bus
+    /// @param pause - true to pause, false to resume
     virtual void pause(bool pause) override final
     {
         // Set pause flag - read in the worker
@@ -50,87 +76,112 @@ public:
         _busAccessor.pause(pause);
     }
 
-    // IsPaused
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief isPaused
+    /// @return true if the bus is paused
     virtual bool isPaused() override final
     {
         return _isPaused;
     }
 
-    // Hiatus for period of ms
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Hiatus for period in ms (a hiatus is a suspension of activity for a period of time - generally due to power cycling, etc)
+    /// @param forPeriodMs - period in ms
     virtual void hiatus(uint32_t forPeriodMs) override final;
 
-    // IsHiatus
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief isHiatus
+    /// @return true if the bus is in hiatus
     virtual bool isHiatus() override final
     {
         return _hiatusActive;
     }
 
-    // Get bus name
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus name
+    /// @return bus name
     virtual String getBusName() const override final
     {
         return _busName;
     }
 
-    // isOperatingOk
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief isOperatingOk
+    /// @return true if the bus is operating OK
     virtual BusOperationStatus isOperatingOk() const override final
     {
         return _busStatusMgr.isOperatingOk();
     }
 
-    // Request bus action
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Add a request to the bus (may be a one-off or a poll request that is repeated at intervals)
+    /// @param busReqInfo - bus request information
+    /// @return true if the request was added
     virtual bool addRequest(BusRequestInfo& busReqInfo) override final
     {
         return _busAccessor.addRequest(busReqInfo);
     }
 
-    // Check bus element responding
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Check if an element is responding
+    /// @param address - address of element
+    /// @param pIsValid - (out) true if the address is valid
+    /// @return true if the element is responding
     virtual bool isElemResponding(uint32_t address, bool* pIsValid) override final;
 
-    // Request (or suspend) slow scanning and optionally request a fast scan
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Request (or suspend) slow scanning and optionally request a fast scan
+    /// @param enableSlowScan - true to enable slow scan, false to disable
+    /// @param requestFastScan - true to request a fast scan
     virtual void requestScan(bool enableSlowScan, bool requestFastScan) override final;
 
     // TODO - make these override base-class methods
 
-    // Get device type information by address
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type information by address
+    /// @param address - address of device to get information for
+    /// @param includePlugAndPlayInfo - true to include plug and play information
+    /// @return JSON string
     String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const;
 
-    // Get device type inforamtion by type name
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type information by device type name
+    /// @param deviceType - device type name
+    /// @param includePlugAndPlayInfo - true to include plug and play information
+    /// @return JSON string
     String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const;
 
-    // Get time of last update to ident poll data
-    uint32_t getIdentPollLastUpdateMs()
-    {
-        return _busStatusMgr.getIdentPollLastUpdateMs();
-    }
-    
-    // Check if any ident poll responses are available and, if so, return addresses of devices that have responded
-    bool getIdentPollResponseAddresses(std::vector<uint32_t>& addresses)
-    {
-        return _busStatusMgr.pollResponseAddresses(addresses);
-    }
-
-    /// @brief Get ident poll responses
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
+    /// @brief Get bus element status for a specific address
     /// @param address - address of device to get responses for
-    /// @param devicePollResponseData - vector to store the device poll response data
-    /// @param responseSize - (out) size of the response data
+    /// @param isOnline - (out) true if device is online
     /// @param deviceTypeIndex - (out) device type index
+    /// @param devicePollResponseData - (out) vector to store the device poll response data
+    /// @param responseSize - (out) size of the response data
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
     /// @return number of responses returned
-    uint32_t getIdentPollResponses(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
-                uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn)
+    uint32_t getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+                std::vector<uint8_t>& devicePollResponseData, 
+                uint32_t& responseSize, uint32_t maxResponsesToReturn)
     {
-        return _busStatusMgr.pollResponsesGet(address, devicePollResponseData, responseSize, deviceTypeIndex, maxResponsesToReturn);
+        return _busStatusMgr.getBusElemStatus(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, maxResponsesToReturn);
     }
 
-    // Creator fn
-    static BusBase* createFn(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB)
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get time of last bus status update
+    /// @return time of last bus status update in ms
+    uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates)
     {
-        return new BusI2C(busElemStatusCB, busOperationStatusCB);
+        return _busStatusMgr.getLastStatusUpdateMs(includeElemOnlineStatusChanges, includePollDataUpdates);
     }
 
-    /// @brief Get JSON for ident poll responses on this bus
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus status JSON for all detected bus elements
     /// @return JSON string
-    String getIdentPollResponsesJson();
+    String getBusStatusJson()
+    {
+        return _busStatusMgr.getBusStatusJson(_deviceIdentMgr);
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Get the bus element address as a string

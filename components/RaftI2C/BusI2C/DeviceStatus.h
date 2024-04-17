@@ -28,10 +28,10 @@ public:
     }
 
     // Get pending ident poll info
-    bool getPendingIdentPollInfo(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
+    bool getPendingIdentPollInfo(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
+    bool pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
     {
         return dataAggregator.put(pollResult);
     }

@@ -20,6 +20,8 @@
 #include "BusI2CAddrStatus.h"
 #include <list>
 
+class DeviceIdentMgr;
+
 class BusStatusMgr {
 
 public:
@@ -61,29 +63,41 @@ public:
     uint16_t getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) const;
 
     // Get pending ident poll
-    bool getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo);
+    bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
 
     // Store poll results
-    bool pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+    bool pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
 
-    /// @brief Get ident poll last update time ms
-    /// @return ident poll last update time ms
-    uint32_t getIdentPollLastUpdateMs() const;
+    /// @brief Get last status update time ms
+    /// @param includeElemOnlineStatusChanges include changes in online status of elements
+    /// @param includePollDataUpdates include updates from polling data
+    /// @return last status update time ms
+    uint64_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const;
 
-    /// @brief Check if any ident poll responses are available and, if so, return addresses of devices that have responded
-    /// @param addresses - vector to store the addresses of devices that have responded
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Return addresses of devices attached to the bus
+    /// @param addresses - vector to store the addresses of devices
+    /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
     /// @return true if there are any ident poll responses available
-    bool pollResponseAddresses(std::vector<uint32_t>& addresses);
+    bool getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses);
 
-    /// @brief Get ident poll responses
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
+    /// @brief Get bus element status for a specific address
     /// @param address - address of device to get responses for
-    /// @param devicePollResponseData - vector to store the device poll responses
+    /// @param isOnline - (out) true if device is online
+    /// @param deviceTypeIndex - (out) device type index
+    /// @param devicePollResponseData - (out) vector to store the device poll response data
     /// @param responseSize - (out) size of the response data
-    /// @param deviceTypeIndex - (out) index of the device type
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
-    /// @return number of poll responses returned
-    uint32_t pollResponsesGet(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
-                uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn);
+    /// @return number of responses returned
+    uint32_t getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+                std::vector<uint8_t>& devicePollResponseData, 
+                uint32_t& responseSize, uint32_t maxResponsesToReturn);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus status json
+    /// @return JSON string
+    String getBusStatusJson(DeviceIdentMgr& deviceIdentMgr);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
@@ -101,9 +115,6 @@ private:
     // I2C address status
     std::vector<BusI2CAddrStatus> _i2cAddrStatus;
     static const uint32_t I2C_ADDR_STATUS_MAX = 50;
-
-    // Ident poll last update time ms
-    uint32_t _identPollLastUpdateTimeMs = 0;
 
     // Find address record
     // Assumes semaphore already taken
@@ -140,4 +151,8 @@ private:
 
     // Bus element status change detection
     bool _busElemStatusChangeDetected = false;
+
+    // Last status update times us
+    uint64_t _lastIdentPollUpdateTimeUs = 0;
+    uint64_t _lastBusElemOnlineStatusUpdateTimeUs = 0;
 };

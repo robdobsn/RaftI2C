@@ -9,6 +9,7 @@
 #include "BusStatusMgr.h"
 #include "Logger.h"
 #include "RaftUtils.h"
+#include "DeviceIdentMgr.h"
 
 // #define DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING
@@ -220,7 +221,10 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 
         // Update status change
         if (isNewStatusChange)
+        {
             _busElemStatusChangeDetected = true;
+            _lastBusElemOnlineStatusUpdateTimeUs = micros();
+        }
 
         // Check for spurious record detected
         if (flagSpuriousRecord)
@@ -447,7 +451,7 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) c
 // Get pending ident poll requests for a single device
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& pollInfo)
+bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -457,7 +461,7 @@ bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& po
     for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         // Check if a poll is due
-        if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowMs, pollInfo))
+        if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo))
         {
             // Return semaphore
             xSemaphoreGive(_busElemStatusMutex);
@@ -472,11 +476,12 @@ bool BusStatusMgr::getPendingIdentPoll(uint32_t timeNowMs, DevicePollingInfo& po
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Store poll results
+/// @param timeNowUs time in us (passed in to aid testing)
 /// @param pollInfo device polling info 
 /// @param addrAndSlot address and slot of device
 /// @param pollResultData poll result data
 /// @return true if result stored
-bool BusStatusMgr::pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& pollInfo, 
+bool BusStatusMgr::pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, 
                         BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
 {
     // Obtain semaphore
@@ -489,11 +494,11 @@ bool BusStatusMgr::pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& 
     if (pAddrStatus)
     {
         // Add result to aggregator
-        putResult = pAddrStatus->deviceStatus.pollResultStore(timeNowMs, pollInfo, pollResultData);
+        putResult = pAddrStatus->deviceStatus.pollResultStore(timeNowUs, pollInfo, pollResultData);
     }
 
-    // Store time of last update
-    _identPollLastUpdateTimeMs = timeNowMs;
+    // Store time of last status update
+    _lastIdentPollUpdateTimeUs = timeNowUs;
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
@@ -501,27 +506,34 @@ bool BusStatusMgr::pollResultStore(uint32_t timeNowMs, const DevicePollingInfo& 
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get ident poll last update time
+/// @brief Get last status update time
+/// @param includeElemOnlineStatusChanges include changes in online status of elements
+/// @param includePollDataUpdates include updates from polling data
 /// @return last update time
-uint32_t BusStatusMgr::getIdentPollLastUpdateMs() const
+uint64_t BusStatusMgr::getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return 0;
 
     // Get last update time
-    uint32_t lastUpdateTime = _identPollLastUpdateTimeMs;
+    uint64_t lastUpdateTimeUs = 0;
+    if (includeElemOnlineStatusChanges)
+        lastUpdateTimeUs = lastUpdateTimeUs > _lastBusElemOnlineStatusUpdateTimeUs ? lastUpdateTimeUs : _lastBusElemOnlineStatusUpdateTimeUs;
+    if (includePollDataUpdates)
+        lastUpdateTimeUs = lastUpdateTimeUs > _lastIdentPollUpdateTimeUs ? lastUpdateTimeUs : _lastIdentPollUpdateTimeUs;
     
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
-    return lastUpdateTime;
+    return lastUpdateTimeUs/1000;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check if any ident poll responses are available and, if so, return addresses of devices that have responded
-/// @param addresses - vector to store the addresses of devices that have responded
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Return addresses of devices attached to the bus
+/// @param addresses - vector to store the addresses of devices
+/// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
 /// @return true if there are any ident poll responses available
-bool BusStatusMgr::pollResponseAddresses(std::vector<uint32_t>& addresses)
+bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -530,8 +542,8 @@ bool BusStatusMgr::pollResponseAddresses(std::vector<uint32_t>& addresses)
     // Iterate address status records
     for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
-        // Check if any responses are pending
-        if (addrStatus.deviceStatus.dataAggregator.count() > 0)
+        bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.dataAggregator.count() > 0;
+        if (includeAddr)
         {
             // Add address to list
             addresses.push_back(addrStatus.addrAndSlot.toCompositeAddrAndSlot());
@@ -543,16 +555,18 @@ bool BusStatusMgr::pollResponseAddresses(std::vector<uint32_t>& addresses)
     return addresses.size() > 0;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get device poll responses
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
+/// @brief Get bus element status for a specific address
 /// @param address - address of device to get responses for
-/// @param devicePollResponseData - vector to store the device poll responses
-/// @param (out) responseSize - size of each response in bytes
-/// @param (out) deviceTypeIndex - index of device type
+/// @param isOnline - (out) true if device is online
+/// @param deviceTypeIndex - (out) device type index
+/// @param devicePollResponseData - (out) vector to store the device poll response data
+/// @param responseSize - (out) size of the response data
 /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
 /// @return number of responses returned
-uint32_t BusStatusMgr::pollResponsesGet(uint32_t address, std::vector<uint8_t>& devicePollResponseData, 
-            uint32_t& responseSize, uint16_t& deviceTypeIndex, uint32_t maxResponsesToReturn)
+uint32_t BusStatusMgr::getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+            std::vector<uint8_t>& devicePollResponseData, 
+            uint32_t& responseSize, uint32_t maxResponsesToReturn)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -563,14 +577,54 @@ uint32_t BusStatusMgr::pollResponsesGet(uint32_t address, std::vector<uint8_t>& 
     BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
     if (pAddrStatus)
     {
-        // Get results from aggregator
-        numResponses = pAddrStatus->deviceStatus.dataAggregator.get(devicePollResponseData, responseSize, maxResponsesToReturn);
-
+        // Elem online
+        isOnline = pAddrStatus->isOnline;
+        
         // Device type index
         deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+
+        // Get results from aggregator
+        numResponses = pAddrStatus->deviceStatus.dataAggregator.get(devicePollResponseData, responseSize, maxResponsesToReturn);
     }
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get bus status json
+/// @param deviceIdentMgr device identity manager
+/// @return bus status json
+String BusStatusMgr::getBusStatusJson(DeviceIdentMgr& deviceIdentMgr)
+{
+    // Return string
+    String jsonStr = "{";
+
+    // Get list of all bus element addresses
+    std::vector<uint32_t> addresses;
+    getBusElemAddresses(addresses, false);
+    for (uint32_t address : addresses)
+    {
+        // Get bus status for each address
+        bool isOnline = false;
+        uint16_t deviceTypeIndex = 0;
+        std::vector<uint8_t> devicePollResponseData;
+        uint32_t responseSize = 0;
+        getBusElemStatus(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Use device identity manager to convert to JSON
+        String jsonData = deviceIdentMgr.deviceStatusToJson(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 
+                        isOnline, deviceTypeIndex, devicePollResponseData, responseSize);
+        if (jsonData.length() > 0)
+        {
+            if (jsonStr.length() > 1)
+                jsonStr += ",";
+            jsonStr += jsonData;
+        }
+    }
+
+    // End of JSON
+    jsonStr += "}";
+    return jsonStr;
 }

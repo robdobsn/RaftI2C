@@ -216,7 +216,7 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
 // Format device poll responses to JSON
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-String DeviceIdentMgr::identPollRespToJson(const BusI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+String DeviceIdentMgr::deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, bool isOnline, uint16_t deviceTypeIndex, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize)
 {
     // Get device type info
@@ -229,5 +229,5 @@ String DeviceIdentMgr::identPollRespToJson(const BusI2CAddrAndSlot& addrAndSlot,
     _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, pollingInfo);
 
     // Get the poll response JSON
-    return _deviceTypeRecords.pollRespToJson(addrAndSlot, pDevTypeRec, devicePollResponseData);
+    return _deviceTypeRecords.deviceStatusToJson(addrAndSlot, isOnline, pDevTypeRec, devicePollResponseData);
 }

@@ -107,9 +107,12 @@ public:
     void getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
 
     /// @brief Convert poll response to JSON
+    /// @param addrAndSlot i2c address and slot
+    /// @param isOnline true if device is online
     /// @param pDevTypeRec pointer to device type record
     /// @param devicePollResponseData device poll response data
-    String pollRespToJson(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, const std::vector<uint8_t>& devicePollResponseData);
+    String deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
+            const std::vector<uint8_t>& devicePollResponseData);
 
 private:
 

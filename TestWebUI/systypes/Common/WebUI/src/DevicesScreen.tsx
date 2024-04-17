@@ -22,6 +22,9 @@ export default function DevicesScreen(props: DevicesScreenProps) {
     
     useEffect(() => {
         const onNewDevice = (deviceKey: string, newDeviceState: DeviceState) => {
+
+            const debugPerfTimerStart = performance.now();
+
             setDevicesState((prevState) => {
                 // Since prevState is an instance of DevicesState, we clone it and update it
                 const newState = new DevicesState();
@@ -30,11 +33,17 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 return newState;
             });
             setLastUpdated(Date.now());
+
+            const debugPerfTimerEnd = performance.now();
+            console.log(`onNewDevice took ${debugPerfTimerEnd - debugPerfTimerStart} ms`);
         };
 
         deviceManager.onNewDevice(onNewDevice);
 
         const onNewAttribute = (deviceKey: string, attribute: DeviceAttribute) => {
+
+            const debugPerfTimerStart = performance.now();
+
             setDevicesState((prevState) => {
 
                 // TODO - refactor this as inefficient
@@ -46,11 +55,17 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 return newState;
             });
             setLastUpdated(Date.now());
+
+            const debugPerfTimerEnd = performance.now();
+            console.log(`onNewAttribute took ${debugPerfTimerEnd - debugPerfTimerStart} ms`);
         }
 
         deviceManager.onNewDeviceAttribute(onNewAttribute);
 
         const onNewAttributeData = (deviceKey: string, attribute: DeviceAttribute) => {
+            
+            const debugPerfTimerStart = performance.now();
+
             setDevicesState((prevState) => {
 
                 // TODO - refactor this as inefficient
@@ -62,6 +77,9 @@ export default function DevicesScreen(props: DevicesScreenProps) {
                 return newState;
             });
             setLastUpdated(Date.now());
+
+            const debugPerfTimerEnd = performance.now();
+            console.log(`onNewAttributeData took ${debugPerfTimerEnd - debugPerfTimerStart} ms`);
         }
 
         deviceManager.onNewAttributeData(onNewAttributeData);

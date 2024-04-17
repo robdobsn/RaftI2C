@@ -208,7 +208,7 @@ String HWDevMan::getStatusJSON()
     {
         if (pBus)
         {
-            String jsonRespStr = ((BusI2C*)pBus)->getIdentPollResponsesJson();
+            String jsonRespStr = ((BusI2C*)pBus)->getBusStatusJson();
             if (jsonRespStr.length() > 0)
             {
                 if (jsonStr.length() > 1)
@@ -267,7 +267,7 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
             // TODO - maybe change getIdentPollLastUpdateMs to a more generic function that gets last update of any kind
 
             // Check bus status
-            uint32_t identPollLastMs = ((BusI2C*)pBus)->getIdentPollLastUpdateMs();
+            uint32_t identPollLastMs = ((BusI2C*)pBus)->getLastStatusUpdateMs(true, true);
             stateHash.push_back(identPollLastMs & 0xff);
             stateHash.push_back((identPollLastMs >> 8) & 0xff);
         }

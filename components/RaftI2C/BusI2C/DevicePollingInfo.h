@@ -21,8 +21,8 @@ public:
 
     void clear()
     {
-        lastPollTimeMs = 0;
-        pollIntervalMs = 0;
+        lastPollTimeUs = 0;
+        pollIntervalUs = 0;
         pollResultSizeIncTimestamp = 0;
         pollReqs.clear();
     }
@@ -31,7 +31,7 @@ public:
                     std::vector<BusI2CRequestRec>& pollReqRecs)
     {
         // Set poll info
-        this->pollIntervalMs = pollIntervalMs;
+        this->pollIntervalUs = pollIntervalMs*1000;
         this->pollResultSizeIncTimestamp = pollResultSizeIncTimestamp;
         this->numPollResultsToStore = numPollResultsToStore;
 
@@ -45,10 +45,10 @@ public:
     static const uint32_t DEV_IDENT_POLL_CMD_ID = UINT32_MAX;
 
     // Last poll time
-    uint32_t lastPollTimeMs = 0;
+    uint64_t lastPollTimeUs = 0;
 
     // Poll interval
-    uint32_t pollIntervalMs = 0;
+    uint32_t pollIntervalUs = 0;
 
     // Num poll results to store
     uint32_t numPollResultsToStore = 1;

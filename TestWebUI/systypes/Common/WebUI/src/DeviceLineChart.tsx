@@ -82,11 +82,17 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
     const [isUpdateScheduled, setIsUpdateScheduled] = useState(false);
 
     useEffect(() => {
+        
+        const debugPerfTimerStart = performance.now();
+
         latestData.current = { deviceAttributes, deviceTimeline };
 
         if (!isUpdateScheduled) {
             setIsUpdateScheduled(true);
             setTimeout(() => {
+
+                const debugPrepTimerStart = performance.now();
+
                 const { deviceAttributes, deviceTimeline } = latestData.current;
                 const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
                 const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
@@ -101,11 +107,21 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
                     };
                 });
 
+                const debugPrepTimerEnd = performance.now();
+
                 setChartData({ labels, datasets });
+
+                const debugUpdateTimerEnd = performance.now();
+
+                console.log(`Prep time ${debugPrepTimerEnd - debugPrepTimerStart} Update time ${debugUpdateTimerEnd - debugPrepTimerEnd}`);
                 setIsUpdateScheduled(false);
             }, 1000);
         }
-    }, [lastUpdated]);
 
+        const debugPerfTimerEnd = performance.now();
+        console.log(`Update time ${debugPerfTimerEnd - debugPerfTimerStart}`);
+
+    }, [lastUpdated]);
+    
     return <Line data={chartData} options={options} />;
 };

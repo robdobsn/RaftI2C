@@ -33,8 +33,8 @@ public:
     // Process device initialisation
     bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
-    // Format device poll responses to JSON
-    String identPollRespToJson(const BusI2CAddrAndSlot& addrAndSlot, uint16_t deviceTypeIndex, 
+    // Format device status to JSON
+    String deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, bool isOnline, uint16_t deviceTypeIndex, 
                     const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize);
 
     // Get device type info JSON by device type index

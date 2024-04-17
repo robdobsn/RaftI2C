@@ -65,8 +65,6 @@ export class DeviceManager {
 
     // Constructor
     private constructor() {
-        console.log("DeviceManager constructed");
-
         // Check if test mode
         if (window.location.hostname === "localhost") {
             this._testDataGen.start((msg: string) => {
@@ -83,11 +81,11 @@ export class DeviceManager {
         try {
             const sendCommandResponse = await fetch(this._serverAddressPrefix + this._urlPrefix + cmd);
             if (!sendCommandResponse.ok) {
-                console.log(`DeviceManager sendCommand response not ok ${sendCommandResponse.status}`);
+                console.warn(`DeviceManager sendCommand response not ok ${sendCommandResponse.status}`);
             }
             return sendCommandResponse.ok;
         } catch (error) {
-            console.log(`DeviceManager sendCommand error ${error}`);
+            console.warn(`DeviceManager sendCommand error ${error}`);
             return false;
         }
     }
@@ -99,7 +97,7 @@ export class DeviceManager {
     public async init(): Promise<boolean> {
         // Check if already initialized
         if (this._websocket) {
-            console.log(`DeviceManager init already initialized`)
+            console.warn(`DeviceManager init already initialized`)
             return true;
         }
         console.log(`DeviceManager init - first time`)
@@ -150,7 +148,7 @@ export class DeviceManager {
             // See if test-server is available
             const appSettingAlt = await this.getAppSettings(this._testServerPath);
             if (!appSettingAlt) {
-                console.log("DeviceManager init unable to get app settings");
+                console.warn("DeviceManager init unable to get app settings");
                 return false;
             }
             this._serverAddressPrefix = this._testServerPath;
@@ -210,11 +208,11 @@ export class DeviceManager {
                 this._websocket = null;
             }
             this._websocket.onerror = (error) => {
-                console.log(`DeviceManager websocket error ${error}`);
+                console.warn(`DeviceManager websocket error ${error}`);
             }
         }
         catch (error) {
-            console.log(`DeviceManager websocket error ${error}`);
+            console.warn(`DeviceManager websocket error ${error}`);
             return false;
         }
         return true;
@@ -391,14 +389,14 @@ export class DeviceManager {
         // TODO - put back try/catch
         // try {
             let data = JSON.parse(jsonMsg) as DeviceMsgJson;
-            console.log(`DeviceManager websocket message ${JSON.stringify(data)}`);
+            // console.log(`DeviceManager websocket message ${JSON.stringify(data)}`);
 
             // Iterate over the buses
             Object.entries(data).forEach(([busName, devices]) => {
 
                 // Check for bus status info
                 if (devices && typeof devices === "object" && "_s" in devices) {
-                    console.log(`DeviceManager bus status ${JSON.stringify(devices._s)}`);
+                    // console.log(`DeviceManager bus status ${JSON.stringify(devices._s)}`);
                     return;
                 }
                 
@@ -420,7 +418,8 @@ export class DeviceManager {
                         if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups) {
                             deviceTypeName = attrGroups._t || "";
                         } else {
-                            console.warn(`DeviceManager attrGroups ${JSON.stringify(attrGroups)}`);
+                            console.warn(`DeviceManager missing device type attrGroups ${JSON.stringify(attrGroups)}`);
+                            return;
                         }
 
                         // Create device record
@@ -493,7 +492,7 @@ export class DeviceManager {
                                 if ("d" in attr && attr.d != undefined && attr.d != 0) {
                                     value = value / attr.d;
                                 }
-                                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
+                                // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
                                 hexStrIdx += attrHexChars;
                                 attrIdx++;
 
