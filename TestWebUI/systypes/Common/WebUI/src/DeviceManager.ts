@@ -623,7 +623,10 @@ export class DeviceManager {
                 return emptyRec;
             }
             const devTypeInfo = await getDevTypeInfoResponse.json();
-            return devTypeInfo;
+            if ("devinfo" in devTypeInfo) {
+                return devTypeInfo.devinfo;
+            }
+            return emptyRec;
         } catch (error) {
             console.error(`DeviceManager getDeviceTypeInfo error ${error}`);
             return emptyRec;

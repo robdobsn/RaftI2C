@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, memo } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
@@ -32,7 +32,7 @@ interface ChartJSData {
     }[];
 }
 
-export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceKey, lastUpdated }) => {
+const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastUpdated }) => {
 
     const deviceState: DeviceState = deviceManager.getDeviceState(deviceKey);
     const { deviceAttributes, deviceTimeline } = deviceState;
@@ -61,28 +61,7 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceKey, las
         humidity: "hsl(200, 70%, 60%)",
     };
 
-    // Initialize the chart data
     useEffect(() => {
-        const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-        const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-            const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
-            // Generate a consistent color for each attribute line
-            const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
-            return {
-                label: attributeName,
-                data: data,
-                fill: false,
-                borderColor: colour,
-                backgroundColor: colour
-            };
-        });
-        setChartData({ labels, datasets });
-    }, []);
-
-    useEffect(() => {
-        
-        const debugPerfTimerStart = performance.now();
-
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
         const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
             const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
@@ -95,13 +74,10 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceKey, las
                 backgroundColor: colour
             };
         });
-
         setChartData({ labels, datasets });
-
-        const debugPerfTimerEnd = performance.now();
-        console.log(`Update time ${debugPerfTimerEnd - debugPerfTimerStart}`);
-
     }, [lastUpdated]);
 
     return <Line data={chartData} options={options} />;
-};
+});
+
+export default DeviceLineChart;

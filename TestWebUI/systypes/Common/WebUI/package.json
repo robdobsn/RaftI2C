@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "start": " TEST_DATA=true parcel src/index.html --port 8080",
+    "start": " TEST_DATA=true parcel src/index.html",
     "clean": "rimraf dist",
     "build": "npm run clean && parcel build src/index.html",
-    "start:test": "npm run clean && TEST_DATA=true parcel src/index.html --port 8080",
+    "start:test": "npm run clean && TEST_DATA=true parcel src/index.html",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

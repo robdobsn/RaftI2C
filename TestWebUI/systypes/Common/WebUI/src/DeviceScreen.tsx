@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { DeviceState } from './DeviceStates';
 import DeviceAttrsForm from './DeviceAttrsForm';
-import { DeviceLineChart } from './DeviceLineChart';
+import DeviceLineChart from './DeviceLineChart';
 import './styles.css';
 import { DeviceManager } from './DeviceManager';
 
@@ -29,7 +29,7 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
         setTimedChartUpdate(Date.now());
         console.log(`Updating chart time now is ${Date.now()-startTime}`);
       };
-      const updateTimer = setInterval(updateChart, 1000);
+      const updateTimer = setInterval(updateChart, 500);
       return () => clearInterval(updateTimer);
     }, []);
 
