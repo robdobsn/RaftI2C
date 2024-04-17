@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
+import { DeviceManager } from "./DeviceManager";
+
+const deviceManager = DeviceManager.getInstance();
 
 ChartJS.register(
     CategoryScale,
@@ -14,7 +17,7 @@ ChartJS.register(
 );
 
 export interface DeviceLineChartProps {
-    deviceState: DeviceState;
+    deviceKey: string;
     lastUpdated: number;
 }
 
@@ -29,7 +32,9 @@ interface ChartJSData {
     }[];
 }
 
-export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, lastUpdated }) => {
+export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceKey, lastUpdated }) => {
+
+    const deviceState: DeviceState = deviceManager.getDeviceState(deviceKey);
     const { deviceAttributes, deviceTimeline } = deviceState;
     const MAX_DATA_POINTS = 100;
     const [chartData, setChartData] = useState<ChartJSData>({
@@ -56,9 +61,6 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
         humidity: "hsl(200, 70%, 60%)",
     };
 
-    const updateTimer = useRef<NodeJS.Timeout | null>(null);
-    const latestData = useRef({ deviceAttributes, deviceTimeline });
-    
     // Initialize the chart data
     useEffect(() => {
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
@@ -74,54 +76,32 @@ export const DeviceLineChart: React.FC<DeviceLineChartProps> = ({ deviceState, l
                 backgroundColor: colour
             };
         });
-
         setChartData({ labels, datasets });
     }, []);
-
-    // Using state to track whether an update is scheduled
-    const [isUpdateScheduled, setIsUpdateScheduled] = useState(false);
 
     useEffect(() => {
         
         const debugPerfTimerStart = performance.now();
 
-        latestData.current = { deviceAttributes, deviceTimeline };
+        const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+        const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
+            const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
+            const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
+            return {
+                label: attributeName,
+                data: data,
+                fill: false,
+                borderColor: colour,
+                backgroundColor: colour
+            };
+        });
 
-        if (!isUpdateScheduled) {
-            setIsUpdateScheduled(true);
-            setTimeout(() => {
-
-                const debugPrepTimerStart = performance.now();
-
-                const { deviceAttributes, deviceTimeline } = latestData.current;
-                const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-                const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-                    const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
-                    const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
-                    return {
-                        label: attributeName,
-                        data: data,
-                        fill: false,
-                        borderColor: colour,
-                        backgroundColor: colour
-                    };
-                });
-
-                const debugPrepTimerEnd = performance.now();
-
-                setChartData({ labels, datasets });
-
-                const debugUpdateTimerEnd = performance.now();
-
-                console.log(`Prep time ${debugPrepTimerEnd - debugPrepTimerStart} Update time ${debugUpdateTimerEnd - debugPrepTimerEnd}`);
-                setIsUpdateScheduled(false);
-            }, 1000);
-        }
+        setChartData({ labels, datasets });
 
         const debugPerfTimerEnd = performance.now();
         console.log(`Update time ${debugPerfTimerEnd - debugPerfTimerStart}`);
 
     }, [lastUpdated]);
-    
+
     return <Line data={chartData} options={options} />;
 };

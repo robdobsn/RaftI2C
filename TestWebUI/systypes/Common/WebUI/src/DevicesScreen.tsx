@@ -38,9 +38,6 @@ export default function DevicesScreen(props: DevicesScreenProps) {
 
         deviceManager.onNewAttributeData(onNewAttributeData);
 
-        // TODO: Fetch initial state
-        // Example cleanup, adjust based on your actual implementation
-        // return () => deviceManager.offStateChange(updateDeviceState);
     }, [lastUpdated]);
 
     const devicesState: DevicesState = deviceManager.getDevicesState();
@@ -48,7 +45,7 @@ export default function DevicesScreen(props: DevicesScreenProps) {
     return (
         <div className="devices-container">
         {Object.entries(devicesState).filter(([key, _]) => key !== 'getDeviceKey').map(([deviceKey, data]) => (
-            <DeviceScreen key={deviceKey} deviceKey={deviceKey} data={data} lastUpdated={lastUpdated} />
+            <DeviceScreen key={deviceKey} deviceKey={deviceKey} lastUpdated={lastUpdated} />
         ))}
       </div>
     );

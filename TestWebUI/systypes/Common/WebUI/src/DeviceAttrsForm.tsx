@@ -1,11 +1,16 @@
 import React from 'react';
 import { DeviceState } from './DeviceStates';
+import { DeviceManager } from "./DeviceManager";
+
+const deviceManager = DeviceManager.getInstance();
 
 type DeviceAttributesTableProps = {
-    deviceState: DeviceState;
+    deviceKey: string;
+    lastUpdated: number;
 };
 
-const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceState }) => {
+const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceKey, lastUpdated }) => {
+    const deviceState = deviceManager.getDeviceState(deviceKey);
     const { deviceAttributes } = deviceState;
 
     return (
