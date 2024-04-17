@@ -492,7 +492,7 @@ export class DeviceManager {
                                 const attrBytes = AttrTypeBytes[attr.t];
                                 const attrHexChars = attrBytes * 2;
                                 // Convert the value using python-struct
-                                let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0];
+                                let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0] as number;
                                 if ("d" in attr && attr.d != undefined && attr.d != 0) {
                                     value = value / attr.d;
                                 }
