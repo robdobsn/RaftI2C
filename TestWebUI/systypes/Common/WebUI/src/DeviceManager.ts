@@ -59,6 +59,10 @@ export class DeviceManager {
         return DeviceManager._instance;
     }
 
+    public getDevicesState(): DevicesState {
+        return this._devicesState;
+    }
+
     // Test device type data
     private _testDeviceTypeRecs: DeviceTypeInfoTestJsonFile | null = null;
     private _testDataGen = new TestDataGen();

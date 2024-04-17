@@ -93,7 +93,7 @@ class TestDataGen {
             console.log(`iterCount ${iterCount} genTestDataTime ${debugPerfTimerEnd - debugPerfTimerStart} handleTestDataTime ${debugHandleMsgEnd - debugHandleMsgStart}`);
 
             // console.log(`iterCount ${iterCount} x ${x} Test message sent: ${JSON.stringify(JSON.parse(msg))}`);
-        }, 1000);
+        }, 200);
     }
 }
 
