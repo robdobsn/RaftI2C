@@ -1,5 +1,5 @@
 import React from 'react';
-import { DeviceState } from './DeviceStates';
+import { DeviceState, deviceAttrGetLatestFormatted } from './DeviceStates';
 import { DeviceManager } from "./DeviceManager";
 
 const deviceManager = DeviceManager.getInstance();
@@ -24,11 +24,11 @@ const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceKey, last
             </thead>
             <tbody>
                 {Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-                    const latestValue = attributeDetails.values.length > 0 ? attributeDetails.values[attributeDetails.values.length - 1] : 'N/A';
+                    const valStr = deviceAttrGetLatestFormatted(attributeDetails)
                     return (
                         <tr key={attributeName}>
                             <td>{attributeName}</td>
-                            <td>{latestValue}</td>
+                            <td>{valStr}</td>
                             <td>{attributeDetails.units}</td>
                         </tr>
                     );

@@ -497,7 +497,7 @@ export class DeviceManager {
                                 const attrHexChars = attrBytes * 2;
                                 // Convert the value using python-struct
                                 let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0] as number;
-                                if ("d" in attr && attr.d != undefined && attr.d != 0) {
+                                if ("d" in attr && attr.d) {
                                     value = value / attr.d;
                                 }
                                 // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
@@ -520,7 +520,8 @@ export class DeviceManager {
                                         newData: true,
                                         values: [value],
                                         units: attr.u || "",
-                                        range: attr.r || [0, 0]
+                                        range: attr.r || [0, 0],
+                                        format: ("f" in attr && typeof attr.f == "string") ? attr.f : ""
                                     };
                                 }
                                 attrsAdded = true;

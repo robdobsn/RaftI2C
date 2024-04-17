@@ -11,6 +11,38 @@
 
 import { DeviceTypeInfo } from "./DeviceInfo";
 
+export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
+
+    if (attr.values.length === 0) {
+        return 'N/A';
+    }
+    if (attr.format.length === 0) {
+        return attr.values[attr.values.length - 1].toString();
+    }
+    const value = attr.values[attr.values.length - 1];
+    const format = attr.format;
+    if (format.endsWith('f')) {
+        // Floating point number formatting
+        const parts = format.split('.');
+        let decimalPlaces = 0;
+        if (parts.length === 2) {
+            decimalPlaces = parseInt(parts[1], 10);
+        }
+        const formattedNumber = value.toFixed(decimalPlaces);
+        let fieldWidth = parseInt(parts[0], 10);
+        return fieldWidth ? formattedNumber.padStart(fieldWidth, ' ') : formattedNumber;
+    } else if (format.endsWith('x')) {
+        // Hexadecimal formatting
+        const totalLength = parseInt(format.slice(0, -1), 10);
+        return value.toString(16).padStart(totalLength, '0');
+    } else if (format.endsWith('d')) {
+        // Decimal integer formatting
+        const totalLength = parseInt(format.slice(0, -1), 10);
+        return value.toString(10).padStart(totalLength, '0');
+    }
+    return value.toString();
+}
+
 export interface DeviceAttribute {
     name: string;
     newAttribute: boolean;
@@ -18,6 +50,7 @@ export interface DeviceAttribute {
     values: number[];
     units: string;
     range: number[];
+    format: string;
 }
 
 export interface DeviceAttributes {
