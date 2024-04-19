@@ -211,7 +211,7 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_SLOW_SCAN,
                 addrAndSlot,
                 0, 0, 
-                nullptr, 
+                nullptr,
                 0, 
                 0,
                 nullptr, 

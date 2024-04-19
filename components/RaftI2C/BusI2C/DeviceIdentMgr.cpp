@@ -11,6 +11,7 @@
 #include "Logger.h"
 
 // #define DEBUG_DEVICE_IDENT_MGR
+// #define DEBUG_DEVICE_IDENT_MGR_DETAIL
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
 
@@ -61,22 +62,22 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
     std::vector<uint16_t> deviceTypesForAddr = _deviceTypeRecords.getDeviceTypeIdxsForAddr(addrAndSlot);
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
-#ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice deviceType %s addr@slot+1 %s", 
-                    deviceType.c_str(), addrAndSlot.toString().c_str());
-#endif
-
         // Get JSON definition for device
         const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
         if (!pDevTypeRec)
             continue;
 
+#ifdef DEBUG_DEVICE_IDENT_MGR
+        LOG_I(MODULE_PREFIX, "identifyDevice deviceType %s addr@slot+1 %s", 
+                    pDevTypeRec->deviceType, addrAndSlot.toString().c_str());
+#endif
+
         // Check if the detection value(s) match responses from the device
         // Generate a bus request to read the detection value
         if (checkDeviceTypeMatch(addrAndSlot, pDevTypeRec))
         {
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "Device ident found %s", deviceInfoJson.c_str());
+#ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
+            LOG_I(MODULE_PREFIX, "Device ident found %s", pDevTypeRec->devInfoJson);
 #endif
             // Initialise the device if required
             processDeviceInit(addrAndSlot, pDevTypeRec);

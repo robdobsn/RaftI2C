@@ -5,6 +5,7 @@ idf_component_register(
       RaftI2C
     SRCS 
       "components/RaftI2C/I2CCentral/RaftI2CCentral.cpp"
+      "components/RaftI2C/I2CCentral/ESPIDF5I2C/ESPIDF5I2CCentral.cpp"
       "components/RaftI2C/BusI2C/BusAccessor.cpp"
       "components/RaftI2C/BusI2C/BusI2C.cpp"
       "components/RaftI2C/BusI2C/BusI2CAddrStatus.cpp"
@@ -19,10 +20,12 @@ idf_component_register(
       "components/RaftI2C/BusI2C/DeviceStatus.cpp"
     INCLUDE_DIRS
       "components/RaftI2C/I2CCentral"
+      "components/RaftI2C/I2CCentral/ESPIDF5I2C"
       "components/RaftI2C/BusI2C"
       "${CMAKE_BINARY_DIR}"
     REQUIRES
       RaftCore
+      driver
     )
 
 # Find Python

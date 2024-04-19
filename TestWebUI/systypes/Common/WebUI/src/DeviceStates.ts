@@ -39,6 +39,9 @@ export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
         // Decimal integer formatting
         const totalLength = parseInt(format.slice(0, -1), 10);
         return value.toString(10).padStart(totalLength, '0');
+    } else if (format.endsWith('b')) {
+        // Binary formatting
+        return value === 0 ? '0' : '1';
     }
     return value.toString();
 }

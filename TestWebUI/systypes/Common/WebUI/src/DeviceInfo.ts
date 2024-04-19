@@ -81,6 +81,8 @@ export interface DeviceTypeAttribute {
     r: number[];                // Attribute range (either min, max or min, max, step or discrete values)
     d: number;                  // Divisor to convert the raw attribute value to the actual value
     m?: number;                 // Bit mask to extract the attribute value from the message
+    f?: string;                 // Format string similar to C printf format string (e.g. %d, %x, %f, %04d, %08x, %08.2f etc.), %b = boolean (0 iff 0, else 1)
+    s?: number;                 // Shift value to shift the attribute value to the right (or left if negative)
 }
 
 export interface DeviceTypeAttributeGroups {

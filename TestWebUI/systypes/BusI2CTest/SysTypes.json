@@ -149,7 +149,13 @@
                     "i2cFreq": 100000,
                     "taskCore": 0,
                     "taskStack": 3000,
-                    "taskPriority": 24
+                    "taskPriority": 24,
+                    "mux": {
+                        "enable": 1,
+                        "rstPin": 4,
+                        "altRstPin": 5,
+                        "muxAddrs": [ "0x71", "0x72", "0x73", "0x74", "0x75", "0x76", "0x77" ]
+                    }
                 }
             ]
         }

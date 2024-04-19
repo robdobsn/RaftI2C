@@ -500,6 +500,16 @@ export class DeviceManager {
                                 if ("d" in attr && attr.d) {
                                     value = value / attr.d;
                                 }
+                                if ("m" in attr && attr.m) {
+                                    value = (value & attr.m);
+                                }
+                                if ("s" in attr && attr.s) {
+                                    if (attr.s > 0) {
+                                        value = value >> attr.s;
+                                    } else if (attr.s < 0) {
+                                        value = value << -attr.s;
+                                    }
+                                }
                                 // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
                                 hexStrIdx += attrHexChars;
                                 attrIdx++;

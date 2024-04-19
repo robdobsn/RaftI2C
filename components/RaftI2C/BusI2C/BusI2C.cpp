@@ -17,6 +17,8 @@ static const char* MODULE_PREFIX = "BusI2C";
 
 #ifdef I2C_USE_RAFT_I2C
 #include "RaftI2CCentral.h"
+#elif defined(I2C_USE_ESP_IDF_5)
+#include "ESPIDF5I2CCentral.h"
 #else
 #include "BusI2CESPIDF.h"
 #endif
@@ -78,6 +80,8 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     {
 #ifdef I2C_USE_RAFT_I2C
         _pI2CCentral = new RaftI2CCentral();
+#elif defined(I2C_USE_ESP_IDF_5)
+        _pI2CCentral = new ESPIDF5I2CCentral();
 #else
         _pI2CCentral = new BusI2CESPIDF();
 #endif
