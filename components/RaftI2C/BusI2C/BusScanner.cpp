@@ -252,7 +252,7 @@ void BusScanner::scanElemSlots(uint32_t addr)
             // Calculate the slot
             uint32_t slotPlus1 = (busExtenderAddr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + slotIdx + 1;
 
-            // Setup extender channel
+            // Enable one extender channel
             if (_busExtenderMgr.setChannels(busExtenderAddr, 0x01 << slotIdx) != RaftI2CCentralIF::ACCESS_RESULT_OK)
                 break;
             

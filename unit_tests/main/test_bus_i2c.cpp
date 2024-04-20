@@ -183,7 +183,8 @@ void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
     // Config
     busBase.setup(configJson);
     busStatusMgr.setup(configJson);
-    busExtenderMgr.setup(configJson);
+    RaftJsonPrefixed busExtenderConfigJson(configJson, "mux");
+    busExtenderMgr.setup(busExtenderConfigJson);
     busScanner.setup(configJson);
 }
 

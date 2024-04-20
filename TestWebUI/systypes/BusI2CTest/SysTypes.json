@@ -153,8 +153,20 @@
                     "mux": {
                         "enable": 1,
                         "rstPin": 4,
-                        "altRstPin": 5,
-                        "muxAddrs": [ "0x71", "0x72", "0x73", "0x74", "0x75", "0x76", "0x77" ]
+                        "rstPinAlt": 5,
+                        "minAddr": "0x70",
+                        "maxAddr": "0x77",
+                        "pwrCtrl": {
+                            "vDefault": "3V3",
+                            "ctrls":
+                            [
+                                {
+                                    "muxAddr": "0x75",
+                                    "dev": "PCA9535",
+                                    "devAddr": "0x26"
+                                }
+                            ]
+                        }
                     }
                 }
             ]

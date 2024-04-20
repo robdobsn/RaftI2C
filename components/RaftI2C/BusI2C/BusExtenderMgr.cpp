@@ -7,17 +7,21 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "BusExtenderMgr.h"
+#include "RaftJsonPrefixed.h"
+#include "RaftJson.h"
+#include "RaftUtils.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
+#define DEBUG_BUS_EXTENDER_SETUP
+#define DEBUG_BUS_EXTENDER_POWER_CONTROL
 // #define DEBUG_BUS_EXTENDERS
+// #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
 
-#ifdef DEBUG_BUS_EXTENDERS
 static const char* MODULE_PREFIX = "BusExtenderMgr";
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
 BusExtenderMgr::BusExtenderMgr(BusI2CReqSyncFn busI2CReqSyncFn) :
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
@@ -25,43 +29,88 @@ BusExtenderMgr::BusExtenderMgr(BusI2CReqSyncFn busI2CReqSyncFn) :
     initBusExtenderRecs();
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Destructor
 BusExtenderMgr::~BusExtenderMgr()
 {
+    // Delete bus extender records
+    _busExtenderRecs.clear();
+
+    // Reset pins
+    if (_resetPin >= 0)
+        gpio_reset_pin(_resetPin);
+    if (_resetPinAlt >= 0)
+        gpio_reset_pin(_resetPinAlt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Setup
+/// @param config Configuration
 void BusExtenderMgr::setup(const RaftJsonIF& config)
 {
+    // Check if extender functionality is enabled
+    _isEnabled = config.getBool("enable", true);
+
     // Get the bus extender address range
-    _minAddr = config.getLong("busExtMinAddr", I2C_BUS_EXTENDER_BASE);
-    _maxAddr = config.getLong("busExtMaxAddr", I2C_BUS_EXTENDER_BASE+I2C_BUS_EXTENDERS_MAX-1);
+    _minAddr = config.getLong("minAddr", I2C_BUS_EXTENDER_BASE);
+    _maxAddr = config.getLong("maxAddr", I2C_BUS_EXTENDER_BASE+I2C_BUS_EXTENDERS_MAX-1);
 
-    // Create bus extender records
-    initBusExtenderRecs();
+    // Check if enabled
+    if (_isEnabled)
+    {
+        // Extender reset pin(s)
+        _resetPin = (gpio_num_t) config.getLong("rstPin", -1);
+        _resetPinAlt = (gpio_num_t) config.getLong("rstPinAlt", -1);
 
-#ifdef DEBUG_BUS_EXTENDERS
-    LOG_I(MODULE_PREFIX, "setup minAddr 0x%02x maxAddr 0x%02x numRecs %d", _minAddr, _maxAddr, _busExtenderRecs.size());
+        // Create bus extender records
+        RaftJsonPrefixed pwrCtrlConfig(config, "pwrCtrl");
+        setupPowerControl(pwrCtrlConfig);
+
+        // Setup reset pins
+        gpio_config_t io_conf = {};
+        if (_resetPin >= 0)
+        {
+            io_conf.intr_type = GPIO_INTR_DISABLE;
+            io_conf.mode = GPIO_MODE_OUTPUT;
+            io_conf.pin_bit_mask = 1ULL << _resetPin;
+            io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+            gpio_config(&io_conf);
+            gpio_set_level(_resetPin, 1);
+        }
+        if (_resetPinAlt >= 0)
+        {
+            io_conf.intr_type = GPIO_INTR_DISABLE;
+            io_conf.mode = GPIO_MODE_OUTPUT;
+            io_conf.pin_bit_mask = 1ULL << _resetPinAlt;
+            io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+            gpio_config(&io_conf);
+            gpio_set_level(_resetPinAlt, 1);
+        }
+    }
+
+#ifdef DEBUG_BUS_EXTENDER_SETUP
+    LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
+            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busExtenderRecs.size(), _resetPin, _resetPinAlt);
 #endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Service
 void BusExtenderMgr::service()
 {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service called from I2C task
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Service called from I2C task
 void BusExtenderMgr::taskService()
 {
-    // Iterate through bus extenders
+    // Check enabled
+    if (!_isEnabled)
+        return;
+
+    // Ensure bus extenders are initialised
     uint32_t addr = _minAddr;
     for (BusExtender& busExtender : _busExtenderRecs)
     {
@@ -78,12 +127,29 @@ void BusExtenderMgr::taskService()
         }
         addr++;
     }
+
+    // Handle any changes to power control
+    writePowerControlRegisters();
+
+    // Check time to change power control initialisation state
+    switch (_powerControlInitState)
+    {
+        case POWER_CONTROL_INIT_OFF:
+            if (Raft::isTimeout(millis(), _powerControlInitLastMs, STARTUP_CHANGE_TO_DEFAULT_VOLTAGE_MS))
+            {
+                _powerControlInitState = POWER_CONTROL_INIT_ON;
+                setVoltageLevel(0, _defaultVoltageLevel);
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// State change on an element
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Handle state change on an element
+/// @param addr Address of element
+/// @param elemResponding True if element is responding
 void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 {
     // Check if this is a bus extender
@@ -100,7 +166,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
             _busExtenderCount++;
 
             // Debug
-#ifdef DEBUG_BUS_EXTENDERS
+#ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
             LOG_I(MODULE_PREFIX, "elemStateChange new bus extender 0x%02x numDetectedExtenders %d", addr, _busExtenderCount);
 #endif
         }
@@ -112,7 +178,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
         _busExtenderRecs[elemIdx].isInitialised = false;
 
         // Debug
-#ifdef DEBUG_BUS_EXTENDERS
+#ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
         LOG_I(MODULE_PREFIX, "elemStateChange bus extender now offline so re-init 0x%02x numDetectedExtenders %d", addr, _busExtenderCount);
 #endif
 
@@ -123,9 +189,9 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Set bus extender channels using mask
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Set bus extender channels using mask
+/// @param addr Address of bus extender
+/// @param channelMask Mask of channels to set (1 bit per channel, 0=off, 1=on)
 RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, uint32_t channelMask)
 {
     // Initialise bus extender
@@ -143,12 +209,10 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, ui
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Set bus extender channels (all off or all on)
-// Pass addr 0 for all extenders
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Set bus extender channels (all off or all on)
+/// @param allOn All channels on
 void BusExtenderMgr::setAllChannels(bool allOn)
-{
+{        
     // Set all bus extender channels
     uint32_t addr = _minAddr;
     for (auto& busExtender : _busExtenderRecs)
@@ -164,11 +228,14 @@ void BusExtenderMgr::setAllChannels(bool allOn)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Enable a single slot on bus extender(s)
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Enable a single slot on bus extender(s)
+/// @param slotPlus1 Slot number (1-based)
 void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
 {
+    // Check valid
+    if (slotPlus1 == 0)
+        return;
+
     // Set all bus extender channels off except for one   
     for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
     {
@@ -178,6 +245,221 @@ void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
                             1 << ((slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT) : 0;
             uint32_t addr = _minAddr + extenderIdx;
             setChannels(addr, mask);
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Hardware reset of bus extenders
+void BusExtenderMgr::hardwareReset()
+{
+    // Reset bus extenders
+    if (_resetPin >= 0)
+        gpio_set_level(_resetPin, 0);
+    if (_resetPinAlt >= 0)
+        gpio_set_level(_resetPinAlt, 0);
+    vTaskDelay(1);
+    if (_resetPin >= 0)
+        gpio_set_level(_resetPin, 1);
+    if (_resetPinAlt >= 0)
+        gpio_set_level(_resetPinAlt, 1);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Initialise bus extender records
+void BusExtenderMgr::initBusExtenderRecs()
+{
+    // Clear existing records
+    _busExtenderRecs.clear();
+    _busExtenderRecs.resize(_maxAddr-_minAddr+1);
+    _busExtenderCount = 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Setup power control for bus extenders
+/// @param pwrCtrlConfig Power control configuration
+void BusExtenderMgr::setupPowerControl(const RaftJsonIF& pwrCtrlConfig)
+{
+    // Get array of power control info
+    std::vector<String> pwrCtrlArray;
+    pwrCtrlConfig.getArrayElems("ctrls", pwrCtrlArray);
+
+    // Handle power control elements
+    for (RaftJson pwrCtrlElem : pwrCtrlArray)
+    {
+        // Get the muxAddress
+        uint32_t muxAddr = pwrCtrlElem.getLong("muxAddr", 0);
+
+        // Check if address is within range and get index to bus extender recs
+        if (muxAddr < _minAddr || muxAddr > _maxAddr)
+        {
+            LOG_W(MODULE_PREFIX, "setupPowerControl muxAddr 0x%02x out of range", muxAddr);
+            continue;
+        }
+        uint32_t extenderIdx = muxAddr - _minAddr;
+
+        // Get the power control device address
+        uint32_t pwrCtrlDeviceAddr = pwrCtrlElem.getLong("devAddr", 0);
+        if (pwrCtrlDeviceAddr == 0)
+        {
+            LOG_W(MODULE_PREFIX, "setupPowerControl devAddr 0x%02x INVALID", pwrCtrlDeviceAddr);
+            continue;
+        }
+
+        // Get device type
+        String pwrCtrlDeviceType = pwrCtrlElem.getString("dev", "");
+        if (pwrCtrlDeviceType == "PCA9535")
+        {
+            _busExtenderRecs[extenderIdx].pwrCtrlAddr = pwrCtrlDeviceAddr;
+            _busExtenderRecs[extenderIdx].pwrCtrlType = POWER_CONTROL_PCA9535;
+        }
+        else
+        {
+            LOG_W(MODULE_PREFIX, "setupPowerControl dev %s INVALID", pwrCtrlDeviceType.c_str());
+            continue;
+        }
+
+#ifdef DEBUG_BUS_EXTENDER_SETUP
+        LOG_I(MODULE_PREFIX, "setupPowerControl muxAddr 0x%02x index %d deviceAddr 0x%02x", muxAddr, extenderIdx, pwrCtrlDeviceAddr);
+#endif
+    }
+
+    // Default voltage level
+    String defaultVoltage = pwrCtrlConfig.getString("vDefault", "");
+    _defaultVoltageLevel = POWER_CONTROL_OFF;
+    if (defaultVoltage.startsWith("3"))
+        _defaultVoltageLevel = POWER_CONTROL_3V3;
+    else if (defaultVoltage.startsWith("5"))
+        _defaultVoltageLevel = POWER_CONTROL_5V;
+
+    // Turn off all power to external devices initially
+    setVoltageLevel(0, POWER_CONTROL_OFF);
+    _powerControlInitState = POWER_CONTROL_INIT_OFF;
+
+#ifdef DEBUG_BUS_EXTENDER_SETUP
+    LOG_I(MODULE_PREFIX, "setupPowerControl defaultVoltage %s", defaultVoltage.c_str());
+#endif
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set voltage level for a slot (or all slots)
+/// @param slotPlus1 Slot number (0 is all slots)
+/// @param powerLevel Power level
+void BusExtenderMgr::setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powerLevel)
+{
+    // Check for one or more slots
+    if (slotPlus1 == 0)
+    {
+        // Iterate all slots
+        for (slotPlus1 = 1; slotPlus1 < I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size() + 1; slotPlus1++)
+        {
+            // Update mask and output registers for the slot
+            updatePowerControlRegs(slotPlus1, powerLevel);
+        }
+    }
+    else
+    {
+        // Update mask and output registers for the slot
+        updatePowerControlRegs(slotPlus1, powerLevel);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Update power control registers for a single slot
+/// @param slotPlus1 Slot number (1-based)
+/// @param powerLevel Power level
+void BusExtenderMgr::updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel)
+{
+    // Check valid slot
+    if ((slotPlus1 == 0) || (slotPlus1 > I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size()))
+        return;
+
+    // Get the bus extender index and slot index
+    uint32_t extenderIdx = (slotPlus1-1) / I2C_BUS_EXTENDER_SLOT_COUNT;
+    uint32_t slotIdx = (slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT;
+
+    // Get the bus extender record
+    BusExtender& busExtenderRec = _busExtenderRecs[extenderIdx];
+
+    // Check if power control is for PCA9535 (only one option supported currently)
+    if (busExtenderRec.pwrCtrlType != POWER_CONTROL_PCA9535)
+        return;
+
+    // Base bit mask for the slot if two bits (one for 3V and one for 5V)
+    // There is both a configuration register and an output register and both are written on each change
+    // In both registers an enabled voltage output is a 0 in the corresponding bit position
+    // The base mask is inverse to this logic so that a shift and inversion results in the total mask required
+    uint16_t orMask = 0b11 << (slotIdx * 2);
+    static const uint16_t BASE_MASK_BITS[] = {0b00, 0b01, 0b10};
+    uint16_t baseMask = ~((BASE_MASK_BITS[powerLevel]) << (slotIdx * 2));
+
+    // Compute the new value for the control register (16 bits)
+    uint16_t newRegVal = (busExtenderRec.pwrCtrlGPIOReg | orMask) & baseMask;
+
+#ifdef DEBUG_BUS_EXTENDER_SETUP
+    uint16_t prevReg = busExtenderRec.pwrCtrlGPIOReg;
+#endif
+
+    // Check if the mask has changed
+    if (newRegVal != busExtenderRec.pwrCtrlGPIOReg)
+    {
+        // Update the bus extender record
+        busExtenderRec.pwrCtrlGPIOReg = newRegVal;
+        busExtenderRec.pwrCtrlDirty = true;
+    }
+
+#ifdef DEBUG_BUS_EXTENDER_POWER_CONTROL
+    LOG_I(MODULE_PREFIX, "updatePowerLevel hasChanged %s slotPlus1 %d SlotPlus1-1 %d extenderIdx %d slotIdx %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
+            busExtenderRec.pwrCtrlDirty ? "YES" : "NO",
+            slotPlus1, slotPlus1-1, extenderIdx, slotIdx, powerLevel, 
+            busExtenderRec.pwrCtrlGPIOReg, prevReg);
+#endif
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Write power control registers for all slots
+void BusExtenderMgr::writePowerControlRegisters()
+{
+    // Iterate through bus extenders
+    for (BusExtender& busExtender : _busExtenderRecs)
+    {
+        if (busExtender.isOnline && busExtender.pwrCtrlDirty && 
+                    (busExtender.pwrCtrlAddr != 0) && (busExtender.pwrCtrlType == POWER_CONTROL_PCA9535))
+        {
+            // Set the output register first (to avoid unexpected power changes)
+            uint8_t writeData[3] = { PCA9535_OUTPUT_PORT_0, 
+                        uint8_t(busExtender.pwrCtrlGPIOReg & 0xff), 
+                        uint8_t(busExtender.pwrCtrlGPIOReg >> 8)};
+            BusI2CAddrAndSlot addrAndSlot(busExtender.pwrCtrlAddr, 0);
+            BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
+                        addrAndSlot,
+                        0, sizeof(writeData),
+                        writeData,
+                        0,
+                        0, 
+                        nullptr, 
+                        this);
+            bool rsltOk = _busI2CReqSyncFn(&reqRec, nullptr) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+
+            // Write the configuration register
+            writeData[0] = PCA9535_CONFIG_PORT_0;
+            BusI2CRequestRec reqRec2(BUS_REQ_TYPE_FAST_SCAN,
+                        addrAndSlot,
+                        0, sizeof(writeData),
+                        writeData,
+                        0,
+                        0, 
+                        nullptr, 
+                        this);
+            rsltOk &= _busI2CReqSyncFn(&reqRec2, nullptr) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+
+            // Clear the dirty flag if result is ok
+            busExtender.pwrCtrlDirty = !rsltOk;
+
+#ifdef DEBUG_BUS_EXTENDER_POWER_CONTROL
+            LOG_I(MODULE_PREFIX, "writePowerControlRegisters addr 0x%02x reg 0x%04x rslt %s", 
+                    busExtender.pwrCtrlAddr, busExtender.pwrCtrlGPIOReg, rsltOk ? "OK" : "FAIL");
+#endif
         }
     }
 }

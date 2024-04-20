@@ -136,7 +136,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
     // Check for scan (probe) operation
     if ((numToWrite == 0) && (numToRead == 0))
     {
-        esp_err_t err = i2c_master_probe(_i2cMasterBusHandle, address, 1);
+        esp_err_t err = i2c_master_probe(_i2cMasterBusHandle, address, 2);
         switch (err)
         {
             case ESP_OK:
@@ -151,7 +151,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
             }
             default:
             {
-                // LOG_I(MODULE_PREFIX, "access probe address 0x%02x OTHER %d", address, err);
+                LOG_I(MODULE_PREFIX, "access probe address 0x%02x OTHER %d", address, err);
                 return ACCESS_RESULT_HW_TIME_OUT;
             }
         }
@@ -191,7 +191,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
     if (numToWrite > 0 && numToRead == 0)
     {
         // Write
-        if (i2c_master_transmit(devHandle, pWriteBuf, numToWrite, -1) != ESP_OK)
+        if (i2c_master_transmit(devHandle, pWriteBuf, numToWrite, 10) != ESP_OK)
         {
             LOG_W(MODULE_PREFIX, "access FAILED to TX data addr 0x%02x numToWrite %d", address, numToWrite);
             return ACCESS_RESULT_ACK_ERROR;
@@ -204,7 +204,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
     if (numToRead > 0 && numToWrite == 0)
     {
         // Write
-        if (i2c_master_receive(devHandle, pReadBuf, numToRead, -1) != ESP_OK)
+        if (i2c_master_receive(devHandle, pReadBuf, numToRead, 10) != ESP_OK)
         {
             LOG_W(MODULE_PREFIX, "access failed to FAILED RX data addr 0x%02x numToRead %d", address, numToRead);
             return ACCESS_RESULT_ACK_ERROR;
@@ -215,7 +215,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
 
 
     // Write and read
-    if (i2c_master_transmit_receive(devHandle, pWriteBuf, numToWrite, pReadBuf, numToRead, -1) != ESP_OK)
+    if (i2c_master_transmit_receive(devHandle, pWriteBuf, numToWrite, pReadBuf, numToRead, 10) != ESP_OK)
     {
         LOG_W(MODULE_PREFIX, "access FAILED TX/RX data addr 0x%02x numToWrite %d numToRead %d", address, numToWrite, numToRead);
         return ACCESS_RESULT_ACK_ERROR;

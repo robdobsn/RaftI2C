@@ -10,6 +10,7 @@
 #include "BusI2C.h"
 #include "ConfigPinMap.h"
 #include "RaftArduino.h"
+#include "RaftJsonPrefixed.h"
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 
@@ -54,6 +55,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busExtenderMgr(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
+        _busStuckHandler(_busExtenderMgr),
         _deviceIdentMgr(_busExtenderMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
@@ -131,7 +133,11 @@ bool BusI2C::setup(const RaftJsonIF& config)
     _busStatusMgr.setup(config);
 
     // Bus extender setup
-    _busExtenderMgr.setup(config);
+    RaftJsonPrefixed busExtenderConfig(config, "mux");
+    _busExtenderMgr.setup(busExtenderConfig);
+
+    // Bus stuck handler setup
+    _busStuckHandler.setup(config);
 
     // Device ident manager
     _deviceIdentMgr.setup(config);
@@ -152,14 +158,17 @@ bool BusI2C::setup(const RaftJsonIF& config)
         return false;
     }
 
-    // Initialise bus
+    // Check central is valid
     if (!_pI2CCentral)
     {
         LOG_W(MODULE_PREFIX, "setup FAILED no device");
         return false;
     }
 
-    // Init the I2C device
+    // Reset bus extenders if any defined
+    _busExtenderMgr.hardwareReset();
+
+    // Init the I2C bus
     if (!_pI2CCentral->init(_i2cPort, _sdaPin, _sclPin, _freq, _i2cFilter))
     {
         LOG_W(MODULE_PREFIX, "setup FAILED name %s port %d SDA %d SCL %d FREQ %d", _busName.c_str(), _i2cPort, _sdaPin, _sclPin, _freq);
@@ -231,10 +240,15 @@ void BusI2C::service()
     _busScanner.service();
 
     // Service bus status change detection
+
+    // TODO - maybe pass in bus stuck manager here?? and it can determine if bus is ok??
     _busStatusMgr.service(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
 
     // Service bus extender
     _busExtenderMgr.service();
+
+    // Service bus stuck handler
+    _busStuckHandler.service();
 
     // Service bus accessor
     _busAccessor.service();

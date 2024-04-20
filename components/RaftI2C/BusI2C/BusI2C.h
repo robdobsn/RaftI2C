@@ -17,6 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
+#include "BusStuckHandler.h"
 
 class RaftI2CCentralIF;
 
@@ -184,9 +185,8 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Get the bus element address as a string
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    /// @brief Get bus address and status as a string
+    /// @param busElemAddr - bus element address and status
     virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) override
     {
         BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
@@ -237,6 +237,9 @@ private:
     // Bus extender manager
     BusExtenderMgr _busExtenderMgr;
 
+    // Bus stuck handler
+    BusStuckHandler _busStuckHandler;
+    
     // Device identifier
     DeviceIdentMgr _deviceIdentMgr;
 
