@@ -255,7 +255,8 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
                 slotPlus1 = 0;
                 _scanNextSlotArrayIdx = _busStatusMgr.isAddrFoundOnMainBus(addr) ? 0 : 1;
 #ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
-                LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext other addr %02x slot %d", addr, slotPlus1);
+                LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext other addr %02x slot %d isOnMainBus %s", 
+                            addr, slotPlus1, _scanNextSlotArrayIdx == 0 ? "true" : "false");
 #endif
                 return true;
             }

@@ -59,6 +59,10 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     _busElemStatusChangeDetected = false;
     _i2cAddrStatus.clear();
 
+    // Clear found on main bus bits
+    for (int i = 0; i < SIZE_OF_MAIN_BUS_ADDR_BITS_ARRAY; i++)
+        _mainBusAddrBits[i] = 0;
+
     // Debug
     LOG_I(MODULE_PREFIX, "task lockupDetect addr %02x (valid %s)",
                 _addrForLockupDetect, _addrForLockupDetectValid ? "Y" : "N");
@@ -213,9 +217,10 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
             }
 
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s isResponding %d isNewStatusChange %d", 
+            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s isResponding %d isNewStatusChange %d isOnMainBus %s", 
                         addrAndSlot.toString().c_str(), elemResponding,
-                        isNewStatusChange);
+                        isNewStatusChange, 
+                        (isNewStatusChange && isOnline && (addrAndSlot.slotPlus1 == 0)) ? "Y" : "N");
 #endif
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING

@@ -118,9 +118,7 @@ public:
         if (addr > I2C_BUS_ADDRESS_MAX)
             return;
         if (!isAddrFoundOnMainBus(addr))
-        {
             _mainBusAddrBits[addr/32] |= (1 << (addr % 32));
-        }
     }
 
     // Max failures before declaring a bus element offline
@@ -181,5 +179,6 @@ private:
     uint64_t _lastBusElemOnlineStatusUpdateTimeUs = 0;
 
     // Addresses found online on main bus at any time
-    uint32_t _mainBusAddrBits[(I2C_BUS_ADDRESS_MAX+1)/32] = {0};
+    uint32_t _mainBusAddrBits[(I2C_BUS_ADDRESS_MAX+31)/32] = {0};
+    static const uint32_t SIZE_OF_MAIN_BUS_ADDR_BITS_ARRAY = sizeof(_mainBusAddrBits)/sizeof(_mainBusAddrBits[0]);
 };
