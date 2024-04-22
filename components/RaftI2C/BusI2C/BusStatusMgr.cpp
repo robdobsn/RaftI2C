@@ -279,7 +279,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(BusI2CAddrAndSlot addrAndSlot) con
 #ifdef DEBUG_NO_SCANNING
     return BUS_OPERATION_OK;
 #endif
-    if (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX)
+    if ((addrAndSlot.addr < I2C_BUS_ADDRESS_MIN) || (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX))
         return BUS_OPERATION_UNKNOWN;
         
     // Obtain semaphore controlling access to busElemChange list and flag

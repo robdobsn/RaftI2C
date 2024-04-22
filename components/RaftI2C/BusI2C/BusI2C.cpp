@@ -38,6 +38,9 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 // The following will define a minimum time between I2C comms activities
 // #define ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US 1
 
+// Warn
+#define WARN_IF_ADDR_OUTSIDE_VALID_RANGE
+
 // Debug
 // #define DEBUG_NO_POLLING
 // #define DEBUG_I2C_ASYNC_SEND_HELPER
@@ -401,6 +404,16 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
                     pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
 #endif
 
+    // Check address is within valid range
+    if ((pReqRec->getAddrAndSlot().addr < I2C_BUS_ADDRESS_MIN) ||
+        (pReqRec->getAddrAndSlot().addr > I2C_BUS_ADDRESS_MAX))
+    {
+#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
+        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", pReqRec->getAddrAndSlot().addr);
+#endif
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    }
+
 #ifdef ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US
     // Check the last time a communication occurred - if less than the minimum between sends
     // then delay
@@ -469,6 +482,16 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
                     pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType());
 #endif
+
+    // Check address is within valid range
+    if ((pReqRec->getAddrAndSlot().addr < I2C_BUS_ADDRESS_MIN) ||
+        (pReqRec->getAddrAndSlot().addr > I2C_BUS_ADDRESS_MAX))
+    {
+#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
+        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", pReqRec->getAddrAndSlot().addr);
+#endif
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    }
 
     // Check if this address is barred for a period
     BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
