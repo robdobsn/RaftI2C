@@ -17,7 +17,7 @@
 
 // I2C addresses
 static const uint32_t I2C_BUS_ADDRESS_MIN = 4;
-static const uint32_t I2C_BUS_ADDRESS_MAX = 0x7f;
+static const uint32_t I2C_BUS_ADDRESS_MAX = 0x77;
 static const uint32_t I2C_BUS_EXTENDER_BASE = 0x70;
 static const uint32_t I2C_BUS_EXTENDERS_MAX = 8;
 

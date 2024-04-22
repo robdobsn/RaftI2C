@@ -38,7 +38,7 @@ total = sum(counts.values())
 print(f"1D / 53: {counts['1D'] / counts['53']}")
 print(f"1D / 04: {counts['1D'] / counts['04']}")
 
-# Check all values between 0x04 and 0x7f are represented
+# Check all values between 0x04 and 0x77 are represented
 for i in range(4, 0x80):
     if f"{i:02X}" not in counts:
         print(f"Value 0x{i:02X} not found")

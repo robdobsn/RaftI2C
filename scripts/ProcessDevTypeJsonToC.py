@@ -22,7 +22,7 @@ def process_dev_types(json_path, header_path):
     min_addr_array_index = 0
     max_addr_array_index = 0x7f
     min_valid_i2c_addr = 0x04
-    max_valid_i2c_addr = 0x7f
+    max_valid_i2c_addr = 0x77
 
     # Address indexes
     addr_index_to_dev_record = {}
@@ -93,7 +93,7 @@ def process_dev_types(json_path, header_path):
         # Bump index
         dev_record_index += 1
 
-    # Generate array covering all addresses from 0x00 to 0x7f
+    # Generate array covering all addresses from 0x00 to 0x77
     max_count_of_dev_types_for_addr = 0
     addr_index_to_dev_array = []
     for addr in range(min_addr_array_index, max_addr_array_index+1):
@@ -135,7 +135,7 @@ def process_dev_types(json_path, header_path):
 
         # Write constants for the min and max values of array index
         header_file.write(f'static const uint32_t BASE_DEV_INDEX_BY_ARRAY_MIN_ADDR = 0;\n')
-        header_file.write(f'static const uint32_t BASE_DEV_INDEX_BY_ARRAY_MAX_ADDR = 0x7f;\n\n')
+        header_file.write(f'static const uint32_t BASE_DEV_INDEX_BY_ARRAY_MAX_ADDR = 0x77;\n\n')
 
         # Generate the count of device types for each address
         header_file.write(f'static const uint8_t baseDevTypeCountByAddr[] =\n')
