@@ -149,7 +149,7 @@
                     "i2cFreq": 100000,
                     "taskCore": 0,
                     "taskStack": 3000,
-                    "taskPriority": 24,
+                    "taskPriority": 5,
                     "mux": {
                         "enable": 1,
                         "rstPin": 4,

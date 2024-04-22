@@ -133,7 +133,6 @@ private:
         // Flags
         bool isDetected:1 = false,
              isOnline:1 = false,
-             isInitialised:1 = false,
              pwrCtrlDirty:1 = true;
 
         // Power control
@@ -180,7 +179,7 @@ private:
     };
     PowerControlInitState _powerControlInitState = POWER_CONTROL_INIT_NONE;
     uint32_t _powerControlInitLastMs = 0;
-    static const uint32_t STARTUP_CHANGE_TO_DEFAULT_VOLTAGE_MS = 5000;
+    static const uint32_t STARTUP_CHANGE_TO_DEFAULT_VOLTAGE_MS = 100;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set power level for a slot (or all slots)

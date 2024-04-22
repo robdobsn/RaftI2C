@@ -119,8 +119,6 @@ public:
             return;
         if (!isAddrFoundOnMainBus(addr))
         {
-            // TODO - remove
-            LOG_I("dasdad", "--------- setAddrFoundOnMainBus %d", addr);
             _mainBusAddrBits[addr/32] |= (1 << (addr % 32));
         }
     }

@@ -277,12 +277,6 @@ void BusI2C::i2cWorkerTaskStatic(void* pvParameters)
         pObjPtr->i2cWorkerTask();
 }
 
-// TODO - remove
-uint32_t lastReportMs = 0;
-uint64_t worstTimeUs = 0;
-uint32_t yieldsCount = 0;
-uint32_t loopCount = 0;
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief RTOS task function that handles all bus interaction (runs indefinitely - or until notified to stop)
 void BusI2C::i2cWorkerTask()
@@ -301,12 +295,15 @@ void BusI2C::i2cWorkerTask()
             yieldCount = 0;
             vTaskDelay(1);
 
-            // TODO remove
-            yieldsCount++;
+#ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
+            // Debug
+            _i2cMainYieldCount++;
+#endif
         }
 
-        // TODO - remove
+#ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         uint64_t startUs = micros();
+#endif
 
         // Stats
         _busStats.activity();
@@ -336,17 +333,13 @@ void BusI2C::i2cWorkerTask()
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
         {
-            // TODO - restore
             // Service bus scanner
-            // uint32_t lastFastScanYieldMs = millis();
-//            while (_busScanner.isScanPending())
+            uint32_t lastFastScanYieldMs = millis();
+            while (_busScanner.isScanPending())
             {
                _busScanner.taskService();
-//                if (Raft::isTimeout(millis(), lastFastScanYieldMs, BusScanner::I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
-//                {
-//                    vTaskDelay(1);
-//                    break;
-//                }
+               if (Raft::isTimeout(millis(), lastFastScanYieldMs, BusScanner::I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
+                   break;
             }
         }
 #endif
@@ -369,19 +362,20 @@ void BusI2C::i2cWorkerTask()
         // TODO - remove or reconsider how polling works
         _busAccessor.processPolling();
 
-        // TODO - remove
+#ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
+        // Debug
         uint64_t timeUs = micros() - startUs;
-        if (timeUs > worstTimeUs)
-            worstTimeUs = timeUs;
-        loopCount++;
-
-        if (millis() - lastReportMs > 30000)
+        if (timeUs > _i2cLoopWorstTimeUs)
+            _i2cLoopWorstTimeUs = timeUs;
+        _i2cMainLoopCount++;
+        if (millis() - _i2cDebugLastReportMs > 30000)
         {
-            lastReportMs = millis();
+            _i2cDebugLastReportMs = millis();
             LOG_I(MODULE_PREFIX, "i2cWorkerTask timeUs %lld worstTimeUs %lld yieldsCount %d loopCount %d", 
-                        timeUs, worstTimeUs, yieldsCount, loopCount);
-            worstTimeUs = 0;
+                        timeUs, _i2cLoopWorstTimeUs, _i2cMainYieldCount, _i2cMainLoopCount);
+            _i2cLoopWorstTimeUs = 0;
         }
+#endif
     }
 
     LOG_I(MODULE_PREFIX, "i2cWorkerTask exiting");

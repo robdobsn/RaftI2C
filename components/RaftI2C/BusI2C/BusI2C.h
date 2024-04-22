@@ -19,6 +19,8 @@
 #include "DevicePollingMgr.h"
 #include "BusStuckHandler.h"
 
+#define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
+
 class RaftI2CCentralIF;
 
 class BusI2C : public BusBase
@@ -231,6 +233,14 @@ private:
     uint32_t _hiatusStartMs = 0;
     uint32_t _hiatusForMs = 0;
     
+    // Measurement of loop time
+#ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
+    uint32_t _i2cDebugLastReportMs = 0;
+    uint64_t _i2cLoopWorstTimeUs = 0;
+    uint32_t _i2cMainYieldCount = 0;
+    uint32_t _i2cMainLoopCount = 0;
+#endif
+
     // Bus status
     BusStatusMgr _busStatusMgr;
 

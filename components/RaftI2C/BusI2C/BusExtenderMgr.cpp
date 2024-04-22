@@ -14,7 +14,7 @@
 #include "freertos/task.h"
 
 #define DEBUG_BUS_EXTENDER_SETUP
-#define DEBUG_BUS_EXTENDER_POWER_CONTROL
+// #define DEBUG_BUS_EXTENDER_POWER_CONTROL
 // #define DEBUG_BUS_EXTENDERS
 // #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
 
@@ -110,27 +110,6 @@ void BusExtenderMgr::taskService()
     if (!_isEnabled)
         return;
 
-    // Ensure bus extenders are initialised
-    uint32_t addr = _minAddr;
-    for (BusExtender& busExtender : _busExtenderRecs)
-    {
-        if (busExtender.isOnline && !busExtender.isInitialised)
-        {
-            if (setChannels(addr, I2C_BUS_EXTENDER_ALL_CHANS_ON) == 
-                                RaftI2CCentralIF::ACCESS_RESULT_OK)
-            {
-#ifdef DEBUG_BUS_EXTENDERS
-                LOG_I(MODULE_PREFIX, "service bus extender 0x%02x initialised", addr);
-#endif                
-                busExtender.isInitialised = true;
-            }
-        }
-        addr++;
-    }
-
-    // Handle any changes to power control
-    writePowerControlRegisters();
-
     // Check time to change power control initialisation state
     switch (_powerControlInitState)
     {
@@ -144,6 +123,9 @@ void BusExtenderMgr::taskService()
         default:
             break;
     }
+
+    // Handle any changes to power control
+    writePowerControlRegisters();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +145,6 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
     {
         if (!_busExtenderRecs[elemIdx].isDetected)
         {
-            _busExtenderRecs[elemIdx].isInitialised = false;
             _busExtenderCount++;
             changeDetected = true;
 
@@ -176,8 +157,6 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
     }
     else if (_busExtenderRecs[elemIdx].isDetected)
     {
-        // Check if it has gone offline in which case set for re-init
-        _busExtenderRecs[elemIdx].isInitialised = false;
         changeDetected = true;
 
         // Debug
@@ -237,8 +216,10 @@ void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
     if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
         return;
 
-    // Reset to ensure all slots disabled
-    hardwareReset();
+    // TODO - decide if this is necessary
+
+    // // Reset to ensure all slots disabled
+    // hardwareReset();
 
     // Set all bus extender channels off except for one
     uint32_t mask = 1 << slotIdx;
@@ -260,6 +241,7 @@ void BusExtenderMgr::hardwareReset()
         gpio_set_level(_resetPin, 1);
     if (_resetPinAlt >= 0)
         gpio_set_level(_resetPinAlt, 1);
+    delayMicroseconds(10);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -410,7 +392,7 @@ void BusExtenderMgr::updatePowerControlRegs(uint32_t slotPlus1, PowerControlLeve
     // Compute the new value for the control register (16 bits)
     uint16_t newRegVal = (busExtenderRec.pwrCtrlGPIOReg | orMask) & baseMask;
 
-#ifdef DEBUG_BUS_EXTENDER_SETUP
+#ifdef DEBUG_BUS_EXTENDER_POWER_CONTROL
     uint16_t prevReg = busExtenderRec.pwrCtrlGPIOReg;
 #endif
 

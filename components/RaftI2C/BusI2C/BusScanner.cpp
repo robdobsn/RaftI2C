@@ -115,10 +115,12 @@ bool BusScanner::taskService()
         case SCAN_STATE_SCAN_EXTENDERS:
         case SCAN_STATE_MAIN_BUS:
         {
-            // Scan bus extenders
+            // Scan main bus elements
             RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(_scanCurAddr);
             _busExtenderMgr.elemStateChange(_scanCurAddr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
             updateBusElemState(_scanCurAddr, 0, rslt);
+            
+            // Check if all addresses scanned
             _scanCurAddr++;
             if (_scanCurAddr > (_scanState == SCAN_STATE_SCAN_EXTENDERS ? _busExtenderMgr.getMaxAddr() : I2C_BUS_ADDRESS_MAX))
             {
@@ -144,7 +146,7 @@ bool BusScanner::taskService()
             // Find the next address to scan
             uint32_t addr = 0;
             uint32_t slotPlus1 = 0;
-            if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, (_scanState == SCAN_STATE_MAIN_BUS) || _busStatusMgr.isAddrFoundOnMainBus(addr)))
+            if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, false))
                 return false;
 
             // Enable slot if required
@@ -163,7 +165,10 @@ bool BusScanner::taskService()
             // TODO - decide when to move from fast scan to slow scan
 
             // Check if fast scanning
-            return _scanState == SCAN_STATE_SCAN_FAST;
+            // return _scanState == SCAN_STATE_SCAN_FAST;
+
+            // TODO - remove
+            return true;
         }
     }
     return false;
@@ -248,7 +253,7 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
                 _scanCurAddr = addr;
                 _scanPriorityRecs[idx].scanListIndex++;
                 slotPlus1 = 0;
-                _scanNextSlotArrayIdx = onlyMainBus ? 0 : 1;
+                _scanNextSlotArrayIdx = _busStatusMgr.isAddrFoundOnMainBus(addr) ? 0 : 1;
 #ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
                 LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext other addr %02x slot %d", addr, slotPlus1);
 #endif
