@@ -11,13 +11,12 @@
 #include "BusI2CRequestRec.h"
 
 // #define DEBUG_BUS_SCANNER
+// #define DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
 
 static const char* MODULE_PREFIX = "BusScanner";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor and destructor
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& busExtenderMgr, 
                 DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
@@ -25,186 +24,267 @@ BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& busExtenderMg
     _deviceIdentMgr(deviceIdentMgr),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
-    _busScanLastMs = millis();
+    _scanLastMs = millis();
 #ifdef DEBUG_DISABLE_INITIAL_FAST_SCAN
     _fastScanPendingCount = 0;
 #endif
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Destructor
 BusScanner::~BusScanner()
 {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Setup
 void BusScanner::setup(const RaftJsonIF& config)
 {
     // Bus scan period
-    _busScanPeriodMs = config.getLong("busScanPeriodMs", I2C_BUS_SCAN_DEFAULT_PERIOD_MS);
-    LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _busScanPeriodMs);
+    _slowScanPeriodMs = config.getLong("busScanPeriodMs", I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS);
+    LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
+
+    // Get scan priority lists
+    DeviceTypeRecords::getScanPriorityLists(_scanPriorityLists);
 
     // Scan boost
     std::vector<String> scanBoostAddrStrs;
     config.getArrayElems("scanBoost", scanBoostAddrStrs);
-    _scanBoostAddresses.resize(scanBoostAddrStrs.size());
-    for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
+    if (scanBoostAddrStrs.size() != 0)
     {
-        _scanBoostAddresses[i] = strtoul(scanBoostAddrStrs[i].c_str(), nullptr, 0);
-        LOG_I(MODULE_PREFIX, "setup scanBoost %02x", _scanBoostAddresses[i]);
+        // Resize if necessary
+        if (_scanPriorityLists.size() == 0)
+            _scanPriorityLists.resize(1);
+
+        // Scan boost addresses
+        for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
+        {
+            uint32_t addr = strtoul(scanBoostAddrStrs[i].c_str(), nullptr, 0);
+            _scanPriorityLists[0].push_back(addr);
+        }
     }
 
+    // Scan state records
+    _scanPriorityRecs.clear();
+    uint32_t listTotal = 0;
+    for (uint32_t i = 0; i < _scanPriorityLists.size(); i++)
+    {
+        // Set maxCount to square of index + 1
+        ScanPriorityRec scanStateRec;
+        int scanListLenDivisor = _scanPriorityLists[i].size() == 0 ? 1 : _scanPriorityLists[i].size();
+        scanStateRec.maxCount = i == 0 ? 0 : (i + 1) * (i + 1) * listTotal / scanListLenDivisor + 1;
+        _scanPriorityRecs.push_back(scanStateRec);
+        listTotal += _scanPriorityLists[i].size();
+    }
+    
     // Scanner reset
-    _scanBoostCount = 0;
-    _busScanCurAddr = _busExtenderMgr.getMinAddr();
-    _busScanLastMs = 0;
-    _slowScanEnabled = true;
-    _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
-    _busExtenderAddrScanCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+    _scanState = SCAN_STATE_IDLE;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Service
 void BusScanner::service()
 {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service called from I2C task
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusScanner::taskService()
+/// @brief Service called from I2C task
+/// @return true if fast scanning in progress
+bool BusScanner::taskService()
 {
-    // Perform fast scans of the bus if requested
-    uint32_t scanLastYieldtMs = millis();
-    while (_fastScanPendingCount > 0)
-    {
-        scanNextAddress();
-        _busExtenderMgr.taskService();
-        if (Raft::isTimeout(millis(), scanLastYieldtMs, I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
-        {
-            scanLastYieldtMs = millis();
-            vTaskDelay(1);
-        }
-    }
-
-    // Perform regular scans at _busScanPeriodMs intervals
-    if (_slowScanEnabled)
-    {
-        if ((_busScanPeriodMs == 0) || (Raft::isTimeout(millis(), _busScanLastMs, _busScanPeriodMs)))
-            scanNextAddress();
-    }
-
     // Service bus extender manager
     _busExtenderMgr.taskService();
+
+    // Time of last scan
+    _scanLastMs = millis();
+
+    // Check scan state
+    switch(_scanState)
+    {
+        case SCAN_STATE_IDLE:
+        {
+            // Init vars and go to scan extenders
+            _scanCurAddr = _busExtenderMgr.getMinAddr();
+            _scanNextSlotArrayIdx = 0;
+            _scanLastMs = 0;
+            _scanState = SCAN_STATE_SCAN_EXTENDERS;
+            _scanStateRepeatCount = 0;
+            _scanStateRepeatCountMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+            return true;
+        }
+        case SCAN_STATE_SCAN_EXTENDERS:
+        case SCAN_STATE_MAIN_BUS:
+        {
+            // Scan bus extenders
+            RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(_scanCurAddr);
+            _busExtenderMgr.elemStateChange(_scanCurAddr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+            updateBusElemState(_scanCurAddr, 0, rslt);
+            _scanCurAddr++;
+            if (_scanCurAddr > (_scanState == SCAN_STATE_SCAN_EXTENDERS ? _busExtenderMgr.getMaxAddr() : I2C_BUS_ADDRESS_MAX))
+            {
+                _scanStateRepeatCount++;
+                if (_scanStateRepeatCount >= _scanStateRepeatCountMax)
+                {
+                    _scanState = (_scanState == SCAN_STATE_SCAN_EXTENDERS ? SCAN_STATE_MAIN_BUS : SCAN_STATE_SCAN_FAST);
+                    _scanCurAddr = I2C_BUS_ADDRESS_MIN;
+                    _scanStateRepeatCount = 0;
+                    _scanStateRepeatCountMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+                }
+                else
+                {
+                    _scanCurAddr = (_scanState == SCAN_STATE_SCAN_EXTENDERS ? _busExtenderMgr.getMinAddr() : I2C_BUS_ADDRESS_MIN);
+                }
+            }
+            return true;
+        }
+        
+        case SCAN_STATE_SCAN_FAST:
+        case SCAN_STATE_SCAN_SLOW:
+        {
+            // Find the next address to scan
+            uint32_t addr = 0;
+            uint32_t slotPlus1 = 0;
+            if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, (_scanState == SCAN_STATE_MAIN_BUS) || _busStatusMgr.isAddrFoundOnMainBus(addr)))
+                return false;
+
+            // Enable slot if required
+            _busExtenderMgr.enableOneSlot(slotPlus1);
+
+            // Handle the scan
+            RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
+            updateBusElemState(addr, slotPlus1, rslt);
+
+            // Clear the slot if necessary
+            if (slotPlus1 > 0)
+            {
+                _busExtenderMgr.hardwareReset();
+            }
+
+            // TODO - decide when to move from fast scan to slow scan
+
+            // Check if fast scanning
+            return _scanState == SCAN_STATE_SCAN_FAST;
+        }
+    }
+    return false;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scan a single address
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusScanner::scanNextAddress()
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if a scan is pending
+/// @return true if a scan is pending
+bool BusScanner::isScanPending()
 {
-    // Scan the addresses specified in scan-boost more frequently than normal
-    uint8_t scanAddress = _busScanCurAddr;
-    _scanBoostCount++;
-    if ((_scanBoostCount >= SCAN_BOOST_FACTOR) && (_fastScanPendingCount == 0))
+    switch(_scanState)
     {
-        // Check if the scan addr index is beyond the end of the array
-        if (_scanBoostCurAddrIdx >= _scanBoostAddresses.size())
+        case SCAN_STATE_IDLE:
+        case SCAN_STATE_SCAN_EXTENDERS:
+        case SCAN_STATE_MAIN_BUS:
+        case SCAN_STATE_SCAN_FAST:
+            return true;
+        case SCAN_STATE_SCAN_SLOW:
+            return _slowScanEnabled && ((_slowScanPeriodMs == 0) || (Raft::isTimeout(millis(), _scanLastMs, _slowScanPeriodMs)));
+    }
+    return false;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set current address and get slot to scan next
+/// @param addr (out) Address
+/// @param slotPlus1 (out) Slot number (1-based)
+/// @param onlyMainBus Only main bus (don't scan extenders)
+/// @return True if valid
+bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus)
+{
+    // Check if already scanning slots on current address
+    if (!onlyMainBus && (_scanNextSlotArrayIdx > 0))
+    {
+        // Check if slots remain
+        const std::vector<uint8_t> busExtenderSlots = _busExtenderMgr.getBusExtenderSlots();
+        if (_scanNextSlotArrayIdx < busExtenderSlots.size())
         {
-            // Reset the scan address index
-            _scanBoostCurAddrIdx = 0;
-            _scanBoostCount = 0;
-        }
-        else
-        {
-            scanAddress = _scanBoostAddresses[_scanBoostCurAddrIdx++];
+            // Return this slot
+            slotPlus1 = busExtenderSlots[_scanNextSlotArrayIdx];
+
+            // Move to next slot
+            _scanNextSlotArrayIdx++;
+            if (_scanNextSlotArrayIdx >= busExtenderSlots.size())
+                _scanNextSlotArrayIdx = 0;
+            addr = _scanCurAddr;
+#ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
+            LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext slots addr %02x slot %d", addr, slotPlus1);
+#endif
+            return true;
         }
     }
 
-    // Discover elem(s) at this address
-    discoverAddressElems(scanAddress);
+    // Reset slot index
+    _scanNextSlotArrayIdx = 0;
 
-    // Bump address if next in regular scan sequence
-    if (scanAddress == _busScanCurAddr)
+    // Check scan priority list valid
+    if (_scanPriorityLists.size() == 0)
+        return false;
+
+    // Iterate through scan priority lists in reverse order
+    for (uint32_t j = _scanPriorityLists.size(); j >= 1; j--)
     {
-        _busScanCurAddr++;
+        // Get index
+        uint32_t idx = j - 1;
 
-        // Check if scanning for bus extenders
-        if (_busExtenderAddrScanCount > 0)
+        // Increment count and check if max reached
+        _scanPriorityRecs[idx].count++;
+        if (_scanPriorityRecs[idx].count > _scanPriorityRecs[idx].maxCount)
         {
-            if (_busScanCurAddr >= I2C_BUS_EXTENDER_BASE + I2C_BUS_EXTENDERS_MAX)
+            _scanPriorityRecs[idx].count = 0;
+
+            // Reset scan list index if required
+            if (_scanPriorityRecs[idx].scanListIndex >= _scanPriorityLists[idx].size())
+                _scanPriorityRecs[idx].scanListIndex = 0;
+
+            // Get address at current scan list index (if there is one)
+            if (_scanPriorityRecs[idx].scanListIndex < _scanPriorityLists[idx].size())
             {
-                _busScanCurAddr = I2C_BUS_EXTENDER_BASE;
-                _busExtenderAddrScanCount--;
-            }
-        }
-        else
-        {
-            if (_busScanCurAddr > I2C_BUS_ADDRESS_MAX)
-            {
-                _busScanCurAddr = I2C_BUS_ADDRESS_MIN;
-                if (_fastScanPendingCount > 0)
-                    _fastScanPendingCount--;
+                // Get address
+                addr = _scanPriorityLists[idx][_scanPriorityRecs[idx].scanListIndex];
+                _scanCurAddr = addr;
+                _scanPriorityRecs[idx].scanListIndex++;
+                slotPlus1 = 0;
+                _scanNextSlotArrayIdx = onlyMainBus ? 0 : 1;
+#ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
+                LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext other addr %02x slot %d", addr, slotPlus1);
+#endif
+                return true;
             }
         }
     }
-    _busScanLastMs = millis();
+
+#ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
+    LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext NOTHING");
+#endif
+
+    // Nothing to return
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Request bus scan
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Request a bus scan
+/// @param enableSlowScan Enable slow scan
+/// @param requestFastScan Request fast scan
 void BusScanner::requestScan(bool enableSlowScan, bool requestFastScan)
 {
     // Perform fast scans to detect online/offline status
     if (requestFastScan)
-        _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX;
+    {
+        _scanState = SCAN_STATE_SCAN_FAST;
+        _scanStateRepeatCount = 0;
+        _scanStateRepeatCountMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+    }
     _slowScanEnabled = enableSlowScan;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Discover elems at specific address
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusScanner::discoverAddressElems(uint8_t addr)
-{
-    // The following assumes that any bus extenders are in all-channel-enabled mode
-
-    // Check if this address has already been identified on an extender
-    bool isAddrOnSlot = _busStatusMgr.isAddrFoundOnAnyExtender(addr);
-    if (!isAddrOnSlot)
-    {
-        // Scan the address and if not responding or no bus extenders are present
-        // then handle possible bus element state changes
-        RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-        if ((rslt != RaftI2CCentralIF::ACCESS_RESULT_OK) || (_busExtenderMgr.getBusExtenderCount() == 0) ||
-                                _busExtenderMgr.isBusExtender(addr))
-        {
-            // Update bus element state for extenders (may or may not be one)
-            _busExtenderMgr.elemStateChange(addr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
-
-            // Update bus element state
-            updateBusElemState(addr, 0, rslt);
-            return;
-        }
-    }
-
-    // We have at least one element responding on this address and bus extenders present
-    // so scan the bus extender slot numbers that this address responds on 
-    // (if no slot responds then it is found on the main bus - slot 0)
-    scanElemSlots(addr);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scan one address
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Scan one address
+/// @param addr Address
+/// @return Access result code
 RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
 {
     BusI2CAddrAndSlot addrAndSlot(addr, 0);
@@ -219,66 +299,11 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
     return _busI2CReqSyncFn(&reqRec, nullptr);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scan element slots
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusScanner::scanElemSlots(uint32_t addr)
-{
-    // Disable all bus extender channels initially
-    _busExtenderMgr.setAllChannels(false);
-
-    // Check if the address still gets a response
-    if (scanOneAddress(addr) == RaftI2CCentralIF::ACCESS_RESULT_OK)
-    {
-        // Report slot 0 as an element on the main bus has to have a unique address
-        updateBusElemState(addr, 0, RaftI2CCentralIF::ACCESS_RESULT_OK);
-        // Restore channels
-        _busExtenderMgr.setAllChannels(true);
-        return;
-    }
-
-    // Get bus extender addresses
-    std::vector<uint32_t> busExtenderAddrs;
-    _busExtenderMgr.getActiveExtenderAddrs(busExtenderAddrs);
-
-    // Iterate through bus extenders
-    int extenderCount = busExtenderAddrs.size();
-    for (auto& busExtenderAddr : busExtenderAddrs)
-    {
-        // Iterate through extender slots
-        for (uint32_t slotIdx = 0; slotIdx < BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT; slotIdx++)
-        {
-            // Calculate the slot
-            uint32_t slotPlus1 = (busExtenderAddr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + slotIdx + 1;
-
-            // Enable one extender channel
-            if (_busExtenderMgr.setChannels(busExtenderAddr, 0x01 << slotIdx) != RaftI2CCentralIF::ACCESS_RESULT_OK)
-                break;
-            
-            // Access the device address again to test if it still reponds
-            RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-            
-            // Report result for each slot
-            updateBusElemState(addr, slotPlus1, rslt);
-        }
-
-        // Disable all channels (if necessary)
-        extenderCount--;
-        if (extenderCount > 0)
-        {
-            _busExtenderMgr.setChannels(busExtenderAddr, BusExtenderMgr::I2C_BUS_EXTENDER_ALL_CHANS_OFF);
-        }
-    }
-
-    // Re-enable all channels
-    _busExtenderMgr.setAllChannels(true);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Update bus element state
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Update bus element state
+/// @param addr Address
+/// @param slot Slot
+/// @param accessResult Access result code
 void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentralIF::AccessResultCode accessResult)
 {
     // Update bus element state

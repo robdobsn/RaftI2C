@@ -12,11 +12,14 @@
 #include "RaftArduino.h"
 
 // Use replacement I2C library - if not defined use original ESP IDF I2C implementation
-// #define I2C_USE_RAFT_I2C
-#define I2C_USE_ESP_IDF_5
+#define I2C_USE_RAFT_I2C
+// #define I2C_USE_ESP_IDF_5
 
 // I2C addresses
 static const uint32_t I2C_BUS_ADDRESS_MIN = 4;
-static const uint32_t I2C_BUS_ADDRESS_MAX = 0x77;
+static const uint32_t I2C_BUS_ADDRESS_MAX = 0x7f;
 static const uint32_t I2C_BUS_EXTENDER_BASE = 0x70;
 static const uint32_t I2C_BUS_EXTENDERS_MAX = 8;
+
+// Address type
+typedef uint8_t RaftI2CAddrType;

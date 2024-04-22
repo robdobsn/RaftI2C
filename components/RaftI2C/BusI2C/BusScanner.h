@@ -29,36 +29,57 @@ public:
     void service();
     void requestScan(bool enableSlowScan, bool requestFastScan);
 
-    // Service called from I2C task
-    void taskService();
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Check if a scan is pending
+    /// @return true if a scan is pending
+    bool isScanPending();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Service called from I2C task
+    /// @return true if fast scanning in progress
+    bool taskService();
 
     // Scan period
-    static const uint32_t I2C_BUS_SCAN_DEFAULT_PERIOD_MS = 10;
+    static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 10;
 
     // Max fast scanning without yielding
     static const uint32_t I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS = 10;
 
 private:
+    // Scanning state
+    enum ScanState {
+        SCAN_STATE_IDLE,
+        SCAN_STATE_SCAN_EXTENDERS,
+        SCAN_STATE_MAIN_BUS,
+        SCAN_STATE_SCAN_FAST,
+        SCAN_STATE_SCAN_SLOW
+    };
+    ScanState _scanState = SCAN_STATE_IDLE;
+
+    // Scanning state repeat count
+    uint16_t _scanStateRepeatCount = 0;
+    uint16_t _scanStateRepeatCountMax = 0;
+
     // Scanning
-    uint32_t _busScanCurAddr = I2C_BUS_EXTENDER_BASE;
-    uint32_t _busScanLastMs = 0;
-    uint32_t _busScanPeriodMs = I2C_BUS_SCAN_DEFAULT_PERIOD_MS;
+    uint32_t _scanLastMs = 0;
+    uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
+    uint16_t _scanNextSlotArrayIdx = 0;
+    uint16_t _scanCurAddr = I2C_BUS_ADDRESS_MIN;
 
-    // Scan boost - used to increase the rate of scanning on some addresses
-    uint16_t _scanBoostCount = 0;
-    std::vector<uint8_t> _scanBoostAddresses;
-    static const uint32_t SCAN_BOOST_FACTOR = 10;
-    uint8_t _scanBoostCurAddrIdx = 0;
+    // Scan priority
+    std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
+    
+    // Scanning priority state
+    class ScanPriorityRec {
+    public:
+        uint16_t count = 0;
+        uint16_t maxCount = 0;
+        uint16_t scanListIndex = 0;
+    };
+    std::vector<ScanPriorityRec> _scanPriorityRecs;
 
-    // Enable slow scanning initially
+    // Enable slow scanning
     bool _slowScanEnabled = true;
-
-    // Set bus scanning so enough fast scans are done initially to
-    // detect online/offline status of all bus elements
-    uint32_t _fastScanPendingCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
-
-    // Bus extender address scanning count
-    uint32_t _busExtenderAddrScanCount = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
 
     // Status manager
     BusStatusMgr& _busStatusMgr;
@@ -72,10 +93,15 @@ private:
     // Bus i2c request function (synchronous)
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
 
-    // Helper to scan next address
-    void scanNextAddress();
-    void discoverAddressElems(uint8_t addr);
+    // Helpers
     RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
-    void scanElemSlots(uint32_t addr);
     void updateBusElemState(uint32_t addr, uint32_t slotPlus1, RaftI2CCentralIF::AccessResultCode accessResult);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set current address and get slot to scan next
+    /// @param addr (out) Address
+    /// @param slotPlus1 (out) Slot number (1-based)
+    /// @param onlyMainBus Only main bus (don't scan extenders)
+    /// @return True if valid
+    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus);
 };

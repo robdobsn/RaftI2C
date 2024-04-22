@@ -10,13 +10,14 @@
                 "i": 200,
                 "s": 10
             },
+            "scanPriority": "high",
             "devInfoJson": {
                 "name": "VCNL4040",
                 "desc": "Prox&ALS",
                 "manu": "Vishay",
                 "type": "VCNL4040",
                 "attr": {
-                    "x" : 
+                    "x" :
                     [
                         {
                             "n": "prox",
@@ -56,6 +57,7 @@
                 "i": 100,
                 "s": 10
             },
+            "scanPriority": "high",
             "devInfoJson": {
                 "name": "ADXL313",
                 "desc": "3-Axis Accel",
@@ -102,6 +104,7 @@
                 "i": 100,
                 "s": 10
             },
+            "scanPriority": "high",
             "devInfoJson": {
                 "name": "QWIIC Button",
                 "desc": "Button",

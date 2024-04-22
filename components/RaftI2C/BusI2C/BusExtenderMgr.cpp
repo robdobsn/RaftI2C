@@ -33,9 +33,6 @@ BusExtenderMgr::BusExtenderMgr(BusI2CReqSyncFn busI2CReqSyncFn) :
 /// @brief Destructor
 BusExtenderMgr::~BusExtenderMgr()
 {
-    // Delete bus extender records
-    _busExtenderRecs.clear();
-
     // Reset pins
     if (_resetPin >= 0)
         gpio_reset_pin(_resetPin);
@@ -89,6 +86,9 @@ void BusExtenderMgr::setup(const RaftJsonIF& config)
             gpio_set_level(_resetPinAlt, 1);
         }
     }
+
+    // Perform hardware reset of bus extenders
+    hardwareReset();
 
 #ifdef DEBUG_BUS_EXTENDER_SETUP
     LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
@@ -157,6 +157,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
         return;
 
     // Update the bus extender record
+    bool changeDetected = false;
     uint32_t elemIdx = addr-_minAddr;
     if (elemResponding)
     {
@@ -164,6 +165,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
         {
             _busExtenderRecs[elemIdx].isInitialised = false;
             _busExtenderCount++;
+            changeDetected = true;
 
             // Debug
 #ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
@@ -176,12 +178,28 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
     {
         // Check if it has gone offline in which case set for re-init
         _busExtenderRecs[elemIdx].isInitialised = false;
+        changeDetected = true;
 
         // Debug
 #ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
         LOG_I(MODULE_PREFIX, "elemStateChange bus extender now offline so re-init 0x%02x numDetectedExtenders %d", addr, _busExtenderCount);
 #endif
 
+    }
+
+    // Update the available slots array
+    if (changeDetected)
+    {
+        // Update the available slots array
+        _busExtenderSlots.clear();
+        for (uint32_t i = 0; i < _busExtenderRecs.size(); i++)
+        {
+            if (_busExtenderRecs[i].isDetected)
+            {
+                for (uint32_t slot = 0; slot < I2C_BUS_EXTENDER_SLOT_COUNT; slot++)
+                    _busExtenderSlots.push_back(i * I2C_BUS_EXTENDER_SLOT_COUNT + slot);
+            }
+        }
     }
 
     // Set the online status
@@ -209,44 +227,23 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, ui
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set bus extender channels (all off or all on)
-/// @param allOn All channels on
-void BusExtenderMgr::setAllChannels(bool allOn)
-{        
-    // Set all bus extender channels
-    uint32_t addr = _minAddr;
-    for (auto& busExtender : _busExtenderRecs)
-    {
-        if (busExtender.isOnline)
-        {
-            setChannels(addr, allOn ? 
-                        I2C_BUS_EXTENDER_ALL_CHANS_ON : 
-                        I2C_BUS_EXTENDER_ALL_CHANS_OFF);
-        }
-        addr++;
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Enable a single slot on bus extender(s)
 /// @param slotPlus1 Slot number (1-based)
 void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
 {
-    // Check valid
-    if (slotPlus1 == 0)
+    // Get the bus extender index and slot index
+    uint32_t slotIdx = 0;
+    uint32_t extenderIdx = 0;
+    if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
         return;
 
-    // Set all bus extender channels off except for one   
-    for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
-    {
-        if (_busExtenderRecs[extenderIdx].isOnline)
-        {
-            uint32_t mask = extenderIdx == (slotPlus1-1) / I2C_BUS_EXTENDER_SLOT_COUNT ? 
-                            1 << ((slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT) : 0;
-            uint32_t addr = _minAddr + extenderIdx;
-            setChannels(addr, mask);
-        }
-    }
+    // Reset to ensure all slots disabled
+    hardwareReset();
+
+    // Set all bus extender channels off except for one
+    uint32_t mask = 1 << slotIdx;
+    uint32_t addr = _minAddr + extenderIdx;
+    setChannels(addr, mask);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,7 +255,7 @@ void BusExtenderMgr::hardwareReset()
         gpio_set_level(_resetPin, 0);
     if (_resetPinAlt >= 0)
         gpio_set_level(_resetPinAlt, 0);
-    vTaskDelay(1);
+    delayMicroseconds(10);
     if (_resetPin >= 0)
         gpio_set_level(_resetPin, 1);
     if (_resetPinAlt >= 0)
@@ -273,6 +270,25 @@ void BusExtenderMgr::initBusExtenderRecs()
     _busExtenderRecs.clear();
     _busExtenderRecs.resize(_maxAddr-_minAddr+1);
     _busExtenderCount = 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get extender and slot index from slotPlus1
+/// @param slotPlus1 Slot number (1-based)
+/// @param extenderIdx Extender index
+/// @param slotIdx Slot index
+/// @return True if valid
+/// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
+bool BusExtenderMgr::getExtenderAndSlotIdx(uint32_t slotPlus1, uint32_t& extenderIdx, uint32_t& slotIdx)
+{
+    // Check valid slot
+    if ((slotPlus1 == 0) || (slotPlus1 > I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size()))
+        return false;
+
+    // Calculate the bus extender index and slot index
+    extenderIdx = (slotPlus1-1) / I2C_BUS_EXTENDER_SLOT_COUNT;
+    slotIdx = (slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT;
+    return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -370,13 +386,11 @@ void BusExtenderMgr::setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powe
 /// @param powerLevel Power level
 void BusExtenderMgr::updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel)
 {
-    // Check valid slot
-    if ((slotPlus1 == 0) || (slotPlus1 > I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size()))
-        return;
-
     // Get the bus extender index and slot index
-    uint32_t extenderIdx = (slotPlus1-1) / I2C_BUS_EXTENDER_SLOT_COUNT;
-    uint32_t slotIdx = (slotPlus1-1) % I2C_BUS_EXTENDER_SLOT_COUNT;
+    uint32_t slotIdx = 0;
+    uint32_t extenderIdx = 0;
+    if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
+        return;
 
     // Get the bus extender record
     BusExtender& busExtenderRec = _busExtenderRecs[extenderIdx];
@@ -462,4 +476,24 @@ void BusExtenderMgr::writePowerControlRegisters()
 #endif
         }
     }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get next slot
+/// @param slotPlus1 Slot number (1-based)
+/// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
+/// @return Next slot number (1-based)
+uint32_t BusExtenderMgr::getNextSlot(uint32_t slotPlus1)
+{
+    // Check if no slots available
+    if (_busExtenderSlots.size() == 0)
+        return 0;
+    // Find first slot which is >= slotPlus1
+    for (uint32_t slot : _busExtenderSlots)
+    {
+        if (slot >= slotPlus1)
+            return slot+1;
+    }
+    // Return to main bus
+    return 0;
 }

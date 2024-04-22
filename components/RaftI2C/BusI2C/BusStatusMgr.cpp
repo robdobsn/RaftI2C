@@ -49,14 +49,12 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     // Get address to use for lockup detection
     _addrForLockupDetect = 0;
     _addrForLockupDetectValid = false;
-#ifdef I2C_USE_RAFT_I2C
     uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
     if (address != 0xffffffff)
     {
         _addrForLockupDetect = address;
         _addrForLockupDetectValid = true;
     }
-#endif
     _busOperationStatus = BUS_OPERATION_UNKNOWN;
     _busElemStatusChangeDetected = false;
     _i2cAddrStatus.clear();
@@ -206,6 +204,13 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
             // Handle element response
             isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
             isOnline = pAddrStatus->isOnline;
+
+            // Check if this is a main-bus address (not on an extender) and keep track of all main-bus addresses if so
+            if (isNewStatusChange && isOnline && (addrAndSlot.slotPlus1 == 0))
+            {
+                // Set address found on main bus
+                setAddrFoundOnMainBus(addrAndSlot.addr);
+            }
 
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
             LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s isResponding %d isNewStatusChange %d", 

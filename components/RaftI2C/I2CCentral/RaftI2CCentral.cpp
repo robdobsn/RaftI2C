@@ -197,6 +197,19 @@ bool RaftI2CCentral::isBusy()
     // Check if hardware is ready
     if (!_isInitialised)
         return true;
+
+    // TODO = remove
+    pinMode(18, OUTPUT);
+    for (int i = 0; i < 50; i++)
+    {
+        digitalWrite(18, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(18, LOW);
+        delayMicroseconds(1);
+        if (!I2C_DEVICE.I2C_STATUS_REGISTER_NAME.bus_busy)
+            break;
+    }
+
     bool isBusy = I2C_DEVICE.I2C_STATUS_REGISTER_NAME.bus_busy;
 #ifdef DEBUG_RICI2C_ACCESS
     LOG_I(MODULE_PREFIX, "isBusy %s", isBusy ? "BUSY" : "IDLE");

@@ -99,6 +99,32 @@ public:
     /// @return JSON string
     String getBusStatusJson(DeviceIdentMgr& deviceIdentMgr);
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Is address found on main bus
+    /// @param addr address
+    /// @return true if address found on main bus
+    bool isAddrFoundOnMainBus(uint32_t addr) const
+    {
+        if (addr > I2C_BUS_ADDRESS_MAX)
+            return false;
+        return (_mainBusAddrBits[addr/32] & (1 << (addr % 32))) != 0;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set address found on main bus
+    /// @param addr address
+    void setAddrFoundOnMainBus(uint32_t addr)
+    {
+        if (addr > I2C_BUS_ADDRESS_MAX)
+            return;
+        if (!isAddrFoundOnMainBus(addr))
+        {
+            // TODO - remove
+            LOG_I("dasdad", "--------- setAddrFoundOnMainBus %d", addr);
+            _mainBusAddrBits[addr/32] |= (1 << (addr % 32));
+        }
+    }
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 
@@ -155,4 +181,7 @@ private:
     // Last status update times us
     uint64_t _lastIdentPollUpdateTimeUs = 0;
     uint64_t _lastBusElemOnlineStatusUpdateTimeUs = 0;
+
+    // Addresses found online on main bus at any time
+    uint32_t _mainBusAddrBits[(I2C_BUS_ADDRESS_MAX+1)/32] = {0};
 };

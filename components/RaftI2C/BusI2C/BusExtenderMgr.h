@@ -49,6 +49,12 @@ public:
         return _minAddr;
     }
 
+    // Get max address of bus extenders
+    uint32_t getMaxAddr() const
+    {
+        return _maxAddr;
+    }
+
     // Get list of active extender addresses
     void getActiveExtenderAddrs(std::vector<uint32_t>& activeExtenderAddrs)
     {
@@ -68,11 +74,24 @@ public:
     // Set channels on extender
     RaftI2CCentralIF::AccessResultCode setChannels(uint32_t addr, uint32_t channelMask);
 
-    // Set all channels on or off
-    void setAllChannels(bool allOn);
-
-    // Hardware reset of bus extenders
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Hardware reset of bus extenders
     void hardwareReset();
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus extender slots
+    /// @return Bus extender slots
+    const std::vector<uint8_t>& getBusExtenderSlots() const
+    {
+        return _busExtenderSlots;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get next slot
+    /// @param slotPlus1 Slot number (1-based)
+    /// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
+    /// @return Next slot number (1-based)
+    uint32_t getNextSlot(uint32_t slotPlus1);
 
     // Bus extender slot count
     static const uint32_t I2C_BUS_EXTENDER_SLOT_COUNT = 8;
@@ -111,13 +130,19 @@ private:
     class BusExtender
     {
     public:
+        // Flags
         bool isDetected:1 = false,
              isOnline:1 = false,
              isInitialised:1 = false,
              pwrCtrlDirty:1 = true;
+
+        // Power control
         PowerControlType pwrCtrlType = POWER_CONTROL_NONE;
         uint16_t pwrCtrlAddr = 0;
         uint16_t pwrCtrlGPIOReg = 0xffff;
+
+        // Slot stuck indicators
+        uint8_t _slotStuckBits = 0;
     };
 
     // Bus extenders
@@ -125,6 +150,9 @@ private:
 
     // Number of bus extenders detected so far
     uint8_t _busExtenderCount = 0;
+
+    // Bus extender slot array
+    std::vector<uint8_t> _busExtenderSlots;
 
     // Init bus extender records
     void initBusExtenderRecs();
@@ -169,4 +197,12 @@ private:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Write the power control registers
     void writePowerControlRegisters();
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get extender and slot index from slotPlus1
+    /// @param slotPlus1 Slot number (1-based)
+    /// @param extenderIdx Extender index
+    /// @param slotIdx Slot index
+    /// @return True if valid
+    bool getExtenderAndSlotIdx(uint32_t slotPlus1, uint32_t& extenderIdx, uint32_t& slotIdx);
 };

@@ -17,17 +17,12 @@ static const char* MODULE_PREFIX = "DeviceTypeRecords";
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Base device type records
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Generated device type records
 #include "DeviceTypeRecords_generated.h"
-
 static const uint32_t BASE_DEV_TYPE_ARRAY_SIZE = sizeof(baseDevTypeRecords) / sizeof(BusI2CDevTypeRecord);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
 DeviceTypeRecords::DeviceTypeRecords()
 {
 }
@@ -200,7 +195,7 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check if device address is in range of addresses used by device
+/// @brief Check if device address is in range of addresses used by any device
 /// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
 /// @param addrAndSlot i2c address and slot
 /// @return true if address in range
@@ -322,6 +317,7 @@ bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std:
     return false;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get detection records
 /// @param deviceType device type
 /// @param detectionRecs (out) detection records
@@ -355,6 +351,7 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 #endif
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Convert poll response to JSON
 /// @param addrAndSlot i2c address and slot
 /// @param isOnline true if device is online
@@ -404,4 +401,23 @@ String DeviceTypeRecords::getDevTypeInfoJsonByTypeName(const String& deviceTypeN
 
     // Get JSON for device type
     return pDevTypeRec ? pDevTypeRec->getJson(includePlugAndPlayInfo) : "{}";
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get scan priority lists
+/// @param priorityLists (out) priority lists
+void DeviceTypeRecords::getScanPriorityLists(std::vector<std::vector<RaftI2CAddrType>>& priorityLists)
+{
+    // Clear initially
+    priorityLists.clear();
+
+    // Resize list
+    priorityLists.resize(numScanPriorityLists);
+    for (int i = 0; i < numScanPriorityLists; i++)
+    {
+        for (int j = 0; j < scanPriorityListLengths[i]; j++)
+        {
+            priorityLists[i].push_back(scanPriorityLists[i][j]);
+        }
+    }
 }

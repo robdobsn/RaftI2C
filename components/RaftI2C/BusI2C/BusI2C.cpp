@@ -45,9 +45,7 @@ static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
 // #define DEBUG_BUS_HIATUS
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor / Destructor
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
 BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
                 RaftI2CCentralIF* pI2CCentralIF)
     : BusBase(busElemStatusCB, busOperationStatusCB),
@@ -91,6 +89,8 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Destructor
 BusI2C::~BusI2C()
 {
     // Close to stop task
@@ -102,9 +102,9 @@ BusI2C::~BusI2C()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Setup
+/// @param config Configuration
+/// @return true if successful
 bool BusI2C::setup(const RaftJsonIF& config)
 {
     // Note:
@@ -207,9 +207,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Close
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Close
 void BusI2C::close()
 {
     if (_i2cWorkerTaskHandle != nullptr) 
@@ -227,9 +225,7 @@ void BusI2C::close()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Service (called frequently from main loop)
 void BusI2C::service()
 {
     // Check ok
@@ -255,9 +251,8 @@ void BusI2C::service()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Clear
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Clear bus activity
+/// @param incPolling - true to clear polling
 void BusI2C::clear(bool incPolling)
 {
     // Check init
@@ -269,10 +264,8 @@ void BusI2C::clear(bool incPolling)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// RTOS task that handles all bus interaction
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Task that runs indefinitely to operate the bus
+/// @brief Static RTOS task function that handles all bus interaction (runs indefinitely - or until notified to stop)
+/// @param pvParameters - pointer to the object that requested the task
 void BusI2C::i2cWorkerTaskStatic(void* pvParameters)
 {
     // Get the object that requested the task
@@ -281,6 +274,14 @@ void BusI2C::i2cWorkerTaskStatic(void* pvParameters)
         pObjPtr->i2cWorkerTask();
 }
 
+// TODO - remove
+uint32_t lastReportMs = 0;
+uint64_t worstTimeUs = 0;
+uint32_t yieldsCount = 0;
+uint32_t loopCount = 0;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief RTOS task function that handles all bus interaction (runs indefinitely - or until notified to stop)
 void BusI2C::i2cWorkerTask()
 {
     uint32_t yieldCount = 0;
@@ -296,7 +297,13 @@ void BusI2C::i2cWorkerTask()
         {
             yieldCount = 0;
             vTaskDelay(1);
+
+            // TODO remove
+            yieldsCount++;
         }
+
+        // TODO - remove
+        uint64_t startUs = micros();
 
         // Stats
         _busStats.activity();
@@ -316,7 +323,7 @@ void BusI2C::i2cWorkerTask()
 #endif
         }
 
-        // Check pause status - request
+        // Check pause status
         if ((_isPaused) && (!_pauseRequested))
             _isPaused = false;
         else if ((!_isPaused) && (_pauseRequested))
@@ -326,7 +333,18 @@ void BusI2C::i2cWorkerTask()
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
         {
-            _busScanner.taskService();
+            // TODO - restore
+            // Service bus scanner
+            // uint32_t lastFastScanYieldMs = millis();
+//            while (_busScanner.isScanPending())
+            {
+               _busScanner.taskService();
+//                if (Raft::isTimeout(millis(), lastFastScanYieldMs, BusScanner::I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
+//                {
+//                    vTaskDelay(1);
+//                    break;
+//                }
+            }
         }
 #endif
 
@@ -344,9 +362,23 @@ void BusI2C::i2cWorkerTask()
         // Device polling
         _devicePollingMgr.taskService(micros());
 
-        // Perform polling
+        // Perform any user-defined access
         // TODO - remove or reconsider how polling works
         _busAccessor.processPolling();
+
+        // TODO - remove
+        uint64_t timeUs = micros() - startUs;
+        if (timeUs > worstTimeUs)
+            worstTimeUs = timeUs;
+        loopCount++;
+
+        if (millis() - lastReportMs > 30000)
+        {
+            lastReportMs = millis();
+            LOG_I(MODULE_PREFIX, "i2cWorkerTask timeUs %lld worstTimeUs %lld yieldsCount %d loopCount %d", 
+                        timeUs, worstTimeUs, yieldsCount, loopCount);
+            worstTimeUs = 0;
+        }
     }
 
     LOG_I(MODULE_PREFIX, "i2cWorkerTask exiting");
@@ -357,12 +389,10 @@ void BusI2C::i2cWorkerTask()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Helper for sending over the bus (async)
-//
-// Note: this is called from the worker task/thread so need to consider the response queue availability
-//
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Send I2C message asynchronously and store result in the response queue
+/// @param pReqRec - contains the request details including address, write data, read data length, etc
+/// @param pollListIdx - index into the polling list - used to reference back to the response queue
+/// @return result code
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
 {
 #ifdef DEBUG_I2C_ASYNC_SEND_HELPER
@@ -405,9 +435,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
     rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
-    // Restore the bus extender(s) if necessary
+    // Reset bus extenders to turn off all slots
     if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.setAllChannels(true);
+        _busExtenderMgr.hardwareReset();
 
     // Check for scanning
     if (!pReqRec->isScan())
@@ -426,12 +456,12 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Helper for sending over the bus (sync)
-//
-// Note: this is called from the worker task/thread so need to consider the response queue availability
-//
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Send I2C message synchronously
+/// @param pReqRec - contains the request details including address, write data, read data length, etc
+/// @param pReadData - pointer to buffer for read data
+/// @return result code
+/// @note This is called from the worker task/thread and does not set the bus extender so if a slotted address
+///       is used then the bus extender must be set before calling this function
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
 {
 #ifdef DEBUG_I2C_SYNC_SEND_HELPER
@@ -474,9 +504,10 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Is elem reponding
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Check if a bus element is responding
+/// @param address - address of element
+/// @param pIsValid - pointer to bool to receive validity flag
+/// @return true if element is responding
 bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
 {
     if (pIsValid)
@@ -485,18 +516,17 @@ bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Request bus scan
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Request a bus scan
+/// @param enableSlowScan - true to enable slow scan
+/// @param requestFastScan - true to request a fast scan
 void BusI2C::requestScan(bool enableSlowScan, bool requestFastScan)
 {
     _busScanner.requestScan(enableSlowScan, requestFastScan);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Hiatus for period of ms
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Hiatus for period of ms
+/// @param forPeriodMs - period in ms
 void BusI2C::hiatus(uint32_t forPeriodMs)
 {
     _hiatusStartMs = millis();

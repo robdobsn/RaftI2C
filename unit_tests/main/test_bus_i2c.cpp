@@ -12,6 +12,7 @@
 #include <string.h>
 #include "unity.h"
 #include "unity_test_runner.h"
+#include "RaftJsonPrefixed.h"
 
 #include "BusI2C.h"
 
@@ -169,7 +170,7 @@ void helper_reset_status_changes_list()
     statusChangesList.clear();
 }
 
-void helper_set_online_addrs(const std::vector<BusI2CAddrAndSlot& onlineAddrs)
+void helper_set_online_addrs(const std::vector<BusI2CAddrAndSlot>& onlineAddrs)
 {
     testConfigOnlineAddrList = onlineAddrs;
 }
@@ -284,18 +285,31 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
     return true;
 }
 
-bool helper_check_bus_extender_init_ok(std::vector<uint32_t> busExtenderList)
+TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
 {
-    for (auto addr : busExtenderList)
-    {
-        // Extender should have had all channels enabled (mask = 0xff)
-        if (busExtenderStatusChanMask[addr - I2C_BUS_EXTENDER_BASE] != 0xff)
-        {
-            LOG_E(MODULE_PREFIX, "Bus extender 0x%02x not initialised", addr);
-            return false;
-        }
-    }
-    return true;
+    // Setup bus extenders
+    BusExtenderMgr busExtenderMgr(busReqSyncFn);
+    busExtenderMgr.setup(configJson);
+
+    // Check next slot
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(0) == 0, "getNextSlot 0 not 0 when no extenders");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(11) == 0, "getNextSlot 11 not 0 when no extenders");
+
+    // Add some bus extenders
+    busExtenderMgr.elemStateChange(0x73, true); // SlotPlus1 range = 25-32 (inclusive)
+    busExtenderMgr.elemStateChange(0x75, true); // SlotPlus1 range = 41-48 (inclusive)
+
+    // Check next slot
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(0) == 25, "getNextSlot 0 not 25");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(1) == 25, "getNextSlot 1 not 25");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(24) == 25, "getNextSlot 24 not 25");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(25) == 26, "getNextSlot 25 not 26");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(28) == 29, "getNextSlot 28 not 29");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(31) == 32, "getNextSlot 31 not 32");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(32) == 41, "getNextSlot 32 not 41");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(41) == 42, "getNextSlot 33 not 42");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(47) == 48, "getNextSlot 47 not 48");
+    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlot(48) == 0, "getNextSlot 48 not 0");
 }
 
 TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
@@ -306,7 +320,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     helper_setup_i2c_tests({});
 
     // Service some
-    helper_service_some(100, false);
+    helper_service_some(1000, false);
 
     // Check status changes list is empty
     TEST_ASSERT_MESSAGE(statusChangesList.size() == 0, "statusChangesList not empty initially");
@@ -315,7 +329,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     helper_elem_states_handle({{testAddr,0}}, true, BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX);
 
     // Service the status for some time
-    helper_service_some(100, false);
+    helper_service_some(1000, false);
 
     // Check status changes list has one item which is the change of state for addr lockupDetectAddr to online
     TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList empty when lockupDetectAddr change to online");
@@ -335,7 +349,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     helper_elem_states_handle({{testAddr,0}}, false, BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
 
     // Service the status for some time
-    helper_service_some(100, false);
+    helper_service_some(1000, false);
 
     // Check status changes list has one item which is the change of state for addr lockupDetectAddr to offline
     TEST_ASSERT_MESSAGE(statusChangesList.size() == 1, "statusChangesList not 1 when lockupDetectAddr change to offline");
@@ -360,7 +374,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
                         BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX);
 
     // Service the status for some time
-    helper_service_some(100, false);
+    helper_service_some(1000, false);
 
     // Check status changes list is empty
     helper_show_status_change_list("After spurious:");
@@ -376,7 +390,7 @@ TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
     helper_setup_i2c_tests({{testAddr, 0}, {extenderAddr, 0}});
 
     // Service the status for some time
-    helper_service_some(1000, true);
+    helper_service_some(10000, true);
 
     // Test bus is operational
     TEST_ASSERT_MESSAGE(busStatusMgr.isOperatingOk() == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
@@ -386,9 +400,6 @@ TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
 
     // Check elems that should be online are online, etc
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({{testAddr,0},{extenderAddr,0}}), "online/offline elems not correct");
-
-    // Check bus extender is initialised
-    TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr}), "busExtenderInitialised not true");
 }
 
 TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
@@ -400,7 +411,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
-    helper_service_some(1000, true);
+    helper_service_some(20000, true);
 
     // Test bus is operational
     TEST_ASSERT_MESSAGE(busStatusMgr.isOperatingOk() == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
@@ -411,16 +422,13 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Check elems that should be online are online, etc
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, extenderAddr1}), "online/offline elems not correct");
 
-    // Check bus extender is initialised
-    TEST_ASSERT_MESSAGE(helper_check_bus_extender_init_ok({extenderAddr1.addr}), "busExtenderInitialised not true");
-
     // Add two further slotted addresses
     BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
     BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time
-    helper_service_some(1000, true);
+    helper_service_some(10000, true);
 
     // Check elems that should be online are online, etc
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1}), "online/offline elems not correct 2");
@@ -429,7 +437,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time
-    helper_service_some(1000, true);
+    helper_service_some(10000, true);
 
     // Check elems that should be online are online, etc
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, testSlottedAddr3, extenderAddr1}), "online/offline elems not correct 3");

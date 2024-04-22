@@ -87,7 +87,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)
-            _busExtenderMgr.setAllChannels(true);
+            _busExtenderMgr.hardwareReset();
 
     }
 }

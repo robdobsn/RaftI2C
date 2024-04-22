@@ -2,12 +2,39 @@ import json
 import sys
 import re
 
+# ProcessDevTypeJsonToC.py
+# Rob Dobson 2024
+# This script processes a JSON I2C device types file and generates a C header file
+# with the device types and addresses. The header file contains the following:
+# - An array of BusI2CDevTypeRecord structures - these contain the device type, addresses, detection values, init values, polling config and device info
+# - An array of device type counts for each address (0x00 to 0x7f) - this is the number of device types for each address
+# - An array of device type indexes for each address - each element is an array of indices into the BusI2CDevTypeRecord array
+# - An array of scanning priorities for each address
+# The script takes two arguments:
+# - The path to the JSON file with the device types
+# - The path to the header file to generate
+
 def process_dev_types(json_path, header_path):
     with open(json_path, 'r') as json_file:
         dev_ident_json = json.load(json_file)
 
+    # Address range
+    min_addr_array_index = 0
+    max_addr_array_index = 0x7f
+    min_valid_i2c_addr = 0x04
+    max_valid_i2c_addr = 0x7f
+
     # Address indexes
     addr_index_to_dev_record = {}
+
+    # Scan priorities
+    NUM_PRIORITY_LEVELS = 3
+    addr_scan_priority_sets = [set() for _ in range(NUM_PRIORITY_LEVELS)]
+    scan_priority_values = {
+        "high": 0,
+        "medium": 1,
+        "low": 2
+    }
 
     # Iterate records
     dev_record_index = 0
@@ -37,6 +64,25 @@ def process_dev_types(json_path, header_path):
         addr_list_hex = ",".join([f'0x{addr:02x}' for addr in addr_list])
         print(f"Record {dev_record_index} Addresses {addr_range} Addr List {addr_list_hex}")
 
+        # Scan priority
+        if "scanPriority" in dev_type:
+            scan_priority = dev_type["scanPriority"]
+
+            # If scan_priority is an array then set scan priority for primary address to first
+            # element and for all other addresses to the second element
+            priority_value = scan_priority-1 if isinstance(scan_priority, int) else scan_priority_values[scan_priority] if isinstance(scan_priority, str) else NUM_PRIORITY_LEVELS-1
+            if priority_value < 0:
+                priority_value = 0
+            if priority_value > NUM_PRIORITY_LEVELS-1:
+                priority_value = NUM_PRIORITY_LEVELS-1
+            if priority_value == 0:
+                addr_scan_priority_sets[0].add(addr_list[0])
+                for addr in addr_list[1:]:
+                    addr_scan_priority_sets[1].add(addr)
+            else:
+                for addr in addr_list:
+                    addr_scan_priority_sets[priority_value].add(addr)
+
         # Generate a dictionary with all addresses referring to a record index
         for addr in addr_list:
             if addr in addr_index_to_dev_record:
@@ -50,7 +96,7 @@ def process_dev_types(json_path, header_path):
     # Generate array covering all addresses from 0x00 to 0x7f
     max_count_of_dev_types_for_addr = 0
     addr_index_to_dev_array = []
-    for addr in range(0x00, 0x80):
+    for addr in range(min_addr_array_index, max_addr_array_index+1):
         if addr in addr_index_to_dev_record:
             addr_index_to_dev_array.append(addr_index_to_dev_record[addr])
             if len(addr_index_to_dev_record[addr]) > max_count_of_dev_types_for_addr:
@@ -99,7 +145,7 @@ def process_dev_types(json_path, header_path):
         header_file.write('\n};\n\n')
 
         # For every non-zero length array, generate a C variable specific to that array
-        for addr in range(0x00, 0x80):
+        for addr in range(min_addr_array_index, max_addr_array_index+1):
             if len(addr_index_to_dev_array[addr]) > 0:
                 header_file.write(f'static uint16_t baseDevTypeIndexByAddr_0x{addr:02x}[] = ')
                 header_file.write('{')
@@ -114,13 +160,50 @@ def process_dev_types(json_path, header_path):
         header_file.write('{\n')
 
         # Iterate address array
-        for addr in range(0x00, 0x80):
+        for addr in range(min_addr_array_index, max_addr_array_index+1):
             if len(addr_index_to_dev_array[addr]) == 0:
                 header_file.write('    nullptr,\n')
             else:
                 header_file.write(f'    baseDevTypeIndexByAddr_0x{addr:02x},\n')
 
-        header_file.write('};\n\n')
+        header_file.write('};\n')
+
+        # Generate the scan priority lists
+        addr_scan_priority_lists = []
+        for i in range(NUM_PRIORITY_LEVELS):
+            if i == 0:
+                addr_scan_priority_lists.append(sorted(addr_scan_priority_sets[i]))
+            else:
+                if i == NUM_PRIORITY_LEVELS-1:
+                    addr_scan_priority_sets[i] = set(range(min_valid_i2c_addr, max_valid_i2c_addr+1))
+                for j in range(i):
+                    addr_scan_priority_sets[i] = addr_scan_priority_sets[i] - addr_scan_priority_sets[j]
+                addr_scan_priority_lists.append(sorted(addr_scan_priority_sets[i]))
+
+        # Write out the priority scan lists
+        for i in range(NUM_PRIORITY_LEVELS):
+            header_file.write(f'\n\nstatic const uint8_t scanPriority{i}[] =\n')
+            header_file.write('{\n    ')
+            for addr in addr_scan_priority_lists[i]:
+                header_file.write(f'0x{addr:02x},')
+            header_file.write('\n};\n')
+
+        # Write a record for scan lists
+        header_file.write('\nstatic const uint8_t* scanPriorityLists[] =\n')
+        header_file.write('{\n')
+        for i in range(NUM_PRIORITY_LEVELS):
+            header_file.write(f'    scanPriority{i},\n')
+        header_file.write('};\n')
+
+        # Write out the lengths of the priority scan lists
+        header_file.write('\nstatic const uint8_t scanPriorityListLengths[] =\n')
+        header_file.write('{\n')
+        for i in range(NUM_PRIORITY_LEVELS):
+            header_file.write(f'    {len(addr_scan_priority_lists[i])},\n')
+        header_file.write('};\n')
+
+        # Write out the number of priority scan lists
+        header_file.write(f'\nstatic const uint8_t numScanPriorityLists = {NUM_PRIORITY_LEVELS};\n')
 
 if __name__ == "__main__":
     process_dev_types(sys.argv[1], sys.argv[2])
