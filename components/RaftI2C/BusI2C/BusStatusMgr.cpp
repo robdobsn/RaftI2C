@@ -609,7 +609,7 @@ uint32_t BusStatusMgr::getBusElemStatus(uint32_t address, bool& isOnline, uint16
 String BusStatusMgr::getBusStatusJson(DeviceIdentMgr& deviceIdentMgr)
 {
     // Return string
-    String jsonStr = "{";
+    String jsonStr;
 
     // Get list of all bus element addresses
     std::vector<uint32_t> addresses;
@@ -628,13 +628,8 @@ String BusStatusMgr::getBusStatusJson(DeviceIdentMgr& deviceIdentMgr)
                         isOnline, deviceTypeIndex, devicePollResponseData, responseSize);
         if (jsonData.length() > 0)
         {
-            if (jsonStr.length() > 1)
-                jsonStr += ",";
-            jsonStr += jsonData;
+            jsonStr += (jsonStr.length() == 0 ? "{" : ",") + jsonData;
         }
     }
-
-    // End of JSON
-    jsonStr += "}";
-    return jsonStr;
+    return jsonStr.length() == 0 ? "{}" : jsonStr + "}";
 }

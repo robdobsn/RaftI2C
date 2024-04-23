@@ -63,16 +63,18 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
 
     useEffect(() => {
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
-        const datasets = Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-            const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
-            const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
-            return {
-                label: attributeName,
-                data: data,
-                fill: false,
-                borderColor: colour,
-                backgroundColor: colour
-            };
+        const datasets = Object.entries(deviceAttributes)
+            .filter(([attributeName, attributeDetails]) => attributeDetails.display !== false)
+            .map(([attributeName, attributeDetails]) => {
+                const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
+                const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
+                return {
+                    label: attributeName,
+                    data: data,
+                    fill: false,
+                    borderColor: colour,
+                    backgroundColor: colour
+                };
         });
         setChartData({ labels, datasets });
     }, [lastUpdated]);

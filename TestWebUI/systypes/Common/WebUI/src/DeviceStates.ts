@@ -54,6 +54,7 @@ export interface DeviceAttribute {
     units: string;
     range: number[];
     format: string;
+    display: boolean;
 }
 
 export interface DeviceAttributes {

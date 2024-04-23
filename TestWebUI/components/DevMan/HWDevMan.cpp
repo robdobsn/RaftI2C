@@ -203,7 +203,7 @@ String HWDevMan::getStatusJSON()
 {
     // TODO - implement changes to BusBase
 
-    String jsonStr = "{";
+    String jsonStr;
     for (BusBase* pBus : _busList)
     {
         if (pBus)
@@ -211,17 +211,14 @@ String HWDevMan::getStatusJSON()
             String jsonRespStr = ((BusI2C*)pBus)->getBusStatusJson();
             if (jsonRespStr.length() > 0)
             {
-                if (jsonStr.length() > 1)
-                    jsonStr += ",";
-                jsonStr += "\"" + pBus->getBusName() + "\":" + jsonRespStr;
+                jsonStr += (jsonStr.length() == 0 ? "{\"" : ",\"") + pBus->getBusName() + "\":" + jsonRespStr;
             }
         }
     }
-    jsonStr += "}";
 
-    // LOG_I(MODULE_PREFIX, "getStatusJSON %s", jsonStr.c_str());
+    // LOG_I(MODULE_PREFIX, "getStatusJSON %s", (jsonStr.length() == 0 ? "{}" : (jsonStr + "}").c_str()));
 
-    return jsonStr;
+    return jsonStr.length() == 0 ? "{}" : jsonStr + "}";
 
     // TODO - this is for non-JSON poll data
 

@@ -43,7 +43,7 @@ public:
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 10;
 
     // Max fast scanning without yielding
-    static const uint32_t I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS = 10;
+    static const uint32_t I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS = 2;
 
 private:
     // Scanning state

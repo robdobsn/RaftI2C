@@ -12,6 +12,7 @@
 
 // #define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
+// #define DEBUG_HANDLE_BUS_DEVICE_INFO
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
 
@@ -93,9 +94,10 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 
 #ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
-            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollReqs %d", 
+            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollResToStore %d pollResSizeIncTimestamp %d", 
                     addrAndSlot.toString().c_str(),
-                    pollRequests.size());
+                    deviceStatus.deviceIdentPolling.numPollResultsToStore,
+                    deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 #endif
         }
     }

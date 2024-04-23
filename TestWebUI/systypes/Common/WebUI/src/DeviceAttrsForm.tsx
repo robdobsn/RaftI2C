@@ -23,15 +23,17 @@ const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceKey, last
                 </tr>
             </thead>
             <tbody>
-                {Object.entries(deviceAttributes).map(([attributeName, attributeDetails]) => {
-                    const valStr = deviceAttrGetLatestFormatted(attributeDetails)
-                    return (
-                        <tr key={attributeName}>
-                            <td>{attributeName}</td>
-                            <td>{valStr}</td>
-                            <td>{attributeDetails.units}</td>
-                        </tr>
-                    );
+                {Object.entries(deviceAttributes)
+                    .filter(([attributeName, attributeDetails]) => attributeDetails.display !== false)
+                    .map(([attributeName, attributeDetails]) => {
+                        const valStr = deviceAttrGetLatestFormatted(attributeDetails)
+                        return (
+                            <tr key={attributeName}>
+                                <td>{attributeName}</td>
+                                <td>{valStr}</td>
+                                <td>{attributeDetails.units}</td>
+                            </tr>
+                        );
                 })}
             </tbody>
         </table>

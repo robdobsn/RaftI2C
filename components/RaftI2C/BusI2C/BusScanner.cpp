@@ -12,6 +12,7 @@
 
 // #define DEBUG_BUS_SCANNER
 // #define DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
+#define DEBUG_MOVE_TO_NORMAL_SCANNING
 
 static const char* MODULE_PREFIX = "BusScanner";
 
@@ -128,6 +129,9 @@ bool BusScanner::taskService()
                 if (_scanStateRepeatCount >= _scanStateRepeatCountMax)
                 {
                     _scanState = (_scanState == SCAN_STATE_SCAN_EXTENDERS ? SCAN_STATE_MAIN_BUS : SCAN_STATE_SCAN_FAST);
+#ifdef DEBUG_MOVE_TO_NORMAL_SCANNING
+                    LOG_I(MODULE_PREFIX, "taskService move to normal scanning of main bus and slots");
+#endif
                     _scanCurAddr = I2C_BUS_ADDRESS_MIN;
                     _scanStateRepeatCount = 0;
                     _scanStateRepeatCountMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
@@ -168,7 +172,7 @@ bool BusScanner::taskService()
             // return _scanState == SCAN_STATE_SCAN_FAST;
 
             // TODO - remove
-            return true;
+            return false;
         }
     }
     return false;

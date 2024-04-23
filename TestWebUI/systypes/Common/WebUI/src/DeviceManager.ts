@@ -1,7 +1,7 @@
 import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
-import { AttrTypeBytes, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile } from "./DeviceInfo";
+import { AttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding } from "./DeviceInfo";
 import struct from 'python-struct';
 import TestDataGen from "./TestDataGen";
 
@@ -489,20 +489,66 @@ export class DeviceManager {
                                     break;
                                 }
                                 const attr: DeviceTypeAttribute = devAttrDefinitions[attrIdx];
-                                if (!("t" in attr && attr.t in AttrTypeBytes)) {
+                                if (!("t" in attr && attr.t.split(":")[0] in AttrTypeBits)) {
                                     console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
                                     break;
                                 }
-                                const attrBytes = AttrTypeBytes[attr.t];
-                                const attrHexChars = attrBytes * 2;
+
+                                // Attr type can be of the form AA:NN:MM where:
+                                //   AA is the python struct type (e.g. >h)
+                                //   NN is the number of bits to read from the message (this has to be a multiple of 4)
+                                //   MM is for signed (2s compliment) numbers and specifies the position of the sign bit
+                                const attrSplit = attr.t.split(":");
+                                const attrStructBits = AttrTypeBits[attrSplit[0]];
+                                const attrReadBits = attrSplit.length > 1 ? parseInt(attrSplit[1]) : attrStructBits;
+                                const attrReadHexChars = Math.ceil(attrReadBits / 4);
+                                let attrTypeDefForStruct = attrSplit[0];
+                                const signExtendableMaskSignPos = attrSplit.length > 2 ? parseInt(attrSplit[2]) : 0;
+
+                                // Extract the hex chars for the value
+                                let valueHexChars = msgHexStr.slice(hexStrIdx, hexStrIdx + attrReadHexChars);
+
+                                // Pad the value to the right length for the conversion
+                                const padDigitsReqd = Math.ceil(attrStructBits / 4) - valueHexChars.length;
+                                if (attrTypeDefForStruct.startsWith("<")) {
+                                    for (let i = 0; i < padDigitsReqd; i++)
+                                        valueHexChars += "0";
+                                } else {
+                                    for (let i = 0; i < padDigitsReqd; i++)
+                                        valueHexChars = "0" + valueHexChars;
+                                }
+
+                                // Check if an MM part is present
+                                if (signExtendableMaskSignPos > 0) {
+                                    // Make the conversion unsigned for now
+                                    attrTypeDefForStruct = attrSplit[0].toUpperCase();
+                                }
+
                                 // Convert the value using python-struct
-                                let value = struct.unpack(attr.t, Buffer.from(msgHexStr.slice(hexStrIdx, hexStrIdx + attrHexChars), 'hex'))[0] as number;
-                                if ("d" in attr && attr.d) {
-                                    value = value / attr.d;
+                                let value = 0;
+                                const dataBuf = Buffer.from(valueHexChars, 'hex')
+                                value = struct.unpack(attrSplit[0], dataBuf)[0] as number;
+
+                                // Check if sign extendable mask specified
+                                if (signExtendableMaskSignPos > 0) {
+                                    const signBitMask = 1 << (signExtendableMaskSignPos - 1);
+                                    const valueOnlyMask = signBitMask - 1;
+                                    if (value & signBitMask) {
+                                        value = (value & valueOnlyMask) - signBitMask;
+                                    } else {
+                                        value = value & valueOnlyMask;
+                                    }
                                 }
-                                if ("m" in attr && attr.m) {
-                                    value = (value & attr.m);
+
+                                // Check for simple mask
+                                if ("m" in attr) {
+                                    if (typeof attr.m === "string")
+                                        value = value & parseInt(attr.m, 16);
+                                    else if (typeof attr.m === "number")
+                                        value = (value & attr.m);
                                 }
+
+                                // Check for bit shift required
                                 if ("s" in attr && attr.s) {
                                     if (attr.s > 0) {
                                         value = value >> attr.s;
@@ -510,8 +556,18 @@ export class DeviceManager {
                                         value = value << -attr.s;
                                     }
                                 }
+
+                                // Check for divisor
+                                if ("d" in attr && attr.d) {
+                                    value = value / attr.d;
+                                }
+
+                                // Check for value to add
+                                if ("a" in attr && attr.a !== undefined) {
+                                    value += attr.a;
+                                }
                                 // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
-                                hexStrIdx += attrHexChars;
+                                hexStrIdx += attrReadHexChars;
                                 attrIdx++;
 
                                 // Check if attribute already exists in the device state
@@ -529,9 +585,10 @@ export class DeviceManager {
                                         newAttribute: true,
                                         newData: true,
                                         values: [value],
-                                        units: attr.u || "",
+                                        units: decodeAttrUnitsEncoding(attr.u || ""),
                                         range: attr.r || [0, 0],
-                                        format: ("f" in attr && typeof attr.f == "string") ? attr.f : ""
+                                        format: ("f" in attr && typeof attr.f == "string") ? attr.f : "",
+                                        display: "disp" in attr ? (attr.disp === 0 || attr.disp === false ? false : !!attr.disp) : true,
                                     };
                                 }
                                 attrsAdded = true;

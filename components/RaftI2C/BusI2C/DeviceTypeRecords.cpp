@@ -10,7 +10,8 @@
 #include "BusRequestInfo.h"
 
 // #define DEBUG_DEVICE_INFO_RECORDS
-#define DEBUG_DEVICE_INFO_PERFORMANCE
+// #define DEBUG_POLL_REQUEST_REQS
+// #define DEBUG_DEVICE_INFO_PERFORMANCE
 
 #if defined(DEBUG_DEVICE_INFO_RECORDS) || defined(DEBUG_DEVICE_INFO_PERFORMANCE) 
 static const char* MODULE_PREFIX = "DeviceTypeRecords";
@@ -123,11 +124,34 @@ void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CD
     {
         std::vector<uint8_t> writeData;
         if (!extractBufferDataFromHexStr(pollWriteReadPair.name, writeData))
+        {
+#ifdef DEBUG_POLL_REQUEST_REQS
+            LOG_I(MODULE_PREFIX, "getPollInfo FAIL extractBufferDataFromHexStr %s (value %s)", 
+                        pollWriteReadPair.name.c_str(), pollWriteReadPair.value.c_str());
+#endif
             continue;
+        }
         std::vector<uint8_t> readDataMask;
         std::vector<uint8_t> readData;
         if (!extractMaskAndDataFromHexStr(pollWriteReadPair.value, readDataMask, readData, false))
+        {
+#ifdef DEBUG_POLL_REQUEST_REQS
+            LOG_I(MODULE_PREFIX, "getPollInfo FAIL extractMaskAndDataFromHexStr %s (name %s)", 
+                        pollWriteReadPair.value.c_str(), pollWriteReadPair.name.c_str());
+#endif
             continue;
+        }
+
+#ifdef DEBUG_POLL_REQUEST_REQS
+        String writeDataStr;
+        Raft::getHexStrFromBytes(writeData.data(), writeData.size(), writeDataStr);
+        String readDataMaskStr;
+        Raft::getHexStrFromBytes(readDataMask.data(), readDataMask.size(), readDataMaskStr);
+        String readDataStr;
+        Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
+        LOG_I(MODULE_PREFIX, "getPollInfo addr@slot+1 %s writeData %s readDataMask %s readData %s", 
+                    addrAndSlot.toString().c_str(), writeDataStr.c_str(), readDataMaskStr.c_str(), readDataStr.c_str());
+#endif
 
         // Create the poll request
         BusI2CRequestRec pollReq(BUS_REQ_TYPE_POLL, 
@@ -262,7 +286,7 @@ bool DeviceTypeRecords::extractBufferDataFromHexStr(const String& writeStr, std:
     // Extract the write data
     writeData.resize(writeStrLen);
     Raft::getBytesFromHexStr(pStr, writeData.data(), writeData.size());
-    return writeData.size() > 0;
+    return writeData.size() > 0 || (writeStr.length() == 0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -274,9 +298,26 @@ bool DeviceTypeRecords::extractBufferDataFromHexStr(const String& writeStr, std:
 bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
             std::vector<uint8_t>& readDataCheck, bool maskToZeros)
 {
+    readDataCheck.clear();
+    readDataMask.clear();
     String readStrLC = readStr;
     readStrLC.toLowerCase();
-    // Check if readStr starts with 0b
+    // Check for readStr starts with rNNNN (for read NNNN bytes)
+    if (readStrLC.startsWith("r"))
+    {
+        // Compute length
+        uint32_t lenBytes = strtol(readStrLC.c_str() + 1, NULL, 10);
+        // Extract the read data
+        readDataMask.resize(lenBytes);
+        readDataCheck.resize(lenBytes);
+        for (int i = 1; i < readStrLC.length(); i++)
+        {
+            readDataMask[i - 1] = maskToZeros ? 0xff : 0;
+            readDataCheck[i - 1] = 0;
+        }
+        return true;
+    }
+    // Check if readStr starts with 0b 
     if (readStrLC.startsWith("0b"))
     {
         // Compute length
@@ -314,7 +355,7 @@ bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std:
         }
         return true;
     }
-    return false;
+    return readStr.length() == 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -365,7 +406,6 @@ String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool
     // Form a hex buffer
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
-
     return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"_o\":" + String(isOnline ? "1" : "0") + ",\"_t\":\"" + devTypeName + "\"}";
 }
 

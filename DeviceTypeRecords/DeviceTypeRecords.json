@@ -94,6 +94,84 @@
                 }
             }
         },
+        "AHT20": {
+            "addresses": "0x38",
+            "deviceType": "AHT20",
+            "detectionValues": "",
+            "initValues": "0xbe0800=",
+            "pollingConfigJson": {
+                "c": "=r6&0xac3300=",
+                "i": 5000,
+                "s": 2
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "AHT20",
+                "desc": "Temp&Humid",
+                "manu": "Asair",
+                "type": "AHT20",
+                "attr": {
+                    "x" :
+                    [
+                        {
+                            "n": "status",
+                            "t": "B",
+                            "u": "",
+                            "f": "02x",
+                            "disp": 0
+                        },
+                        {
+                            "n": "humidity",
+                            "t": ">I:20:20",
+                            "u": "%",
+                            "r": [0, 100],
+                            "d": 10485.76,
+                            "f": "3.1f"
+                        },
+                        {
+                            "n": "temperature",
+                            "t": ">I:20:20",
+                            "u": "&deg;C",
+                            "r": [-40,80],
+                            "d": 5242.88,
+                            "a": -50,
+                            "f": "3.2f"
+                        }
+                    ]
+                }
+            }
+        },
+        "MCP9808": {
+            "addresses": "0x18-0x1f",
+            "deviceType": "MCP9808",
+            "detectionValues": "0x06=0b0000000001010100&0x07=0b00000100XXXXXXXX",
+            "initValues": "0x010000",
+            "pollingConfigJson": {
+                "c": "0x05=0b000XXXXXXXXXXXXX",
+                "i": 5000,
+                "s": 2
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "MCP9808",
+                "desc": "Temp",
+                "manu": "Microchip",
+                "type": "MCP9808",
+                "attr": {
+                    "x" :
+                    [
+                        {
+                            "n": "temperature",
+                            "t": ">h:16:13",
+                            "u": "&deg;C",
+                            "r": [-40,125],
+                            "d": 16,
+                            "f": "3.2f"
+                        }
+                    ]
+                }
+            }
+        },
         "QWIICBUTTON": {
             "addresses": "0x6f",
             "deviceType": "QWIICBUTTON",

@@ -293,7 +293,7 @@ void BusI2C::i2cWorkerTask()
         if (yieldCount == WORKER_LOOPS_BEFORE_YIELDING)
         {
             yieldCount = 0;
-            vTaskDelay(1);
+            vTaskDelay(5);
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
             // Debug
