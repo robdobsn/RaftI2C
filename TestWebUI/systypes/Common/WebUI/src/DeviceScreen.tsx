@@ -27,7 +27,7 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
       const startTime = Date.now();
       const updateChart = () => {
         setTimedChartUpdate(Date.now());
-        console.log(`Updating chart time now is ${Date.now()-startTime}`);
+        // console.log(`Updating chart time now is ${Date.now()-startTime}`);
       };
       const updateTimer = setInterval(updateChart, 500);
       return () => clearInterval(updateTimer);

@@ -77,7 +77,7 @@ export type AttrTypeBitsType = {
 
 export function isAttrTypeSigned(attrType: string): boolean {
     const attrStr = attrType.charAt(0) === ">" || attrType.charAt(0) === "<" ? attrType.slice(1).charAt(0) : attrType.charAt(0);
-    return attrType === "b" || attrType === "h" || attrType === "i" || attrType === "l" || attrType === "q";
+    return attrStr === "b" || attrStr === "h" || attrStr === "i" || attrStr === "l" || attrStr === "q";
 }
 
 export function decodeAttrUnitsEncoding(attr: string): string {

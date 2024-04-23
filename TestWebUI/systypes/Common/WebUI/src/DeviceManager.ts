@@ -519,7 +519,8 @@ export class DeviceManager {
                                 }
 
                                 // Check if an MM part is present
-                                if (signExtendableMaskSignPos > 0) {
+                                const mmSpecifiedOnSignedValue = (signExtendableMaskSignPos > 0) && isAttrTypeSigned(attrTypeDefForStruct);
+                                if (mmSpecifiedOnSignedValue) {
                                     // Make the conversion unsigned for now
                                     attrTypeDefForStruct = attrSplit[0].toUpperCase();
                                 }
@@ -529,8 +530,8 @@ export class DeviceManager {
                                 const dataBuf = Buffer.from(valueHexChars, 'hex')
                                 value = struct.unpack(attrSplit[0], dataBuf)[0] as number;
 
-                                // Check if sign extendable mask specified
-                                if (signExtendableMaskSignPos > 0) {
+                                // Check if sign extendable mask specified on signed value
+                                if (mmSpecifiedOnSignedValue) {
                                     const signBitMask = 1 << (signExtendableMaskSignPos - 1);
                                     const valueOnlyMask = signBitMask - 1;
                                     if (value & signBitMask) {
@@ -566,7 +567,7 @@ export class DeviceManager {
                                 if ("a" in attr && attr.a !== undefined) {
                                     value += attr.a;
                                 }
-                                // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value}`);
+                                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
                                 hexStrIdx += attrReadHexChars;
                                 attrIdx++;
 
