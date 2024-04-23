@@ -543,14 +543,14 @@ uint64_t BusStatusMgr::getLastStatusUpdateMs(bool includeElemOnlineStatusChanges
 /// @param addresses - vector to store the addresses of devices
 /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
 /// @return true if there are any ident poll responses available
-bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses)
+bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
     // Iterate address status records
-    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.dataAggregator.count() > 0;
         if (includeAddr)
@@ -566,7 +566,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool on
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
-/// @brief Get bus element status for a specific address
+/// @brief Get bus element poll responses for a specific address
 /// @param address - address of device to get responses for
 /// @param isOnline - (out) true if device is online
 /// @param deviceTypeIndex - (out) device type index
@@ -574,7 +574,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool on
 /// @param responseSize - (out) size of the response data
 /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
 /// @return number of responses returned
-uint32_t BusStatusMgr::getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
             std::vector<uint8_t>& devicePollResponseData, 
             uint32_t& responseSize, uint32_t maxResponsesToReturn)
 {
@@ -603,10 +603,10 @@ uint32_t BusStatusMgr::getBusElemStatus(uint32_t address, bool& isOnline, uint16
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get bus status json
+/// @brief Get bus poll responses json
 /// @param deviceIdentMgr device identity manager
-/// @return bus status json
-String BusStatusMgr::getBusStatusJson(DeviceIdentMgr& deviceIdentMgr)
+/// @return bus poll responses json
+String BusStatusMgr::getBusPollResponsesJson(const DeviceIdentMgr& deviceIdentMgr)
 {
     // Return string
     String jsonStr;
@@ -621,7 +621,7 @@ String BusStatusMgr::getBusStatusJson(DeviceIdentMgr& deviceIdentMgr)
         uint16_t deviceTypeIndex = 0;
         std::vector<uint8_t> devicePollResponseData;
         uint32_t responseSize = 0;
-        getBusElemStatus(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+        getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
 
         // Use device identity manager to convert to JSON
         String jsonData = deviceIdentMgr.deviceStatusToJson(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 

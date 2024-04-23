@@ -216,11 +216,6 @@ void BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
     if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
         return;
 
-    // TODO - decide if this is necessary
-
-    // // Reset to ensure all slots disabled
-    // hardwareReset();
-
     // Set all bus extender channels off except for one
     uint32_t mask = 1 << slotIdx;
     uint32_t addr = _minAddr + extenderIdx;

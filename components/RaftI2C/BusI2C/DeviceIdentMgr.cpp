@@ -220,7 +220,7 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 String DeviceIdentMgr::deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, bool isOnline, uint16_t deviceTypeIndex, 
-                const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize)
+                const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
     // Get device type info
     const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);

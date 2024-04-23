@@ -7,3 +7,8 @@
 [] Current monitoring code?
 [] Support for using a MUXED channel for power and ADCs on hardware
 [] add config options for reset on i2c mux devices - addr and pin for each?? - maybe pin is the same for multiple? then reset at start - and maybe in bus reset process check if this solves lockup problem??
+[] investigate idea of callback functions to do device-detection/init/polling/decoding - could define struct with values and then serialize it out - endianness TBD - perhaps include and endian-ness marker (a known 2 byte value for instance) - or just define little-endian knowing it is ok on ESP32 and needs adjustment on other platforms?
+[] in UI should just show devices included in current msg - and remove others? - this should be ok since messages are generated with all previously seen devices - so the ones that aren't there would be due to restart, etc
+[] deal with bus generic functions
+[] get working with problem devices like button and servo
+[] consider whether there is any benefit in different devices at different speeds based on them being isolated on slots? 

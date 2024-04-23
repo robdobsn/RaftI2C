@@ -24,17 +24,6 @@ static const char* MODULE_PREFIX = "BusI2C";
 #include "BusI2CESPIDF.h"
 #endif
 
-// Magic constant controlling the yield rate of the I2C main worker
-// This affects the number of I2C communications that occur in a cluster
-// As of 2021-11-12 this is set conservatively to ensure two commnunications with 
-// the same peripheral don't happen too close together (min is around 1ms - with 1
-// loop before yield)
-// Note: 10 seems the logical number because there are 9 servos and 1 accelerometer
-// and all should be polled quickly but this would require more granular control
-// of sending to slower peripherals as they can currently get swamped by multiple
-// commands being sent with very little time between
-static const uint32_t WORKER_LOOPS_BEFORE_YIELDING = 1;
-
 // The following will define a minimum time between I2C comms activities
 // #define ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US 1
 
@@ -132,6 +121,10 @@ bool BusI2C::setup(const RaftJsonIF& config)
     BaseType_t taskPriority = config.getLong("taskPriority", DEFAULT_TASK_PRIORITY);
     int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES);
 
+    // Yield values
+    _loopYieldMs = config.getLong("loopYieldMs", I2C_BUS_LOOP_YIELD_MS);
+    _loopFastUnyieldMs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS);
+
     // Bus status manager
     _busStatusMgr.setup(config);
 
@@ -200,10 +193,11 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d",
+    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d maxUnyieldMs %d",
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
-                portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize);
+                portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize,
+                _loopYieldMs, _loopFastUnyieldMs);
 
     // Ok
     return true;
@@ -281,32 +275,15 @@ void BusI2C::i2cWorkerTaskStatic(void* pvParameters)
 /// @brief RTOS task function that handles all bus interaction (runs indefinitely - or until notified to stop)
 void BusI2C::i2cWorkerTask()
 {
-    uint32_t yieldCount = 0;
     _debugLastBusLoopMs = millis();
     while (ulTaskNotifyTake(pdTRUE, 0) == 0)
-    {        
-        // Allow other threads a look in - this time is in freeRTOS ticks
-        // The queue and semaphore below have 0 ticksToWait so they will not block
-        // Hence we need to block to avoid starving other processes
-        // It may be that there is a better way to do this - e.g. blocking on a compound flag like WiFi code does?
-        yieldCount++;
-        if (yieldCount == WORKER_LOOPS_BEFORE_YIELDING)
-        {
-            yieldCount = 0;
-            vTaskDelay(5);
-
-#ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
-            // Debug
-            _i2cMainYieldCount++;
-#endif
-        }
+    {
+        // Allow other tasks to run
+        vTaskDelay(pdMS_TO_TICKS(_loopYieldMs));
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         uint64_t startUs = micros();
 #endif
-
-        // Stats
-        _busStats.activity();
 
         // Check I2C initialised
         if (!_initOk)
@@ -323,6 +300,9 @@ void BusI2C::i2cWorkerTask()
 #endif
         }
 
+        // Stats
+        _busStats.activity();
+
         // Check pause status
         if ((_isPaused) && (!_pauseRequested))
             _isPaused = false;
@@ -337,9 +317,9 @@ void BusI2C::i2cWorkerTask()
             uint32_t lastFastScanYieldMs = millis();
             while (_busScanner.isScanPending())
             {
-               _busScanner.taskService();
-               if (Raft::isTimeout(millis(), lastFastScanYieldMs, BusScanner::I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS))
-                   break;
+                _busScanner.taskService();
+                if (Raft::isTimeout(millis(), lastFastScanYieldMs, _loopFastUnyieldMs))
+                    break;
             }
         }
 #endif
@@ -371,8 +351,8 @@ void BusI2C::i2cWorkerTask()
         if (millis() - _i2cDebugLastReportMs > 30000)
         {
             _i2cDebugLastReportMs = millis();
-            LOG_I(MODULE_PREFIX, "i2cWorkerTask timeUs %lld worstTimeUs %lld yieldsCount %d loopCount %d", 
-                        timeUs, _i2cLoopWorstTimeUs, _i2cMainYieldCount, _i2cMainLoopCount);
+            LOG_I(MODULE_PREFIX, "i2cWorkerTask timeUs %lld worstTimeUs %lld loopCount %d", 
+                        timeUs, _i2cLoopWorstTimeUs, _i2cMainLoopCount);
             _i2cLoopWorstTimeUs = 0;
         }
 #endif
@@ -525,7 +505,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
 /// @param address - address of element
 /// @param pIsValid - pointer to bool to receive validity flag
 /// @return true if element is responding
-bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid)
+bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid) const
 {
     if (pIsValid)
         *pIsValid = true;

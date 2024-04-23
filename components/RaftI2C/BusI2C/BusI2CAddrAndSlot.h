@@ -39,7 +39,7 @@ public:
         addrAndSlot.slotPlus1 = (compositeAddrAndSlot >> 10) & 0x3F;
         return addrAndSlot;
     }
-    uint32_t toCompositeAddrAndSlot()
+    uint32_t toCompositeAddrAndSlot() const
     {
         return (addr & 0x3FF) | ((slotPlus1 & 0x3F) << 10);
     }

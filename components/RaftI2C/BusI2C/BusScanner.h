@@ -40,10 +40,7 @@ public:
     bool taskService();
 
     // Scan period
-    static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 10;
-
-    // Max fast scanning without yielding
-    static const uint32_t I2C_BUS_SCAN_FAST_MAX_UNYIELD_MS = 2;
+    static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
 
 private:
     // Scanning state
@@ -65,6 +62,7 @@ private:
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
     uint16_t _scanNextSlotArrayIdx = 0;
     uint16_t _scanCurAddr = I2C_BUS_ADDRESS_MIN;
+    uint32_t _scanSweepStartMs = 0;
 
     // Scan priority
     std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
@@ -102,6 +100,9 @@ private:
     /// @param addr (out) Address
     /// @param slotPlus1 (out) Slot number (1-based)
     /// @param onlyMainBus Only main bus (don't scan extenders)
+    /// @param sweepCompleted (out) Sweep completed
+    /// @param mediumPrioritySweepCompleted Test if medium priority sweep complete (as opposed to full sweep)
     /// @return True if valid
-    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus);
+    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus, 
+                bool& sweepCompleted, bool mediumPrioritySweepCompleted);
 };

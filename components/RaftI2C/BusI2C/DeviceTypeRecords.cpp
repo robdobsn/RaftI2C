@@ -219,56 +219,6 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check if device address is in range of addresses used by any device
-/// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
-/// @param addrAndSlot i2c address and slot
-/// @return true if address in range
-bool DeviceTypeRecords::isAddrInRange(const String& addresses, BusI2CAddrAndSlot addrAndSlot) const
-{
-    // Check addresses
-    if (addresses.length() == 0)
-    {
-#ifdef DEBUG_DEVICE_INFO_RECORDS
-        LOG_I(MODULE_PREFIX, "isAddrInRange %s no address range", addresses.c_str());
-#endif
-        return false;
-    }
-    // Convert address range to min and max addresses
-    std::vector<uint8_t> validAddresses = convertAddressesToList(addresses);
-
-#ifdef DEBUG_DEVICE_INFO_RECORDS
-    LOG_I(MODULE_PREFIX, "isAddrInRange %s 0x%02x", addresses.c_str(), addrAndSlot.addr);
-#endif
-
-    // Check if address in range
-    if (std::find(validAddresses.begin(), validAddresses.end(), addrAndSlot.addr) == validAddresses.end())
-    {
-        return false;
-    }
-    return true;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Convert address range to min and max addresses
-/// @param addresses a string of the form 0xXX or 0xXX-0xYY or 0xXX,0xYY,0xZZ
-/// @param minAddr lower end of the address range
-/// @param maxAddr upper end of the address range (which may be the same as the lower address)
-std::vector<uint8_t> DeviceTypeRecords::convertAddressesToList(const String& addresses) const
-{
-    std::vector<uint8_t> validAddresses;
-    // Check addresses
-    if (addresses.length() == 0)
-    {
-#ifdef DEBUG_DEVICE_INFO_RECORDS
-        LOG_I(MODULE_PREFIX, "convertAddressesToList %s no address range", addresses.c_str());
-#endif
-        return validAddresses;
-    }
-    // TODO - Extract the addresses
-    return validAddresses;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Extract buffer data from hex string
 /// @param writeStr hex string
 /// @param writeData (out) buffer data
@@ -399,7 +349,7 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 /// @param pDevTypeRec pointer to device type record
 /// @param devicePollResponseData device poll response data
 String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
-        const std::vector<uint8_t>& devicePollResponseData)
+        const std::vector<uint8_t>& devicePollResponseData) const
 {
     // Device type name
     String devTypeName = pDevTypeRec ? pDevTypeRec->deviceType : "";

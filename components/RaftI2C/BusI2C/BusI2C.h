@@ -55,7 +55,6 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Close bus
-    /// @return true if close was successful
     virtual void close() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,20 +81,20 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief isPaused
     /// @return true if the bus is paused
-    virtual bool isPaused() override final
+    virtual bool isPaused() const override final
     {
         return _isPaused;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Hiatus for period in ms (a hiatus is a suspension of activity for a period of time - generally due to power cycling, etc)
+    /// @brief Hiatus for a period in ms (stop bus activity for a period of time)
     /// @param forPeriodMs - period in ms
     virtual void hiatus(uint32_t forPeriodMs) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief isHiatus
     /// @return true if the bus is in hiatus
-    virtual bool isHiatus() override final
+    virtual bool isHiatus() const override final
     {
         return _hiatusActive;
     }
@@ -117,7 +116,7 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Add a request to the bus (may be a one-off or a poll request that is repeated at intervals)
+    /// @brief Request an action (like regular polling of a device or sending a single message and getting a response)
     /// @param busReqInfo - bus request information
     /// @return true if the request was added
     virtual bool addRequest(BusRequestInfo& busReqInfo) override final
@@ -130,32 +129,40 @@ public:
     /// @param address - address of element
     /// @param pIsValid - (out) true if the address is valid
     /// @return true if the element is responding
-    virtual bool isElemResponding(uint32_t address, bool* pIsValid) override final;
+    virtual bool isElemResponding(uint32_t address, bool* pIsValid) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Request (or suspend) slow scanning and optionally request a fast scan
+    /// @brief Request a change to bus scanning activity
     /// @param enableSlowScan - true to enable slow scan, false to disable
     /// @param requestFastScan - true to request a fast scan
     virtual void requestScan(bool enableSlowScan, bool requestFastScan) override final;
-
-    // TODO - make these override base-class methods
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type information by address
     /// @param address - address of device to get information for
     /// @param includePlugAndPlayInfo - true to include plug and play information
     /// @return JSON string
-    String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const;
+    virtual String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type information by device type name
     /// @param deviceType - device type name
     /// @param includePlugAndPlayInfo - true to include plug and play information
     /// @return JSON string
-    String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const;
+    virtual String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const override final;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Return addresses of devices attached to the bus
+    /// @param addresses - vector to store the addresses of devices
+    /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
+    /// @return true if there are any ident poll responses available
+    virtual bool getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const
+    {
+        return _busStatusMgr.getBusElemAddresses(addresses, onlyAddressesWithIdentPollResponses);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
-    /// @brief Get bus element status for a specific address
+    /// @brief Get bus element poll responses for a specific address
     /// @param address - address of device to get responses for
     /// @param isOnline - (out) true if device is online
     /// @param deviceTypeIndex - (out) device type index
@@ -163,38 +170,44 @@ public:
     /// @param responseSize - (out) size of the response data
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
     /// @return number of responses returned
-    uint32_t getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+    virtual uint32_t getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
                 std::vector<uint8_t>& devicePollResponseData, 
-                uint32_t& responseSize, uint32_t maxResponsesToReturn)
+                uint32_t& responseSize, uint32_t maxResponsesToReturn) override final
     {
-        return _busStatusMgr.getBusElemStatus(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, maxResponsesToReturn);
+        return _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, maxResponsesToReturn);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get time of last bus status update
     /// @return time of last bus status update in ms
-    uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates)
+    virtual uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const override final
     {
         return _busStatusMgr.getLastStatusUpdateMs(includeElemOnlineStatusChanges, includePollDataUpdates);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus status JSON for all detected bus elements
+    /// @brief Get bus poll JSON for all detected bus elements
     /// @return JSON string
-    String getBusStatusJson()
+    virtual String getBusPollResponsesJson() override final
     {
-        return _busStatusMgr.getBusStatusJson(_deviceIdentMgr);
+        return _busStatusMgr.getBusPollResponsesJson(_deviceIdentMgr);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get bus address and status as a string
     /// @param busElemAddr - bus element address and status
-    virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) override
+    virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) const override final
     {
         BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
         return addrAndSlot.toString() + ":" +
                         (busElemAddr.isChangeToOnline ? "Online" : "Offline" + String(busElemAddr.isChangeToOffline ? " (was online)" : ""));
     }     
+
+    // Yield value on each bus processing loop
+    static const uint32_t I2C_BUS_LOOP_YIELD_MS = 5;
+
+    // Max fast scanning without yielding
+    static const uint32_t I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS = 10;
 
 private:
 
@@ -214,13 +227,17 @@ private:
     uint64_t _lastI2CCommsUs = 0;
     static const uint32_t MIN_TIME_BETWEEN_I2C_COMMS_US = 1000;
 
+    // I2C loop control
+    uint32_t _loopFastUnyieldMs = I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS;
+    uint32_t _loopYieldMs = I2C_BUS_LOOP_YIELD_MS;
+
     // Init ok
     bool _initOk = false;
 
     // Task that operates the bus
     volatile TaskHandle_t _i2cWorkerTaskHandle = nullptr;
     static const int DEFAULT_TASK_CORE = 0;
-    static const int DEFAULT_TASK_PRIORITY = 1;
+    static const int DEFAULT_TASK_PRIORITY = 5;
     static const int DEFAULT_TASK_STACK_SIZE_BYTES = 10000;
     static const uint32_t WAIT_FOR_TASK_EXIT_MS = 1000;
 
@@ -237,7 +254,6 @@ private:
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
     uint32_t _i2cDebugLastReportMs = 0;
     uint64_t _i2cLoopWorstTimeUs = 0;
-    uint32_t _i2cMainYieldCount = 0;
     uint32_t _i2cMainLoopCount = 0;
 #endif
 

@@ -122,7 +122,7 @@ public:
     /// @param pDevTypeRec pointer to device type record
     /// @param devicePollResponseData device poll response data
     String deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
-            const std::vector<uint8_t>& devicePollResponseData);
+            const std::vector<uint8_t>& devicePollResponseData) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get scan priority lists
@@ -134,15 +134,4 @@ private:
     static bool extractBufferDataFromHexStr(const String& writeStr, std::vector<uint8_t>& writeData);
     static bool extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
                 std::vector<uint8_t>& readDataCheck, bool maskToZeros);
-
-    /// @brief Check address is in range used by any device type
-    /// @param addresses 
-    /// @param addrAndSlot 
-    /// @return true if address is in range
-    bool isAddrInRange(const String& addresses, BusI2CAddrAndSlot addrAndSlot) const;
-
-    /// @brief Convert addresses to array
-    /// @param addresses
-    /// @return array of addresses
-    std::vector<uint8_t> convertAddressesToList(const String& addresses) const;
 };

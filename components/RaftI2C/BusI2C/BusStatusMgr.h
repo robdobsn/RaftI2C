@@ -79,10 +79,10 @@ public:
     /// @param addresses - vector to store the addresses of devices
     /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
     /// @return true if there are any ident poll responses available
-    bool getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses);
+    bool getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
-    /// @brief Get bus element status for a specific address
+    /// @brief Get bus element poll responses for a specific address
     /// @param address - address of device to get responses for
     /// @param isOnline - (out) true if device is online
     /// @param deviceTypeIndex - (out) device type index
@@ -90,14 +90,15 @@ public:
     /// @param responseSize - (out) size of the response data
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
     /// @return number of responses returned
-    uint32_t getBusElemStatus(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+    uint32_t getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus status json
+    /// @brief Get bus poll responses json
+    /// @param deviceIdentMgr device identity manager
     /// @return JSON string
-    String getBusStatusJson(DeviceIdentMgr& deviceIdentMgr);
+    String getBusPollResponsesJson(const DeviceIdentMgr& deviceIdentMgr);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Is address found on main bus

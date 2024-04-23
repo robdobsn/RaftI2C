@@ -12,7 +12,8 @@
 
 // #define DEBUG_BUS_SCANNER
 // #define DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
-#define DEBUG_MOVE_TO_NORMAL_SCANNING
+// #define DEBUG_MOVE_TO_NORMAL_SCANNING
+// #define DEBUG_SCANNING_SWEEP_TIME
 
 static const char* MODULE_PREFIX = "BusScanner";
 
@@ -43,6 +44,8 @@ void BusScanner::setup(const RaftJsonIF& config)
 {
     // Bus scan period
     _slowScanPeriodMs = config.getLong("busScanPeriodMs", I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS);
+
+    // Debug
     LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
 
     // Get scan priority lists
@@ -130,11 +133,12 @@ bool BusScanner::taskService()
                 {
                     _scanState = (_scanState == SCAN_STATE_SCAN_EXTENDERS ? SCAN_STATE_MAIN_BUS : SCAN_STATE_SCAN_FAST);
 #ifdef DEBUG_MOVE_TO_NORMAL_SCANNING
-                    LOG_I(MODULE_PREFIX, "taskService move to normal scanning of main bus and slots");
+                    LOG_I(MODULE_PREFIX, "taskService %s", _scanState == SCAN_STATE_MAIN_BUS ? "scanning main bus" : "fast scanning main bus and slots");
 #endif
                     _scanCurAddr = I2C_BUS_ADDRESS_MIN;
                     _scanStateRepeatCount = 0;
                     _scanStateRepeatCountMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+                    _scanSweepStartMs = millis();
                 }
                 else
                 {
@@ -150,7 +154,8 @@ bool BusScanner::taskService()
             // Find the next address to scan
             uint32_t addr = 0;
             uint32_t slotPlus1 = 0;
-            if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, false))
+            bool sweepCompleted = false;
+            if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, false, sweepCompleted, true))
                 return false;
 
             // Enable slot if required
@@ -166,13 +171,25 @@ bool BusScanner::taskService()
                 _busExtenderMgr.hardwareReset();
             }
 
-            // TODO - decide when to move from fast scan to slow scan
-
-            // Check if fast scanning
-            // return _scanState == SCAN_STATE_SCAN_FAST;
-
-            // TODO - remove
-            return false;
+            // Check if we have completed a sweep
+            if (sweepCompleted)
+            {
+#ifdef DEBUG_SCANNING_SWEEP_TIME
+                uint32_t sweepTimeMs = Raft::timeElapsed(millis(), _scanSweepStartMs);
+                LOG_I(MODULE_PREFIX, "taskService sweep completed time %dms", sweepTimeMs);
+#endif
+                _scanStateRepeatCount++;
+                if (_scanStateRepeatCount >= _scanStateRepeatCountMax)
+                {
+#ifdef DEBUG_MOVE_TO_NORMAL_SCANNING
+                    LOG_I(MODULE_PREFIX, "taskService slow scanning main bus and slots");
+#endif
+                    _scanState = SCAN_STATE_SCAN_SLOW;
+                    _scanStateRepeatCount = 0;
+                }
+                _scanSweepStartMs = millis();
+            }
+            return _scanState != SCAN_STATE_SCAN_SLOW;
         }
     }
     return false;
@@ -201,10 +218,14 @@ bool BusScanner::isScanPending()
 /// @param addr (out) Address
 /// @param slotPlus1 (out) Slot number (1-based)
 /// @param onlyMainBus Only main bus (don't scan extenders)
+/// @param sweepCompleted (out) Sweep completed
+/// @param mediumPrioritySweepCompleted Test if medium priority sweep complete (as opposed to full sweep)
 /// @return True if valid
-bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus)
+bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus, 
+            bool& sweepCompleted, bool mediumPrioritySweepCompleted)
 {
     // Check if already scanning slots on current address
+    sweepCompleted = false;
     if (!onlyMainBus && (_scanNextSlotArrayIdx > 0))
     {
         // Check if slots remain
@@ -233,7 +254,7 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
     if (_scanPriorityLists.size() == 0)
         return false;
 
-    // Iterate through scan priority lists in reverse order
+    // Iterate through scan priority lists in order from lowest to highest priority
     for (uint32_t j = _scanPriorityLists.size(); j >= 1; j--)
     {
         // Get index
@@ -258,6 +279,12 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
                 _scanPriorityRecs[idx].scanListIndex++;
                 slotPlus1 = 0;
                 _scanNextSlotArrayIdx = _busStatusMgr.isAddrFoundOnMainBus(addr) ? 0 : 1;
+
+                // Check if returning last address of lowest-priority list (note that this uses the fact that scanListIndex hasn't yet been wrapped)
+                if (mediumPrioritySweepCompleted)
+                    sweepCompleted = (j + 1 == _scanPriorityLists.size()) && (_scanPriorityRecs[idx].scanListIndex == _scanPriorityLists[idx].size());
+                else
+                    sweepCompleted = (j == _scanPriorityLists.size()) && (_scanPriorityRecs[idx].scanListIndex == _scanPriorityLists[idx].size());
 #ifdef DEBUG_SHOW_BUS_SCAN_GET_NEXT_RESULT
                 LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext other addr %02x slot %d isOnMainBus %s", 
                             addr, slotPlus1, _scanNextSlotArrayIdx == 0 ? "true" : "false");
