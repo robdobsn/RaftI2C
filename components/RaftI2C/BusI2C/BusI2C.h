@@ -19,7 +19,7 @@
 #include "DevicePollingMgr.h"
 #include "BusStuckHandler.h"
 
-#define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
+// #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
 class RaftI2CCentralIF;
 
