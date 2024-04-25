@@ -9,17 +9,15 @@
 #include "BusStuckHandler.h"
 #include "Logger.h"
 #include "RaftUtils.h"
-#include "BusExtenderMgr.h"
 #include "driver/gpio.h"
 
-#define DEBUG_BUS_STUCK_HANDLER
+// #define DEBUG_BUS_STUCK_HANDLER
 
 static const char* MODULE_PREFIX = "BusStuck";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusStuckHandler::BusStuckHandler(BusExtenderMgr& busExtenderMgr) : 
-            _BusExtenderMgr(busExtenderMgr)
+BusStuckHandler::BusStuckHandler()
 {
 }
 
@@ -57,5 +55,11 @@ bool BusStuckHandler::isStuck()
         return false;
     
     // Check if SDA and SCL are high
-    return gpio_get_level(_sdaPin) && gpio_get_level(_sclPin);
+    if (!(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin)))
+    {
+        // Wait a moment and check again
+        delayMicroseconds(5);
+        return !(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin));
+    }
+    return false;
 }

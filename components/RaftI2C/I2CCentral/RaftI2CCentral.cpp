@@ -41,6 +41,7 @@ static const char *MODULE_PREFIX = "RaftI2CCentral";
 // #define DEBUG_I2C_COMMANDS
 // #define DEBUG_ALL_REGS
 // #define DEBUG_ISR_USING_GPIO_NUM 1
+// #define DEBUG_BUS_NOT_READY_WITH_GPIO_NUM 18
 
 // I2C operation mode command (different for ESP32 and ESP32S3/C3)
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -197,18 +198,6 @@ bool RaftI2CCentral::isBusy()
     // Check if hardware is ready
     if (!_isInitialised)
         return true;
-
-    // TODO = remove
-    pinMode(18, OUTPUT);
-    for (int i = 0; i < 50; i++)
-    {
-        digitalWrite(18, HIGH);
-        delayMicroseconds(1);
-        digitalWrite(18, LOW);
-        delayMicroseconds(1);
-        if (!I2C_DEVICE.I2C_STATUS_REGISTER_NAME.bus_busy)
-            break;
-    }
 
     bool isBusy = I2C_DEVICE.I2C_STATUS_REGISTER_NAME.bus_busy;
 #ifdef DEBUG_RICI2C_ACCESS
@@ -478,34 +467,59 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
 
 bool RaftI2CCentral::ensureI2CReady()
 {
-    // Check if busy
-    if (isBusy() && Raft::isTimeout(millis(), _lastCheckI2CReadyMs, _lastCheckI2CReadyIntervalMs))
+    // Check if busy (shouldn't be at this point!)
+    if (isBusy())
     {
-#ifdef WARN_ON_BUS_IS_BUSY
-        LOG_W(MODULE_PREFIX, "ensureI2CReady bus is busy ... resetting\n");
-#endif
-
-        // Other checks on I2C should delayed more
-        _lastCheckI2CReadyIntervalMs = I2C_READY_CHECK_INTERVAL_OTHER_MS;
-        _lastCheckI2CReadyMs = millis();
-
-        // Should not be busy - so reinit I2C
+        // Reinit I2C
         reinitI2CModule();
+    }
 
-        // Wait a moment
-        delayMicroseconds(50);
-
-        // Check if now not busy
-        if (isBusy())
+    // Check if still busy
+    if (isBusy())
+    {
+        // Debug
+#ifdef DEBUG_BUS_NOT_READY_WITH_GPIO_NUM
+        pinMode(DEBUG_BUS_NOT_READY_WITH_GPIO_NUM, OUTPUT);
+        for (int i = 0; i < 50; i++)
         {
-            // Something more seriously wrong
-#ifdef WARN_ON_BUS_CANNOT_BE_RESET
-            String busLinesErrorMsg;
-            checkI2CLinesOk(busLinesErrorMsg);
-            LOG_W(MODULE_PREFIX, "ensureI2CReady bus still busy ... %s\n", busLinesErrorMsg.c_str());
-#endif
-            return false;
+            digitalWrite(DEBUG_BUS_NOT_READY_WITH_GPIO_NUM, HIGH);
+            delayMicroseconds(1);
+            digitalWrite(DEBUG_BUS_NOT_READY_WITH_GPIO_NUM, LOW);
+            delayMicroseconds(1);
+            if (!I2C_DEVICE.I2C_STATUS_REGISTER_NAME.bus_busy)
+                break;
         }
+#endif
+
+        if (Raft::isTimeout(millis(), _lastCheckI2CReadyMs, _lastCheckI2CReadyIntervalMs))
+        {
+
+#ifdef WARN_ON_BUS_IS_BUSY
+            LOG_W(MODULE_PREFIX, "ensureI2CReady bus is busy ... resetting\n");
+#endif
+
+            // Other checks on I2C should delayed more
+            _lastCheckI2CReadyIntervalMs = I2C_READY_CHECK_INTERVAL_OTHER_MS;
+            _lastCheckI2CReadyMs = millis();
+
+            // Should not be busy - so reinit I2C
+            reinitI2CModule();
+
+            // Wait a moment
+            delayMicroseconds(50);
+
+            // Check if now not busy
+            if (isBusy())
+            {
+                // Something more seriously wrong
+#ifdef WARN_ON_BUS_CANNOT_BE_RESET
+                String busLinesErrorMsg;
+                checkI2CLinesOk(busLinesErrorMsg);
+                LOG_W(MODULE_PREFIX, "ensureI2CReady bus still busy ... %s\n", busLinesErrorMsg.c_str());
+#endif
+            }
+        }
+        return false;
     }
     return true;
 }

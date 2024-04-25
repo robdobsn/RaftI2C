@@ -14,7 +14,6 @@
 #include "freertos/semphr.h"
 #include "BusBase.h"
 #include "BusI2CConsts.h"
-#include "BusExtenderMgr.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
 #include "BusI2CAddrStatus.h"
@@ -121,6 +120,11 @@ public:
         if (!isAddrFoundOnMainBus(addr))
             _mainBusAddrBits[addr/32] |= (1 << (addr % 32));
     }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Inform that slot is powering down
+    /// @param slotPlus1 slotPlus1
+    void slotPoweringDown(uint32_t slotPlus1);
 
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;

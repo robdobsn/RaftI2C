@@ -107,7 +107,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                         {
                             addrStatus.addrAndSlot.toCompositeAddrAndSlot(), 
                             addrStatus.isOnline,
-                            addrStatus.wasOnline && !addrStatus.isOnline,
+                            addrStatus.wasOnceOnline && !addrStatus.isOnline,
                         };
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
                     LOG_I(MODULE_PREFIX, "service addr@slot+1 %s status change to %s", 
@@ -120,7 +120,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                     // Check if this is the addrForLockupDetect
                     if (_addrForLockupDetectValid && 
                                 (addrStatus.addrAndSlot.addr == _addrForLockupDetect) && 
-                                (addrStatus.wasOnline))
+                                (addrStatus.wasOnceOnline))
                     {
                         newBusOperationStatus = addrStatus.isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
                     }
@@ -254,12 +254,12 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 #endif
         if (isNewStatusChange)
         {
-            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnline %d(was %d) isResponding %d",
+            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnceOnline %d(was %d) isResponding %d",
                         newStatus.addrAndSlot.toString().c_str(),
                         newStatus.count, prevStatus.count, 
                         newStatus.isOnline, prevStatus.isOnline, 
                         newStatus.isChange, prevStatus.isChange, 
-                        newStatus.wasOnline, prevStatus.wasOnline, 
+                        newStatus.wasOnceOnline, prevStatus.wasOnceOnline, 
                         elemResponding);
         }
 #endif
@@ -293,7 +293,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(BusI2CAddrAndSlot addrAndSlot) con
     {
         // Find address record
         const BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
-        if (!pAddrStatus || !pAddrStatus->wasOnline)
+        if (!pAddrStatus || !pAddrStatus->wasOnceOnline)
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
             onlineStatus = pAddrStatus->isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
@@ -455,6 +455,31 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) c
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return deviceTypeIndex;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Inform that slot is powering down
+/// @param slotPlus1 slotPlus1
+void BusStatusMgr::slotPoweringDown(uint32_t slotPlus1)
+{
+    // Find all devices on this slot and indicate that they are offline
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Go through all devices and set offline
+    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        if (addrStatus.addrAndSlot.slotPlus1 == slotPlus1)
+        {
+            addrStatus.isOnline = false;
+            addrStatus.isChange = true;
+            _busElemStatusChangeDetected = true;
+            _lastBusElemOnlineStatusUpdateTimeUs = micros();
+        }
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

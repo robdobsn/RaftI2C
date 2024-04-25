@@ -42,10 +42,13 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
                 RaftI2CCentralIF* pI2CCentralIF)
     : BusBase(busElemStatusCB, busOperationStatusCB),
         _busStatusMgr(*this),
-        _busExtenderMgr(
+        _busPowerController(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busStuckHandler(_busExtenderMgr),
+        _busStuckHandler(),
+        _busExtenderMgr(_busPowerController, _busStuckHandler, _busStatusMgr,
+            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
+        ),
         _deviceIdentMgr(_busExtenderMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
@@ -132,6 +135,10 @@ bool BusI2C::setup(const RaftJsonIF& config)
     RaftJsonPrefixed busExtenderConfig(config, "mux");
     _busExtenderMgr.setup(busExtenderConfig);
 
+    // Bus power controller setup
+    RaftJsonPrefixed busPowerConfig(config, "pwr");
+    _busPowerController.setup(busPowerConfig);
+
     // Bus stuck handler setup
     _busStuckHandler.setup(config);
 
@@ -160,9 +167,6 @@ bool BusI2C::setup(const RaftJsonIF& config)
         LOG_W(MODULE_PREFIX, "setup FAILED no device");
         return false;
     }
-
-    // Reset bus extenders if any defined
-    _busExtenderMgr.hardwareReset();
 
     // Init the I2C bus
     if (!_pI2CCentral->init(_i2cPort, _sdaPin, _sclPin, _freq, _i2cFilter))
@@ -239,6 +243,9 @@ void BusI2C::service()
 
     // Service bus extender
     _busExtenderMgr.service();
+
+    // Bus power controller service
+    _busPowerController.service();
 
     // Service bus stuck handler
     _busStuckHandler.service();
@@ -335,6 +342,9 @@ void BusI2C::i2cWorkerTask()
         continue;
 #endif
 
+        // Bus power controller service
+        _busPowerController.taskService(micros());
+
         // Device polling
         _devicePollingMgr.taskService(micros());
 
@@ -366,83 +376,6 @@ void BusI2C::i2cWorkerTask()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Send I2C message asynchronously and store result in the response queue
-/// @param pReqRec - contains the request details including address, write data, read data length, etc
-/// @param pollListIdx - index into the polling list - used to reference back to the response queue
-/// @return result code
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
-{
-#ifdef DEBUG_I2C_ASYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slot+1 %s writeLen %d readLen %d reqType %d pollListIdx %d",
-                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
-                    pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
-#endif
-
-    // Check address is within valid range
-    if ((pReqRec->getAddrAndSlot().addr < I2C_BUS_ADDRESS_MIN) ||
-        (pReqRec->getAddrAndSlot().addr > I2C_BUS_ADDRESS_MAX))
-    {
-#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
-        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", pReqRec->getAddrAndSlot().addr);
-#endif
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-    }
-
-#ifdef ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US
-    // Check the last time a communication occurred - if less than the minimum between sends
-    // then delay
-    while (!Raft::isTimeout(micros(), _lastI2CCommsUs, MIN_TIME_BETWEEN_I2C_COMMS_US))
-    {
-    }
-#endif
-
-    // Check if this address is barred for a period
-    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
-        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
-
-    // Check if a bus extender slot is specified
-    if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
-
-    // Buffer for read
-    uint32_t readReqLen = pReqRec->getReadReqLen();
-    uint8_t readBuf[readReqLen];
-    uint32_t writeReqLen = pReqRec->getWriteDataLen();
-    uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
-
-    // Get address
-    uint32_t address = addrAndSlot.addr;
-
-    // Access the bus
-    uint32_t numBytesRead = 0;
-    RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
-    if (!_pI2CCentral)
-        return rsltCode;
-    rsltCode = _pI2CCentral->access(address, pReqRec->getWriteData(), writeReqLen, 
-            readBuf, readReqLen, numBytesRead);
-
-    // Reset bus extenders to turn off all slots
-    if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.hardwareReset();
-
-    // Check for scanning
-    if (!pReqRec->isScan())
-    {
-        // If not scanning handle the response (there is no response for scanning)
-        _busAccessor.handleResponse(pReqRec, rsltCode, readBuf, numBytesRead);
-    }
-
-    // Bar access to element if requested
-    if (barAccessAfterSendMs > 0)
-        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
-
-    // Record time of comms
-    _lastI2CCommsUs = micros();
-    return rsltCode;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Send I2C message synchronously
 /// @param pReqRec - contains the request details including address, write data, read data length, etc
 /// @param pReadData - pointer to buffer for read data
@@ -457,20 +390,11 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
                     pReqRec->getReadReqLen(), pReqRec->getReqType());
 #endif
 
-    // Check address is within valid range
-    if ((pReqRec->getAddrAndSlot().addr < I2C_BUS_ADDRESS_MIN) ||
-        (pReqRec->getAddrAndSlot().addr > I2C_BUS_ADDRESS_MAX))
-    {
-#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
-        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", pReqRec->getAddrAndSlot().addr);
-#endif
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-    }
-
-    // Check if this address is barred for a period
+    // Check address is within valid range and not barred
     BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
-        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
+    RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
+    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        return rslt;
 
     // Buffer for read
     uint32_t readReqLen = 0;
@@ -498,6 +422,92 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
     // Record time of comms
     _lastI2CCommsUs = micros();
     return rsltCode;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Send I2C message asynchronously and store result in the response queue
+/// @param pReqRec - contains the request details including address, write data, read data length, etc
+/// @param pollListIdx - index into the polling list - used to reference back to the response queue
+/// @return result code
+RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
+{
+#ifdef DEBUG_I2C_ASYNC_SEND_HELPER
+    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slot+1 %s writeLen %d readLen %d reqType %d pollListIdx %d",
+                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
+#endif
+
+    // Check address is within valid range and not barred
+    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
+    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        return rslt;
+
+    // Check if a bus extender slot is specified
+    if (!_busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1))
+        return RaftI2CCentralIF::ACCESS_RESULT_ARB_LOST;
+
+    // Buffer for read and address
+    uint32_t readReqLen = pReqRec->getReadReqLen();
+    uint8_t readBuf[readReqLen];
+    uint32_t writeReqLen = pReqRec->getWriteDataLen();
+    uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
+
+    // Access the bus
+    uint32_t numBytesRead = 0;
+    RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
+    if (!_pI2CCentral)
+        return rsltCode;
+    rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
+            readBuf, readReqLen, numBytesRead);
+
+    // Reset bus extenders to turn off all slots
+    if (addrAndSlot.slotPlus1 > 0)
+        _busExtenderMgr.disableAllSlots();
+
+    // Check for scanning
+    if (!pReqRec->isScan())
+    {
+        // If not scanning handle the response (there is no response for scanning)
+        _busAccessor.handleResponse(pReqRec, rsltCode, readBuf, numBytesRead);
+    }
+
+    // Bar access to element if requested
+    if (barAccessAfterSendMs > 0)
+        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
+
+    // Record time of comms
+    _lastI2CCommsUs = micros();
+    return rsltCode;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check address is valid and not barred
+/// @param addrAndSlot - address to check
+/// @return result code
+RaftI2CCentralIF::AccessResultCode BusI2C::checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot)
+{
+    if ((addrAndSlot.addr < I2C_BUS_ADDRESS_MIN) || (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX))
+    {
+#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
+        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", addrAndSlot.addr);
+#endif
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    }
+
+#ifdef ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US
+    // Check the last time a communication occurred - if less than the minimum between sends
+    // then delay
+    while (!Raft::isTimeout(micros(), _lastI2CCommsUs, MIN_TIME_BETWEEN_I2C_COMMS_US))
+    {
+    }
+#endif
+
+    // Check if this address is barred for a period
+    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
+        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
+
+    return RaftI2CCentralIF::ACCESS_RESULT_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

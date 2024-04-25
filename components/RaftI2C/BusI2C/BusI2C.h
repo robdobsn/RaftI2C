@@ -17,6 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
+#include "BusPowerController.h"
 #include "BusStuckHandler.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
@@ -260,12 +261,15 @@ private:
     // Bus status
     BusStatusMgr _busStatusMgr;
 
-    // Bus extender manager
-    BusExtenderMgr _busExtenderMgr;
-
+    // Bus power controller
+    BusPowerController _busPowerController;
+    
     // Bus stuck handler
     BusStuckHandler _busStuckHandler;
     
+    // Bus extender manager
+    BusExtenderMgr _busExtenderMgr;
+
     // Device identifier
     DeviceIdentMgr _deviceIdentMgr;
 
@@ -292,4 +296,5 @@ private:
     // Helpers
     RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
     RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
+    RaftI2CCentralIF::AccessResultCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
 };

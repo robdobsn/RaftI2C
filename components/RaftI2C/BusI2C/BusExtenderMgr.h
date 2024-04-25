@@ -9,6 +9,9 @@
 #pragma once
 
 #include "BusI2CRequestRec.h"
+#include "BusPowerController.h"
+#include "BusStuckHandler.h"
+#include "BusStatusMgr.h"
 #include "RaftJsonIF.h"
 #include "driver/gpio.h"
 
@@ -16,7 +19,8 @@ class BusExtenderMgr
 {
 public:
     // Constructor and destructor
-    BusExtenderMgr(BusI2CReqSyncFn busI2CReqSyncFn);
+    BusExtenderMgr(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
+            BusStatusMgr& busStatusMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     virtual ~BusExtenderMgr();
 
     // Setup
@@ -68,15 +72,15 @@ public:
         }
     }
 
-    // Enable one slot on bus extender(s)
-    void enableOneSlot(uint32_t slotPlus1);
-
-    // Set channels on extender
-    RaftI2CCentralIF::AccessResultCode setChannels(uint32_t addr, uint32_t channelMask);
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Enable one slot on bus extender(s)
+    /// @param slotPlus1 Slot number (1-based)
+    /// @return True if slot enabled (failure can be because of invalid parameters as well as bus-stuck etc.)
+    bool enableOneSlot(uint32_t slotPlus1);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Hardware reset of bus extenders
-    void hardwareReset();
+    /// @brief Disable all slots on bus extenders
+    void disableAllSlots();
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get bus extender slots
@@ -104,6 +108,15 @@ private:
     // Extender functionality enabled
     bool _isEnabled = true;
 
+    // Bus power controller
+    BusPowerController& _busPowerController;
+
+    // Bus stuck handler
+    BusStuckHandler& _busStuckHandler;
+
+    // Bus status manager
+    BusStatusMgr& _busStatusMgr;
+
     // Bus access function
     BusI2CReqSyncFn _busI2CReqSyncFn;
 
@@ -115,33 +128,13 @@ private:
     gpio_num_t _resetPin = GPIO_NUM_NC;
     gpio_num_t _resetPinAlt = GPIO_NUM_NC;
 
-    // Power control device types
-    enum PowerControlType
-    {
-        POWER_CONTROL_NONE = 0,
-        POWER_CONTROL_PCA9535 = 1
-    };
-
-    // PCA9535 registers
-    static const uint8_t PCA9535_CONFIG_PORT_0 = 0x06;
-    static const uint8_t PCA9535_OUTPUT_PORT_0 = 0x02;
-
     // Bus extender record
     class BusExtender
     {
     public:
         // Flags
         bool isDetected:1 = false,
-             isOnline:1 = false,
-             pwrCtrlDirty:1 = true;
-
-        // Power control
-        PowerControlType pwrCtrlType = POWER_CONTROL_NONE;
-        uint16_t pwrCtrlAddr = 0;
-        uint16_t pwrCtrlGPIOReg = 0xffff;
-
-        // Slot stuck indicators
-        uint8_t _slotStuckBits = 0;
+             isOnline:1 = false;
     };
 
     // Bus extenders
@@ -156,47 +149,6 @@ private:
     // Init bus extender records
     void initBusExtenderRecs();
 
-    // Setup power control
-    void setupPowerControl(const RaftJsonIF& config);
-
-    // Power levels
-    enum PowerControlLevels
-    {
-        POWER_CONTROL_OFF = 0,
-        POWER_CONTROL_3V3 = 1,
-        POWER_CONTROL_5V = 2
-    };
-
-    // Default voltage level
-    PowerControlLevels _defaultVoltageLevel = POWER_CONTROL_OFF;
-
-    // Initialisation state for power control
-    enum PowerControlInitState
-    {
-        POWER_CONTROL_INIT_NONE = 0,
-        POWER_CONTROL_INIT_OFF = 1,
-        POWER_CONTROL_INIT_ON = 2,
-    };
-    PowerControlInitState _powerControlInitState = POWER_CONTROL_INIT_NONE;
-    uint32_t _powerControlInitLastMs = 0;
-    static const uint32_t STARTUP_CHANGE_TO_DEFAULT_VOLTAGE_MS = 100;
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set power level for a slot (or all slots)
-    /// @param slotPlus1 Slot number (0 is all slots)
-    /// @param powerLevel Power level
-    void setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powerLevel);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Update power control registers for a single slot
-    /// @param slotPlus1 Slot number (1-based)
-    /// @param powerLevel Power level
-    void updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Write the power control registers
-    void writePowerControlRegisters();
-
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get extender and slot index from slotPlus1
     /// @param slotPlus1 Slot number (1-based)
@@ -204,4 +156,12 @@ private:
     /// @param slotIdx Slot index
     /// @return True if valid
     bool getExtenderAndSlotIdx(uint32_t slotPlus1, uint32_t& extenderIdx, uint32_t& slotIdx);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set channels on extender
+    /// @param addr Address of extender
+    /// @param channelMask Channel mask
+    /// @return Result code
+    RaftI2CCentralIF::AccessResultCode setChannels(uint32_t addr, uint32_t channelMask);
+
 };

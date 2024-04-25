@@ -159,16 +159,17 @@ bool BusScanner::taskService()
                 return false;
 
             // Enable slot if required
-            _busExtenderMgr.enableOneSlot(slotPlus1);
-
-            // Handle the scan
-            RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-            updateBusElemState(addr, slotPlus1, rslt);
-
-            // Clear the slot if necessary
-            if (slotPlus1 > 0)
+            if (_busExtenderMgr.enableOneSlot(slotPlus1))
             {
-                _busExtenderMgr.hardwareReset();
+                // Handle the scan
+                RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
+                updateBusElemState(addr, slotPlus1, rslt);
+
+                // Clear the slot if necessary
+                if (slotPlus1 > 0)
+                {
+                    _busExtenderMgr.disableAllSlots();
+                }
             }
 
             // Check if we have completed a sweep

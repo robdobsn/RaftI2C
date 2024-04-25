@@ -10,6 +10,7 @@ idf_component_register(
       "components/RaftI2C/BusI2C/BusI2CAddrStatus.cpp"
       "components/RaftI2C/BusI2C/BusI2CESPIDF.cpp"
       "components/RaftI2C/BusI2C/BusI2CScheduler.cpp"
+      "components/RaftI2C/BusI2C/BusPowerController.cpp"
       "components/RaftI2C/BusI2C/BusScanner.cpp"
       "components/RaftI2C/BusI2C/BusStatusMgr.cpp"
       "components/RaftI2C/BusI2C/BusStuckHandler.cpp"

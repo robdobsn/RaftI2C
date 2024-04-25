@@ -48,9 +48,9 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             return;
         BusI2CAddrAndSlot addrAndSlot = pollInfo.pollReqs[0].getAddrAndSlot();
 
-        // Check if a bus extender slot is specified
-        if (addrAndSlot.slotPlus1 > 0)
-            _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+        // Check if a bus extender slot can be set (if required)
+        if (!_busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1))
+            return;
 
         // Prep poll req data
         pollResultPrepare(timeNowUs, pollInfo);
@@ -87,7 +87,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
         // Restore the bus extender(s) if necessary
         if (addrAndSlot.slotPlus1 > 0)
-            _busExtenderMgr.hardwareReset();
+            _busExtenderMgr.disableAllSlots();
 
     }
 }

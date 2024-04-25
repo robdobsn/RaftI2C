@@ -11,6 +11,7 @@
 #include "RaftJson.h"
 #include "BusI2CRequestRec.h"
 #include "BusStatusMgr.h"
+#include "BusExtenderMgr.h"
 
 class DevicePollingMgr
 {

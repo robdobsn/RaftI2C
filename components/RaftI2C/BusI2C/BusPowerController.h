@@ -1,0 +1,186 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// I2C Bus Power Controller
+//
+// Rob Dobson 2024
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <stdint.h>
+#include <vector>
+#include "RaftJsonIF.h"
+#include "BusI2CRequestRec.h"
+
+class BusPowerController
+{
+public:
+    // Constructor and destructor
+    BusPowerController(BusI2CReqSyncFn busI2CReqSyncFn);
+    virtual ~BusPowerController();
+
+    // Setup
+    void setup(const RaftJsonIF& config);
+
+    // Service
+    void service();
+
+    // Service called from I2C task
+    void taskService(uint64_t timeNowUs);
+
+    // Check if slot has stable power
+    bool isSlotPowerStable(uint32_t slotPlus1);
+
+    // Power cycle slot
+    void powerCycleSlot(uint32_t slotPlus1);
+
+private:
+    // Bus access function
+    BusI2CReqSyncFn _busI2CReqSyncFn;
+
+    // Power control device types
+    enum PowerControllerType
+    {
+        POWER_CONTROLLER_NONE = 0,
+        POWER_CONTROLLER_PCA9535 = 1
+    };
+
+    // PCA9535 registers
+    static const uint8_t PCA9535_CONFIG_PORT_0 = 0x06;
+    static const uint8_t PCA9535_OUTPUT_PORT_0 = 0x02;
+
+    // Power levels
+    enum PowerControlLevels
+    {
+        POWER_CONTROL_OFF = 0,
+        POWER_CONTROL_3V3 = 1,
+        POWER_CONTROL_5V = 2
+    };
+
+    // Power control state
+    enum PowerControlSlotState
+    {
+        SLOT_POWER_OFF_PERMANENTLY = 0,
+        SLOT_POWER_OFF_PRE_INIT = 1,
+        SLOT_POWER_ON_WAIT_STABLE = 2,
+        SLOT_POWER_OFF_PENDING_CYCLING = 3,
+        SLOT_POWER_ON_LOW_V = 4,
+        SLOT_POWER_ON_HIGH_V = 5
+    };
+
+    // Slot records
+    class PowerControlSlotRec
+    {
+    public:
+        PowerControlSlotState pwrCtrlState = SLOT_POWER_OFF_PRE_INIT;
+        uint32_t pwrCtrlStateLastMs = 0;
+
+        void setState(PowerControlSlotState state, uint32_t timeNowMs)
+        {
+            pwrCtrlState = state;
+            pwrCtrlStateLastMs = timeNowMs;
+        }
+    };
+
+    // Power control record
+    class PowerControlRec
+    {
+    public:
+        PowerControlRec(uint32_t addr, uint32_t minSlotPlus1, uint32_t numSlots) :
+            pwrCtrlAddr(addr), minSlotPlus1(minSlotPlus1)
+        {
+            pwrCtrlSlotRecs.resize(numSlots);
+        }
+
+        /// @brief Set voltage level for a slot
+        /// @param slotIdx 
+        /// @param powerLevel
+        void setVoltageLevel(uint32_t slotIdx, PowerControlLevels powerLevel);
+
+        /// @brief Update power control registers for all slots
+        void updatePowerControlRegisters(bool onlyIfDirty, BusI2CReqSyncFn busI2CReqSyncFn);
+
+        // Power controller address
+        uint16_t pwrCtrlAddr = 0;
+
+        // Power controller GPIO bits record
+        uint16_t pwrCtrlGPIOReg = 0xffff;
+
+        // Power controller data is dirty
+        bool pwrCtrlDirty = true;
+
+        // Per slot info
+        uint16_t minSlotPlus1 = 0;
+        std::vector<PowerControlSlotRec> pwrCtrlSlotRecs;
+    };
+
+    // Max slots on a controller
+    static const uint32_t POWER_CONTROLLER_MAX_SLOT_COUNT = 8;
+
+    // State machine timeouts
+    static const uint32_t STARTUP_POWER_OFF_MS = 100;
+    static const uint32_t VOLTAGE_STABILIZING_TIME_MS = 100;
+    static const uint32_t POWER_CYCLE_OFF_TIME_MS = 500;
+
+    // Power control records
+    std::vector<PowerControlRec> _pwrCtrlRecs;
+
+    // Helpers
+    PowerControlRec* getPowerControlRec(uint32_t slotPlus1, uint32_t& slotIdx);
+
+    // // Power cycle states which are using in the powerStatus2BitsPerSlot member
+    // // Only one slot can be power cycling at a time so when a problem is discovered
+    // // the power is immediately turned off and then the power cycle state is set
+    // // to await the power cycle resource - once the power cycle resource is available
+    // // the power cycle state is set to power cycling in progress and no other
+    // // slot can be power cycled until the power cycle is complete
+    // enum PowerCycleState
+    // {
+    //     POWER_CYCLE_STATE_DISABLED = 0,
+    //     POWER_CYCLE_STATE_ON = 1,
+    //     POWER_CYCLE_STATE_AWAITING_POWER_CYCLE_RESOURCE = 2,
+    //     POWER_CYCLE_STATE_POWER_CYCLING_IN_PROGRESS = 3
+    // };
+    // static uint32_t POWER_CYCLE_OFF_DEFAULT_MS = 1000;
+    // static uint32_t POWER_CYCLE_RESET_DEFAULT_MS = 1000;
+
+    // // Power cycling
+    // enum PowerCycleResourceState
+    // {
+    //     POWER_CYCLE_RESOURCE_IDLE = 0,
+    //     POWER_CYCLE_RESOURCE_IN_PROGRESS = 1,
+    // };
+    // PowerCycleResourceState _powerCycleResourceState = POWER_CYCLE_RESOURCE_IDLE;
+    // uint32_t _powerCycleOffMs = POWER_CYCLE_OFF_DEFAULT_MS;
+    // uint32_t _powerCycleResetMs = POWER_CYCLE_RESET_DEFAULT_MS;
+
+    // // Initialisation state for power control
+    // enum PowerControlInitState
+    // {
+    //     POWER_CONTROL_INIT_NONE = 0,
+    //     POWER_CONTROL_INIT_OFF = 1,
+    //     POWER_CONTROL_INIT_ON = 2,
+    // };
+    // PowerControlInitState _powerControlInitState = POWER_CONTROL_INIT_NONE;
+    // uint32_t _powerControlInitLastMs = 0;
+    // static const uint32_t STARTUP_POWER_OFF_MS = 100;
+
+    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // /// @brief Set power level for a slot (or all slots)
+    // /// @param slotPlus1 Slot number (0 is all slots)
+    // /// @param powerLevel Power level
+    // void setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powerLevel);
+
+    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // /// @brief Update power control registers for a single slot
+    // /// @param slotPlus1 Slot number (1-based)
+    // /// @param powerLevel Power level
+    // void updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel);
+
+    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // /// @brief Write the power control registers
+    // void writePowerControlRegisters();
+
+
+};

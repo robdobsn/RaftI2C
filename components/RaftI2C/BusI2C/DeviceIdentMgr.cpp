@@ -69,7 +69,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice deviceType %s addr@slot+1 %s", 
+        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s addr@slot+1 %s", 
                     pDevTypeRec->deviceType, addrAndSlot.toString().c_str());
 #endif
 
@@ -78,7 +78,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
         if (checkDeviceTypeMatch(addrAndSlot, pDevTypeRec))
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "Device ident found %s", pDevTypeRec->devInfoJson);
+            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", pDevTypeRec->devInfoJson);
 #endif
             // Initialise the device if required
             processDeviceInit(addrAndSlot, pDevTypeRec);
@@ -98,6 +98,12 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
                     addrAndSlot.toString().c_str(),
                     deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+#endif
+        }
+        else
+        {
+#ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
+            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", pDevTypeRec->devInfoJson);
 #endif
         }
     }

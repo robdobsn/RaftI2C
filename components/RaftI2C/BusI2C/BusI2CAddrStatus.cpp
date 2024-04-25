@@ -30,7 +30,7 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
                 isChange = !isChange;
                 count = 0;
                 isOnline = true;
-                wasOnline = true;
+                wasOnceOnline = true;
                 return true;
             }
         }
@@ -38,7 +38,7 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
     else
     {
         // Not responding - check for change to offline
-        if (isOnline || !wasOnline)
+        if (isOnline || !wasOnceOnline)
         {
             // Count down to offline/spurious threshold
             count = (count < -BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX) ? count : count - 1;
@@ -46,7 +46,7 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
             {
                 // Now offline/spurious
                 count = 0;
-                if (!wasOnline)
+                if (!wasOnceOnline)
                     flagSpuriousRecord = true;
                 else
                     isChange = !isChange;

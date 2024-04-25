@@ -155,18 +155,18 @@
                         "rstPin": 4,
                         "rstPinAlt": 5,
                         "minAddr": "0x70",
-                        "maxAddr": "0x77",
-                        "pwrCtrl": {
-                            "vDefault": "3V3",
-                            "ctrls":
-                            [
-                                {
-                                    "muxAddr": "0x75",
-                                    "dev": "PCA9535",
-                                    "devAddr": "0x26"
-                                }
-                            ]
-                        }
+                        "maxAddr": "0x77"
+                    },
+                    "pwr": {
+                        "ctrl":
+                        [
+                            {
+                                "dev": "PCA9535",
+                                "addr": "0x26",
+                                "minSlotPlus1": 41,
+                                "numSlots": 8
+                            }
+                        ]
                     }
                 }
             ]

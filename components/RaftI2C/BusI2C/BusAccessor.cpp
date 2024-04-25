@@ -20,7 +20,7 @@
 // #define DEBUG_REQ_QUEUE_COMMANDS
 // #define DEBUG_REQ_QUEUE_ONE_ADDR 0x1d
 // #define DEBUG_POLL_TIME_FOR_ADDR 0x1d
-// #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
+// #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM 5
 // #define DEBUG_ADD_TO_QUEUED_REC_FIFO
 
 static const char* MODULE_PREFIX = "BusAccessor";
@@ -245,12 +245,12 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
         _busBase.getBusStats().respLengthError();
 
 #ifdef DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
-        digitalWrite(5, 1);
-        pinMode(5, OUTPUT);
+        digitalWrite(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, 1);
+        pinMode(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, OUTPUT);
         delayMicroseconds(10);
-        digitalWrite(5, 0);
+        digitalWrite(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, 0);
         delayMicroseconds(10);
-        digitalWrite(5, 1);
+        digitalWrite(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, 1);
 #endif
         return;
     }

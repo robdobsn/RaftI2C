@@ -24,7 +24,7 @@ public:
     // State
     bool isChange : 1 = false;
     bool isOnline : 1 = false;
-    bool wasOnline : 1 = false;
+    bool wasOnceOnline : 1 = false;
     bool slotResolved : 1 = false;
 
     // Access barring
