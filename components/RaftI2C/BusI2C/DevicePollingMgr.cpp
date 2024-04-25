@@ -72,11 +72,14 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             pollResultAdd(pollInfo, readData);
 
 #ifdef DEBUG_POLL_RESULT
-            String sss;
-            Raft::getHexStrFromBytes(readData.data(), readData.size(), sss);
-            LOG_I(MODULE_PREFIX, "Polling device at %s readData %s rslt %s", 
+            String writeDataHexStr;
+            Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
+            String readDataHexStr;
+            Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
+            LOG_I(MODULE_PREFIX, "taskService poll %s writeData %s readData %s rslt %s", 
                             busReqRec.getAddrAndSlot().toString().c_str(),
-                            sss.c_str(),
+                            writeDataHexStr.c_str(),
+                            readDataHexStr.c_str(),
                             RaftI2CCentralIF::getAccessResultStr(rslt));
 #endif
         }

@@ -260,7 +260,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
     writeCommands = (numToWrite + 1 + I2C_ENGINE_CMD_MAX_TX_BYTES - 1) / I2C_ENGINE_CMD_MAX_TX_BYTES;
     uint32_t readCommands = 0;
     if ((i2cOpType == ACCESS_READ_ONLY) || (i2cOpType == ACCESS_WRITE_RESTART_READ))
-        readCommands = 1 + ((numToRead + I2C_ENGINE_CMD_MAX_RX_BYTES - 1) / I2C_ENGINE_CMD_MAX_RX_BYTES);
+        readCommands = numToRead == 1 ? 1 : 1 + ((numToRead + I2C_ENGINE_CMD_MAX_RX_BYTES - 1) / I2C_ENGINE_CMD_MAX_RX_BYTES);
     uint32_t rstartAndSecondAddrCommands = (i2cOpType == ACCESS_READ_ONLY ? 1 : (i2cOpType == ACCESS_WRITE_RESTART_READ) ? 2
                                                                                                                          : 0);
     if (writeCommands + readCommands + rstartAndSecondAddrCommands > (I2C_ENGINE_CMD_QUEUE_SIZE - 2))

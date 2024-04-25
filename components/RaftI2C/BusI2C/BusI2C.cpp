@@ -126,7 +126,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
 
     // Yield values
     _loopYieldMs = config.getLong("loopYieldMs", I2C_BUS_LOOP_YIELD_MS);
-    _loopFastUnyieldMs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS);
+    _loopFastUnyieldUs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS) * 1000;
 
     // Bus status manager
     _busStatusMgr.setup(config);
@@ -201,7 +201,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
                 portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize,
-                _loopYieldMs, _loopFastUnyieldMs);
+                _loopYieldMs, _loopFastUnyieldUs);
 
     // Ok
     return true;
@@ -296,10 +296,14 @@ void BusI2C::i2cWorkerTask()
         if (!_initOk)
             continue;
 
+        // Cur loop microseconds
+        uint64_t curTimeUs = micros();
+        uint32_t curTimeMs = curTimeUs / 1000;
+
         // Check bus hiatus
         if (_hiatusActive)
         {
-            if (!Raft::isTimeout(millis(), _hiatusStartMs, _hiatusForMs))
+            if (!Raft::isTimeout(curTimeMs, _hiatusStartMs, _hiatusForMs))
                 continue;
             _hiatusActive = false;
 #ifdef DEBUG_BUS_HIATUS
@@ -321,12 +325,9 @@ void BusI2C::i2cWorkerTask()
         if (!_isPaused)
         {
             // Service bus scanner
-            uint32_t lastFastScanYieldMs = millis();
-            while (_busScanner.isScanPending())
+            if (_busScanner.isScanPending(curTimeMs))
             {
-                _busScanner.taskService();
-                if (Raft::isTimeout(millis(), lastFastScanYieldMs, _loopFastUnyieldMs))
-                    break;
+                _busScanner.taskService(curTimeUs, _loopFastUnyieldUs);
             }
         }
 #endif
@@ -341,6 +342,9 @@ void BusI2C::i2cWorkerTask()
 #ifdef DEBUG_NO_POLLING
         continue;
 #endif
+
+        // Bus extender service
+        _busExtenderMgr.taskService();
 
         // Bus power controller service
         _busPowerController.taskService(micros());

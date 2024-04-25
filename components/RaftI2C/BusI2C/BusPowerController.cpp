@@ -125,12 +125,12 @@ void BusPowerController::powerCycleSlot(uint32_t slotPlus1)
     // Get the slot record
     PowerControlSlotRec& slotRec = pPwrCtrlRec->pwrCtrlSlotRecs[slotIdx];
 
-    // Turn the slot power off
-    pPwrCtrlRec->setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
-
 #ifdef DEBUG_POWER_CONTROL_STATES
     LOG_I(MODULE_PREFIX, "powerCycleSlot slotPlus1 %d slotIdx %d power off", slotPlus1, slotIdx);
 #endif
+
+    // Turn the slot power off
+    pPwrCtrlRec->setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
 
     // Set the state to power off pending cycling
     slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, millis());
@@ -149,7 +149,6 @@ void BusPowerController::taskService(uint64_t timeNowUs)
         {
             // Calculate slot number
             PowerControlSlotRec& slotRec = pwrCtrlRec.pwrCtrlSlotRecs[slotIdx];
-            uint32_t slotPlus1 = pwrCtrlRec.minSlotPlus1 + slotIdx;
 
             // Check time to change power control state
             switch (slotRec.pwrCtrlState)
@@ -160,7 +159,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, STARTUP_POWER_OFF_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d init voltage off", slotPlus1, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d init voltage off", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
 #endif
                         pwrCtrlRec.setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
                         slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, timeNowMs);
@@ -170,7 +169,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, VOLTAGE_STABILIZING_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage is stable", slotPlus1, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage is stable", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
 #endif
                         slotRec.setState(SLOT_POWER_ON_LOW_V, timeNowMs);
                     }
@@ -179,7 +178,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, POWER_CYCLE_OFF_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage 3V3", slotPlus1, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage 3V3", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
 #endif
                         pwrCtrlRec.setVoltageLevel(slotIdx, POWER_CONTROL_3V3);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
@@ -377,7 +376,7 @@ void BusPowerController::PowerControlRec::setVoltageLevel(uint32_t slotIdx, Powe
     }
 
 #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "updatePowerLevel hasChanged %s slotIdx %d slotPlus1 %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
+    LOG_I(MODULE_PREFIX, "setVoltageLevel hasChanged %s slotIdx %d slotPlus1 %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
             pwrCtrlDirty ? "YES" : "NO",
             slotIdx, minSlotPlus1+slotIdx, powerLevel, 
             pwrCtrlGPIOReg, prevReg);

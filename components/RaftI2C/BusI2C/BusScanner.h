@@ -18,6 +18,7 @@
 #include "DeviceIdentMgr.h"
 
 // #define DEBUG_DISABLE_INITIAL_FAST_SCAN
+// #define DEBUG_SCANNING_SWEEP_TIME
 
 class BusScanner {
 
@@ -32,12 +33,14 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check if a scan is pending
     /// @return true if a scan is pending
-    bool isScanPending();
+    bool isScanPending(uint32_t curTimeMs);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service called from I2C task
+    /// @param curTimeUs Current time in microseconds
+    /// @param maxTimeInLoopUs Maximum time allowed in this loop
     /// @return true if fast scanning in progress
-    bool taskService();
+    bool taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs);
 
     // Scan period
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
@@ -53,6 +56,19 @@ private:
     };
     ScanState _scanState = SCAN_STATE_IDLE;
 
+    const char* getScanStateStr(ScanState scanState)
+    {
+        switch (scanState)
+        {
+            case SCAN_STATE_IDLE: return "IDLE";
+            case SCAN_STATE_SCAN_EXTENDERS: return "SCAN_EXTENDERS";
+            case SCAN_STATE_MAIN_BUS: return "MAIN_BUS";
+            case SCAN_STATE_SCAN_FAST: return "SCAN_FAST";
+            case SCAN_STATE_SCAN_SLOW: return "SCAN_SLOW";
+        }
+        return "UNKNOWN";
+    }
+
     // Scanning state repeat count
     uint16_t _scanStateRepeatCount = 0;
     uint16_t _scanStateRepeatCountMax = 0;
@@ -60,10 +76,14 @@ private:
     // Scanning
     uint32_t _scanLastMs = 0;
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
-    uint16_t _scanNextSlotArrayIdx = 0;
-    uint16_t _scanCurAddr = I2C_BUS_ADDRESS_MIN;
-    uint32_t _scanSweepStartMs = 0;
+    uint16_t _scanNextAddr = I2C_BUS_ADDRESS_MIN;
+    uint16_t _scanAddressesCurrentList = 0;
+    uint16_t _scanNextSlotArrayIdxPlus1 = 0;
 
+#ifdef DEBUG_SCANNING_SWEEP_TIME
+    uint32_t _debugScanSweepStartMs = 0;
+#endif
+    
     // Scan priority
     std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
     
@@ -99,10 +119,10 @@ private:
     /// @brief Set current address and get slot to scan next
     /// @param addr (out) Address
     /// @param slotPlus1 (out) Slot number (1-based)
-    /// @param onlyMainBus Only main bus (don't scan extenders)
     /// @param sweepCompleted (out) Sweep completed
-    /// @param mediumPrioritySweepCompleted Test if medium priority sweep complete (as opposed to full sweep)
+    /// @param onlyMainBus Only main bus (don't scan extenders)
+    /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
     /// @return True if valid
-    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool onlyMainBus, 
-                bool& sweepCompleted, bool mediumPrioritySweepCompleted);
+    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool& sweepCompleted, 
+                bool onlyMainBus, bool ignorePriorities);
 };

@@ -229,7 +229,7 @@ private:
     static const uint32_t MIN_TIME_BETWEEN_I2C_COMMS_US = 1000;
 
     // I2C loop control
-    uint32_t _loopFastUnyieldMs = I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS;
+    uint32_t _loopFastUnyieldUs = I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS * 1000;
     uint32_t _loopYieldMs = I2C_BUS_LOOP_YIELD_MS;
 
     // Init ok

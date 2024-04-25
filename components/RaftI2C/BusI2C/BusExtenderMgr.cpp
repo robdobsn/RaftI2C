@@ -15,6 +15,7 @@
 
 // #define DEBUG_BUS_EXTENDER_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 19
+// #define DEBUG_BUS_STUCK
 // #define DEBUG_BUS_EXTENDERS
 // #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
 
@@ -104,9 +105,6 @@ void BusExtenderMgr::service()
 /// @brief Service called from I2C task
 void BusExtenderMgr::taskService()
 {
-    // Check enabled
-    if (!_isEnabled)
-        return;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -232,6 +230,10 @@ bool BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
     bool slotIsStuck = _busStuckHandler.isStuck();
     if (slotIsStuck)
     {
+#ifdef DEBUG_BUS_STUCK
+        LOG_I(MODULE_PREFIX, "enableOneSlot bus stuck so power cycling slotPlus1 %d", slotPlus1);
+#endif
+
         // Clear the stuck bus problem by disabling all slots for now
         disableAllSlots();
         

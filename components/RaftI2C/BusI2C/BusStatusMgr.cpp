@@ -79,25 +79,40 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
     if (!_busElemStatusChangeDetected)
         return;
 
+    // If no lockup detection addresses are used then rely on the bus's isOperatingOk() result
+    BusOperationStatus newBusOperationStatus = _busOperationStatus; 
+    if (!_addrForLockupDetectValid)
+    {
+        newBusOperationStatus = hwIsOperatingOk ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
+    }
+
     // Obtain semaphore controlling access to busElemChange list and flag
     // so we can update bus and element operation status - don't worry if we can't
     // access the list as there will be other service loops
     std::vector<BusElemAddrAndStatus> statusChanges;
-    BusOperationStatus newBusOperationStatus = _busOperationStatus; 
+    uint32_t numChanges = 0;
     if (xSemaphoreTake(_busElemStatusMutex, 0) == pdTRUE)
     {
         // Go through once and look for changes
-        uint32_t numChanges = 0;
         for (auto& addrStatus : _i2cAddrStatus)
         {
             if (addrStatus.isChange)
                 numChanges++;
         }
 
-        // Create change vector if required
-        if (numChanges > 0)
+        // Return semaphore
+        xSemaphoreGive(_busElemStatusMutex);
+    }
+
+    // Check for status changes
+    if (numChanges > 0)
+    {
+        // Make space for changes
+        statusChanges.reserve(numChanges+1);
+
+        // Get semaphore again
+        if (xSemaphoreTake(_busElemStatusMutex, 0) == pdTRUE)
         {
-            statusChanges.reserve(numChanges);
             for (auto& addrStatus : _i2cAddrStatus)
             {
                 if (addrStatus.isChange)
@@ -109,21 +124,16 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
                             addrStatus.isOnline,
                             addrStatus.wasOnceOnline && !addrStatus.isOnline,
                         };
-#ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
-                    LOG_I(MODULE_PREFIX, "service addr@slot+1 %s status change to %s", 
-                                addrStatus.addrAndSlot.toString().c_str(),
-                                statusChange.isChangeToOnline ? "online" : "offline");
-#endif
                     statusChanges.push_back(statusChange);
                     addrStatus.isChange = false;
+                }
 
-                    // Check if this is the addrForLockupDetect
-                    if (_addrForLockupDetectValid && 
-                                (addrStatus.addrAndSlot.addr == _addrForLockupDetect) && 
-                                (addrStatus.wasOnceOnline))
-                    {
-                        newBusOperationStatus = addrStatus.isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
-                    }
+                // Check if this is the addrForLockupDetect
+                if (_addrForLockupDetectValid && 
+                            (addrStatus.addrAndSlot.addr == _addrForLockupDetect) && 
+                            (addrStatus.wasOnceOnline))
+                {
+                    newBusOperationStatus = addrStatus.isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
                 }
             }
         }
@@ -132,18 +142,22 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
         _busElemStatusChangeDetected = false;
     }
 
-    // If no lockup detection addresses are used then rely on the bus's isOperatingOk() result
-    if (!_addrForLockupDetectValid)
-    {
-        newBusOperationStatus = hwIsOperatingOk ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
-    }
-
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
 
-    // Elem change callback if required
+    // Perform elem statuc change callback if required
     if ((statusChanges.size() > 0))
         _busBase.callBusElemStatusCB(statusChanges);
+
+    // Debug
+#ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
+    for (auto& statusChange : statusChanges)
+    {
+        LOG_I(MODULE_PREFIX, "service addr@slot+1 %s status change to %s", 
+                    statusChange.addrAndSlot.toString().c_str(),
+                    statusChange.isChangeToOnline ? "online" : "offline");
+    }
+#endif
 
     // Bus operation change callback if required
     if (_busOperationStatus != newBusOperationStatus)
@@ -175,14 +189,15 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
     bool isNewStatusChange = false;
     bool flagSpuriousRecord = false;
 
+#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
+    // Debug
+    BusI2CAddrStatus prevStatus;
+    BusI2CAddrStatus newStatus;
+#endif
+
     // Obtain semaphore controlling access to busElemChange list and flag
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
     {
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
-        // Debug
-        BusI2CAddrStatus prevStatus;
-        BusI2CAddrStatus newStatus;
-#endif
 
         // Find address record
         BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
@@ -215,13 +230,6 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
                 // Set address found on main bus
                 setAddrFoundOnMainBus(addrAndSlot.addr);
             }
-
-#ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s isResponding %d isNewStatusChange %d isOnMainBus %s", 
-                        addrAndSlot.toString().c_str(), elemResponding,
-                        isNewStatusChange, 
-                        (isNewStatusChange && isOnline && (addrAndSlot.slotPlus1 == 0)) ? "Y" : "N");
-#endif
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
             // Debug
@@ -385,6 +393,9 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
 
     // Find address record
     bool accessBarred = false;
+#ifdef DEBUG_ACCESS_BARRING_FOR_MS
+    bool barReleased = false;
+#endif
     BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
 
     // Check if access is barred
@@ -393,21 +404,34 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
         // Check if time has elapsed and ignore request if not
         if (Raft::isTimeout(timeNowMs, pAddrStatus->barStartMs, pAddrStatus->barDurationMs))
         {
-#ifdef DEBUG_ACCESS_BARRING_FOR_MS
-            LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slot+1 %s for %ldms", 
-                            addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
-#endif
             accessBarred = true;
         }
+        else
+        {
+            pAddrStatus->barDurationMs = 0;
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slot+1 %s for %ldms", 
-                            addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
+            barReleased = true;
 #endif
-        pAddrStatus->barDurationMs = 0;
+        }
     }
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+
+#ifdef DEBUG_ACCESS_BARRING_FOR_MS
+    if (accessBarred)
+    {
+        LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slot+1 %s for %ldms", 
+                        addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
+    }
+    if (barReleased)
+    {
+        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slot+1 %s", 
+                        addrAndSlot.toString().c_str());
+    }
+    
+#endif
+
     return accessBarred;
 }
 

@@ -130,11 +130,12 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         Raft::getHexStrFromBytes(detectionRec.readDataMask.data(), detectionRec.readDataMask.size(), readMaskStr);
         String readCheckStr;
         Raft::getHexStrFromBytes(detectionRec.readDataCheck.data(), detectionRec.readDataCheck.size(), readCheckStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s readDataMask %s readDataCheck %s", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s readDataMask %s readDataCheck %s readSize %d", 
                     addrAndSlot.toString().c_str(), 
                     writeStr.c_str(),
                     readMaskStr.c_str(),
-                    readCheckStr.c_str());
+                    readCheckStr.c_str(),
+                    detectionRec.readDataCheck.size());
 #endif
 
         // Create a bus request to read the detection value
