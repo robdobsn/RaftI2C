@@ -89,10 +89,9 @@ void BusExtenderMgr::setup(const RaftJsonIF& config)
     // Disable all slots on bus extenders
     disableAllSlots();
 
-#ifdef DEBUG_BUS_EXTENDER_SETUP
+    // Debug
     LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
             _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busExtenderRecs.size(), _resetPin, _resetPinAlt);
-#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

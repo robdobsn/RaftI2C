@@ -17,7 +17,6 @@
 #include "BusI2CRequestRec.h"
 #include "DeviceIdentMgr.h"
 
-// #define DEBUG_DISABLE_INITIAL_FAST_SCAN
 // #define DEBUG_SCANNING_SWEEP_TIME
 
 class BusScanner {
@@ -71,14 +70,12 @@ private:
 
     // Scanning state repeat count
     uint16_t _scanStateRepeatCount = 0;
-    uint16_t _scanStateRepeatCountMax = 0;
+    uint16_t _scanStateRepeatMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
 
     // Scanning
     uint32_t _scanLastMs = 0;
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
-    uint16_t _scanNextAddr = I2C_BUS_ADDRESS_MIN;
     uint16_t _scanAddressesCurrentList = 0;
-    uint16_t _scanNextSlotArrayIdxPlus1 = 0;
 
 #ifdef DEBUG_SCANNING_SWEEP_TIME
     uint32_t _debugScanSweepStartMs = 0;
@@ -87,14 +84,26 @@ private:
     // Scan priority
     std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
     
-    // Scanning priority state
+    // Scanning priority state - three MUST be exactly the same number
+    // of scan priority recs as there are scan priority lists
     class ScanPriorityRec {
     public:
         uint16_t count = 0;
         uint16_t maxCount = 0;
         uint16_t scanListIndex = 0;
+        uint16_t scanSlotIndexPlus1 = 0;
     };
     std::vector<ScanPriorityRec> _scanPriorityRecs;
+
+    // Scan priority counts
+    static constexpr uint16_t SCAN_PRIORITY_COUNTS[] = { 1, 3, 9 };
+
+    enum ScanIndexMode
+    {
+        SCAN_INDEX_EXTENDERS_ONLY,
+        SCAN_INDEX_I2C_ADDRESSES,
+        SCAN_INDEX_PRIORITY_LIST_INDEX,
+    };
 
     // Enable slow scanning
     bool _slowScanEnabled = true;
@@ -121,8 +130,16 @@ private:
     /// @param slotPlus1 (out) Slot number (1-based)
     /// @param sweepCompleted (out) Sweep completed
     /// @param onlyMainBus Only main bus (don't scan extenders)
+    /// @param onlyExtenderAddrs Only return extender addresses
     /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
     /// @return True if valid
     bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool& sweepCompleted, 
-                bool onlyMainBus, bool ignorePriorities);
+                bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    uint32_t getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    uint32_t getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone);
+
 };
