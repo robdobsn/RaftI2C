@@ -1,4 +1,4 @@
-import React, { useEffect, useState, memo } from "react";
+import React, { useEffect, useState, memo, useRef } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
@@ -50,7 +50,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         },
     };
 
-    const colourMap: { [key: string]: string } = {
+    const colourMapRef = useRef<{ [key: string]: string }>({
         prox: "hsl(60, 70%, 60%)",
         als: "hsl(0, 70%, 60%)",
         white: "hsl(120, 70%, 60%)",
@@ -59,7 +59,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         z: "hsl(0, 70%, 60%)",
         temperature: "hsl(360, 70%, 60%)",
         humidity: "hsl(200, 70%, 60%)",
-    };
+    });
 
     useEffect(() => {
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
@@ -67,7 +67,11 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
             .filter(([attributeName, attributeDetails]) => attributeDetails.display !== false)
             .map(([attributeName, attributeDetails]) => {
                 const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
-                const colour = colourMap[attributeName] || `hsl(${Math.random() * 360}, 70%, 60%)`;
+                let colour = colourMapRef.current[attributeName];
+                if (!colour) {
+                    colour = `hsl(${Math.random() * 360}, 70%, 60%)`;
+                    colourMapRef.current[attributeName] = colour;
+                }
                 return {
                     label: attributeName,
                     data: data,

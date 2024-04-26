@@ -189,7 +189,7 @@
                 "manu": "Sparkfun",
                 "type": "QWIICBUTTON",
                 "attr": {
-                    "press":
+                    "x":
                     [
                         {
                             "n": "press",
@@ -197,6 +197,7 @@
                             "u": "",
                             "r": [0, 1],
                             "m": "0x04",
+                            "s": 2,
                             "f": "b"
                         }
                     ]

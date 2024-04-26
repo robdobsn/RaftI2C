@@ -54,10 +54,18 @@ class TestDataGen {
             const yHexLowHigh = ((y & 0xff) << 8 | (y >> 8)).toString(16).padStart(4, '0');
             const zHexLowHigh = ((z & 0xff) << 8 | (z >> 8)).toString(16).padStart(4, '0');
             
+            // Buttons
+            const but1Val = Math.floor(Math.random() * 2).toString(16).padStart(2, '0');
+            const but2Val = Math.floor(Math.random() * 2).toString(16).padStart(2, '0');
+            
             // Online / offline status
             const online1Value = Math.floor(iterCount / 100) % 2 === 0;
             const online2Value = Math.floor(iterCount / 150) % 2 === 1;
+            const online3Value = Math.floor(iterCount / 200) % 2 === 0;
+            const online4Value = Math.floor(iterCount / 300) % 2 === 1;
             const dev2MsgPresent = iterCount % 500 > 250;
+            const dev3MsgPresent = iterCount % 200 > 100;
+            const dev4MsgPresent = iterCount % 200 > 150;
 
             // Templates
             const dev1Msg = `
@@ -67,18 +75,41 @@ class TestDataGen {
                         ${online1Value ? ', "_o": 1' : ', "_o": 0'}
                     }
                 `;
-            const dev2Msg = `
-                    "0x61@1": {
-                        "x": "${tsHexHighLow}${xHexLowHigh}${yHexLowHigh}${zHexLowHigh}",
-                        "_t": "ADXL313"
-                        ${online2Value ? ', "_o": 1' : ', "_o": 0'}
-                    }
-                `;
+                const dev2Msg = `
+                "0x60@2": {
+                    "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
+                    "_t": "VCNL4040"
+                    ${online1Value ? ', "_o": 1' : ', "_o": 0'}
+                }
+            `;
+        // const dev2Msg = `
+            //         "0x38@1": {
+            //             "x": "${tsHexHighLow}${xHexLowHigh}${yHexLowHigh}${zHexLowHigh}",
+            //             "_t": "ADXL313"
+            //             ${online2Value ? ', "_o": 1' : ', "_o": 0'}
+            //         }
+            //     `;
+            const dev3Msg = `
+                "0x6f@41": {
+                    "x": "${tsHexHighLow}${but1Val}",
+                    "_t": "QWIICBUTTON"
+                    ${online3Value ? ', "_o": 1' : ', "_o": 0'}
+                }
+            `;
+            const dev4Msg = `
+                "0x6f@42": {
+                    "x": "${tsHexHighLow}${but2Val}",
+                    "_t": "QWIICBUTTON"
+                    ${online4Value ? ', "_o": 1' : ', "_o": 0'}
+                }
+            `;
             const msg = `{
                 "I2CA":
                     {
                         ${dev1Msg}
                         ${dev2MsgPresent ? ',' + dev2Msg : ''}
+                        ${dev3MsgPresent ? ',' + dev3Msg : ''}
+                        ${dev4MsgPresent ? ',' + dev4Msg : ''}
                     }
                 }`;
 

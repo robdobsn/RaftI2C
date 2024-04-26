@@ -394,6 +394,8 @@ export class DeviceManager {
 
     private handleClientMsgJson(jsonMsg: string) {
 
+        const removeDevicesNoLongerPresent = true;
+
         // TODO - put back try/catch
         // try {
             let data = JSON.parse(jsonMsg) as DeviceMsgJson;
@@ -407,6 +409,9 @@ export class DeviceManager {
                     // console.log(`DeviceManager bus status ${JSON.stringify(devices._s)}`);
                     return;
                 }
+
+                // Get a list of keys for the current devicesState
+                const deviceKeysToRemove = Object.keys(this._devicesState);
                 
                 // Iterate over the devices
                 Object.entries(devices).forEach(async ([devAddr, attrGroups]) => {
@@ -419,8 +424,14 @@ export class DeviceManager {
                     // Device key
                     const deviceKey = getDeviceKey(busName, devAddr);
 
+                    // Remove from the list of keys for the current devicesState
+                    const idx = deviceKeysToRemove.indexOf(deviceKey);
+                    if (idx >= 0) {
+                        deviceKeysToRemove.splice(idx, 1);
+                    }
+
                     // Check if a device state already exists
-                    if (!(devAddr in this._devicesState)) {
+                    if (!(deviceKey in this._devicesState)) {
                         
                         let deviceTypeName = "";
                         if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups) {
@@ -431,7 +442,7 @@ export class DeviceManager {
                         }
 
                         // Create device record
-                        this._devicesState[devAddr] = {
+                        this._devicesState[deviceKey] = {
                             deviceTypeInfo: await this.getDeviceTypeInfo(busName, devAddr, deviceTypeName),
                             deviceTimeline: [],
                             deviceAttributes: {},
@@ -445,7 +456,7 @@ export class DeviceManager {
                     
                     // Check for online/offline state information
                     if (attrGroups && typeof attrGroups === "object" && "_o" in attrGroups) {
-                        this._devicesState[devAddr].deviceIsOnline = attrGroups._o == "1";
+                        this._devicesState[deviceKey].deviceIsOnline = attrGroups._o == "1";
                     }
 
                     // Iterate attribute groups
@@ -461,26 +472,26 @@ export class DeviceManager {
                         let timestamp = parseInt(msgHexStr.slice(0, 4), 16);
 
                         // Check if time is before lastReportTimeMs - in which case a wrap around occurred to add on the max value
-                        if (timestamp < this._devicesState[devAddr].lastReportTimestampMs) {
-                            this._devicesState[devAddr].reportTimestampOffsetMs += 65536;
+                        if (timestamp < this._devicesState[deviceKey].lastReportTimestampMs) {
+                            this._devicesState[deviceKey].reportTimestampOffsetMs += 65536;
                         }
-                        this._devicesState[devAddr].lastReportTimestampMs = timestamp;
+                        this._devicesState[deviceKey].lastReportTimestampMs = timestamp;
 
                         // Offset timestamp
                         const origTimestamp = timestamp;
-                        timestamp += this._devicesState[devAddr].reportTimestampOffsetMs;
+                        timestamp += this._devicesState[deviceKey].reportTimestampOffsetMs;
 
                         // Flag indicating any attrs added
                         let attrsAdded = false;
 
                         // Check for the attrGroup name in the device type info
-                        if (attrGroup in this._devicesState[devAddr].deviceTypeInfo.attr) {
+                        if (attrGroup in this._devicesState[deviceKey].deviceTypeInfo.attr) {
 
                             // Set device state changed flag
-                            this._devicesState[devAddr].deviceStateChanged = true;
+                            this._devicesState[deviceKey].deviceStateChanged = true;
 
                             // Iterate over attributes in the group
-                            const devAttrDefinitions: DeviceTypeAttribute[] = this._devicesState[devAddr].deviceTypeInfo.attr[attrGroup];
+                            const devAttrDefinitions: DeviceTypeAttribute[] = this._devicesState[deviceKey].deviceTypeInfo.attr[attrGroup];
                             let attrIdx = 0;
                             let hexStrIdx = 4; // TODO - set this to the number of bytes in the timestamp
                             while (hexStrIdx < msgHexStr.length) {
@@ -572,16 +583,16 @@ export class DeviceManager {
                                 attrIdx++;
 
                                 // Check if attribute already exists in the device state
-                                if (attr.n in this._devicesState[devAddr].deviceAttributes) {
+                                if (attr.n in this._devicesState[deviceKey].deviceAttributes) {
 
                                     // Limit to MAX_DATA_POINTS_TO_STORE
-                                    if (this._devicesState[devAddr].deviceAttributes[attr.n].values.length >= this.MAX_DATA_POINTS_TO_STORE) {
-                                        this._devicesState[devAddr].deviceAttributes[attr.n].values.shift();
+                                    if (this._devicesState[deviceKey].deviceAttributes[attr.n].values.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                                        this._devicesState[deviceKey].deviceAttributes[attr.n].values.shift();
                                     }
-                                    this._devicesState[devAddr].deviceAttributes[attr.n].values.push(value);
-                                    this._devicesState[devAddr].deviceAttributes[attr.n].newData = true;
+                                    this._devicesState[deviceKey].deviceAttributes[attr.n].values.push(value);
+                                    this._devicesState[deviceKey].deviceAttributes[attr.n].newData = true;
                                 } else {
-                                    this._devicesState[devAddr].deviceAttributes[attr.n] = {
+                                    this._devicesState[deviceKey].deviceAttributes[attr.n] = {
                                         name: attr.n,
                                         newAttribute: true,
                                         newData: true,
@@ -599,13 +610,21 @@ export class DeviceManager {
                         // If any attributes added then add the timestamp to the device timeline
                         if (attrsAdded) {
                             // Limit to MAX_DATA_POINTS_TO_STORE
-                            if (this._devicesState[devAddr].deviceTimeline.length >= this.MAX_DATA_POINTS_TO_STORE) {
-                                this._devicesState[devAddr].deviceTimeline.shift();
+                            if (this._devicesState[deviceKey].deviceTimeline.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                                this._devicesState[deviceKey].deviceTimeline.shift();
                             }
-                            this._devicesState[devAddr].deviceTimeline.push(timestamp);
+                            this._devicesState[deviceKey].deviceTimeline.push(timestamp);
                         }
                     });
                 });
+
+                // Remove devices no longer present
+                if (removeDevicesNoLongerPresent) {
+                    deviceKeysToRemove.forEach((deviceKey) => {
+                        delete this._devicesState[deviceKey];
+                    });
+                }
+
             });
         // } catch (error) {
         //     console.error(`DeviceManager websocket message error ${error} msg ${jsonMsg}`);
