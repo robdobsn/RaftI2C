@@ -47,6 +47,62 @@
                 }
             }
         },
+        "VL6180": {
+            "notes": "Interleaved mode ALS & Range (0x2a3=>0x01)\nRange settings defined in https://www.st.com/resource/en/application_note/an4545-vl6180x-basic-ranging-application-note-stmicroelectronics.pdf\nALS integration period 100ms (0x0040=>0x0063)\nALS gain 20 (0x003f=>0x40)\n",
+            "addresses": "0x29",
+            "deviceType": "VL6180",
+            "detectionValues": "0x0000=0b10110100",
+            "initValues": "0x020701=&0x020801=&0x009600=&0x0097fd=&0x00e301=&0x00e403=&0x00e502=&0x00e601=&0x00e703=&0x00f502=&0x00d905=&0x00dbce=&0x00dc03=&0x00ddf8=&0x009f00=&0x00a33c=&0x00b700=&0x00bb3c=&0x00b209=&0x00ca09=&0x019801=&0x01b017=&0x01ad00=&0x00ff05=&0x010005=&0x019905=&0x01a61b=&0x01ac3e=&0x01a71f=&0x003000=&0x001110=&0x010a30=&0x003f40=&0x0031ff=&0x004163=&0x002e01=&0x001b09=&0x003e09=&0x004063=&0x02a301=",
+            "pollingConfigJson": {
+                "c": "0x004f=r1&0x0062=r1&0x004d=r1&0x0050=r1&0x001507=",
+                "i": 200,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "VL6180",
+                "desc": "ToF",
+                "manu": "ST",
+                "type": "VL6180",
+                "attr": {
+                    "x" :
+                    [
+                        {
+                            "n": "valid",
+                            "t": "B",
+                            "u": "",
+                            "r": [0,1],
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b",
+                            "vs": false
+                        },
+                        {
+                            "n": "dist",
+                            "t": "B",
+                            "u": "mm",
+                            "r": [0,255],
+                            "f": "3d"
+                        },
+                        {
+                            "n": "flags",
+                            "t": "B",
+                            "u": "",
+                            "r": [0,255],
+                            "f": "02x",
+                            "vs": false
+                        },
+                        {
+                            "n": "als",
+                            "t": "B",
+                            "u": "",
+                            "r": [0,255],
+                            "f": "5.2f"
+                        }
+                    ]
+                }
+            }
+        },        
         "ADXL313": {
             "addresses": "0x1d,0x53",
             "deviceType": "ADXL313",
@@ -118,7 +174,7 @@
                             "t": "B",
                             "u": "",
                             "f": "02x",
-                            "disp": 0
+                            "vs": false
                         },
                         {
                             "n": "humidity",
@@ -166,6 +222,46 @@
                             "u": "&deg;C",
                             "r": [-40,125],
                             "d": 16,
+                            "f": "3.2f"
+                        }
+                    ]
+                }
+            }
+        },
+        "LPS25": {
+            "addresses": "0x5D",
+            "deviceType": "LPS25",
+            "detectionValues": "0x0f=0b10111101",
+            "initValues": "0x2104=&0x20C0=",
+            "pollingConfigJson": {
+                "c": "0xA8=r5",
+                "i": 1000,
+                "s": 2
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "LPS25",
+                "desc": "Pressure",
+                "manu": "ST",
+                "type": "LPS25",
+                "attr": {
+                    "x" :
+                    [
+                        {
+                            "n": "pressure",
+                            "t": "<I:24:24",
+                            "u": "hPa",
+                            "r": [260,1260],
+                            "d": 4096,
+                            "f": "4.2f"
+                        },
+                        {
+                            "n": "temperature",
+                            "t": "<h",
+                            "u": "&deg;C",
+                            "r": [-30,105],
+                            "d": 480,
+                            "a": 42.5,
                             "f": "3.2f"
                         }
                     ]

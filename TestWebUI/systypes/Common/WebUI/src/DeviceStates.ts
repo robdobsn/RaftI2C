@@ -1,14 +1,3 @@
-
-
-// export class DeviceState {
-//     busName: string = "";
-//     busType: string = "";
-//     address: number = 0;
-//     deviceType: string = "";
-//     active: boolean = false;
-//     lastReportTimeMs: number = 0;
-// }
-
 import { DeviceTypeInfo } from "./DeviceInfo";
 
 export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
@@ -34,14 +23,14 @@ export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
     } else if (format.endsWith('x')) {
         // Hexadecimal formatting
         const totalLength = parseInt(format.slice(0, -1), 10);
-        return value.toString(16).padStart(totalLength, '0');
+        return Math.floor(value).toString(16).padStart(totalLength, '0');
     } else if (format.endsWith('d')) {
         // Decimal integer formatting
         const totalLength = parseInt(format.slice(0, -1), 10);
-        return value.toString(10).padStart(totalLength, '0');
+        return Math.floor(value).toString(10).padStart(totalLength, '0');
     } else if (format.endsWith('b')) {
         // Binary formatting
-        return value === 0 ? '0' : '1';
+        return Math.floor(value) === 0 ? '0' : '1';
     }
     return value.toString();
 }
@@ -54,7 +43,8 @@ export interface DeviceAttribute {
     units: string;
     range: number[];
     format: string;
-    display: boolean;
+    visibleSeries: boolean;
+    visibleForm: boolean;
 }
 
 export interface DeviceAttributes {

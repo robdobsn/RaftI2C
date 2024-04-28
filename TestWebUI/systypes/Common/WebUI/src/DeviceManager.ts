@@ -600,7 +600,8 @@ export class DeviceManager {
                                         units: decodeAttrUnitsEncoding(attr.u || ""),
                                         range: attr.r || [0, 0],
                                         format: ("f" in attr && typeof attr.f == "string") ? attr.f : "",
-                                        display: "disp" in attr ? (attr.disp === 0 || attr.disp === false ? false : !!attr.disp) : true,
+                                        visibleSeries: "vs" in attr ? (attr.vs === 0 || attr.vs === false ? false : !!attr.vs) : true,
+                                        visibleForm: "vf" in attr ? (attr.vf === 0 || attr.vf === false ? false : !!attr.vf) : true,
                                     };
                                 }
                                 attrsAdded = true;

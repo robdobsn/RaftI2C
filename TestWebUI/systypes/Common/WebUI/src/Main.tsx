@@ -22,9 +22,12 @@ export default function Main() {
   }, []);
 
   return (
+    <>
+    <h1>Raft I2C Auto-identification and Polling Pub-Sub</h1>
     <div className="h-full">
       <DevicesScreen isEditingMode={false} config={new DevicesConfig()} />
     </div>
+    </>
   );
 }
 

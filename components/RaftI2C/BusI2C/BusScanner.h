@@ -37,9 +37,10 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service called from I2C task
     /// @param curTimeUs Current time in microseconds
-    /// @param maxTimeInLoopUs Maximum time allowed in this loop
+    /// @param maxFastTimeInLoopUs Maximum time allowed in this loop when fast scanning
+    /// @param maxSlowTimeInLoopUs Maximum time allowed in this loop when slow scanning
     /// @return true if fast scanning in progress
-    bool taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs);
+    bool taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, uint64_t maxSlowTimeInLoopUs);
 
     // Scan period
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
@@ -76,10 +77,6 @@ private:
     uint32_t _scanLastMs = 0;
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
     uint16_t _scanAddressesCurrentList = 0;
-
-#ifdef DEBUG_SCANNING_SWEEP_TIME
-    uint32_t _debugScanSweepStartMs = 0;
-#endif
     
     // Scan priority
     std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
@@ -92,6 +89,10 @@ private:
         uint16_t maxCount = 0;
         uint16_t scanListIndex = 0;
         uint16_t scanSlotIndexPlus1 = 0;
+#ifdef DEBUG_SCANNING_SWEEP_TIME
+        uint32_t _debugScanSweepStartMs = 0;
+#endif
+
     };
     std::vector<ScanPriorityRec> _scanPriorityRecs;
 

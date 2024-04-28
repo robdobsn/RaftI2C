@@ -18,6 +18,8 @@
 // #define DEBUG_BUS_STUCK
 // #define DEBUG_BUS_EXTENDERS
 // #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
+// #define DEBUG_SLOT_INDEX_INVALID
+// #define DEBUG_POWER_STABILITY
 
 static const char* MODULE_PREFIX = "BusExtenderMgr";
 
@@ -196,11 +198,21 @@ bool BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
     uint32_t slotIdx = 0;
     uint32_t extenderIdx = 0;
     if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
+    {
+#ifdef DEBUG_SLOT_INDEX_INVALID
+        LOG_I(MODULE_PREFIX, "enableOneSlot slotPlus1 %d invalid", slotPlus1);
+#endif
         return false;
+    }
 
     // Check if the slot has stable power
     if (!_busPowerController.isSlotPowerStable(slotPlus1))
+    {
+#ifdef DEBUG_POWER_STABILITY
+        LOG_I(MODULE_PREFIX, "enableOneSlot slotPlus1 %d power not stable", slotPlus1);
+#endif
         return false;
+    }
 
     // Debug
 #ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM

@@ -35,6 +35,7 @@ static const char* MODULE_PREFIX = "BusI2C";
 // #define DEBUG_I2C_ASYNC_SEND_HELPER
 // #define DEBUG_I2C_SYNC_SEND_HELPER
 // #define DEBUG_BUS_HIATUS
+// #define DEBUG_LOOP_TIMING_WITH_GPIO_NUM 19
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -127,6 +128,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
     // Yield values
     _loopYieldMs = config.getLong("loopYieldMs", I2C_BUS_LOOP_YIELD_MS);
     _loopFastUnyieldUs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS) * 1000;
+    _loopSlowUnyieldUs = config.getLong("slowScanMaxUnyieldMs", I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS) * 1000;
 
     // Bus status manager
     _busStatusMgr.setup(config);
@@ -282,11 +284,32 @@ void BusI2C::i2cWorkerTaskStatic(void* pvParameters)
 /// @brief RTOS task function that handles all bus interaction (runs indefinitely - or until notified to stop)
 void BusI2C::i2cWorkerTask()
 {
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+    pinMode(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, OUTPUT);
+    digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+#endif
+
     _debugLastBusLoopMs = millis();
     while (ulTaskNotifyTake(pdTRUE, 0) == 0)
     {
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        for (int ii = 0; ii < 5; ii++)
+        {
+            digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+            delayMicroseconds(1);
+            digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+            delayMicroseconds(1);
+        }
+#endif        
         // Allow other tasks to run
         vTaskDelay(pdMS_TO_TICKS(_loopYieldMs));
+
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif        
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         uint64_t startUs = micros();
@@ -320,6 +343,13 @@ void BusI2C::i2cWorkerTask()
         else if ((!_isPaused) && (_pauseRequested))
             _isPaused = true;
 
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif
+
         // Handle bus scanning
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
@@ -327,7 +357,7 @@ void BusI2C::i2cWorkerTask()
             // Service bus scanner
             if (_busScanner.isScanPending(curTimeMs))
             {
-                _busScanner.taskService(curTimeUs, _loopFastUnyieldUs);
+                _busScanner.taskService(curTimeUs, _loopFastUnyieldUs, _loopSlowUnyieldUs);
             }
         }
 #endif
@@ -343,14 +373,42 @@ void BusI2C::i2cWorkerTask()
         continue;
 #endif
 
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif
+
         // Bus extender service
         _busExtenderMgr.taskService();
+
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif
 
         // Bus power controller service
         _busPowerController.taskService(micros());
 
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif
+
         // Device polling
         _devicePollingMgr.taskService(micros());
+
+#ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
+        delayMicroseconds(1);
+#endif
 
         // Perform any user-defined access
         // TODO - remove or reconsider how polling works

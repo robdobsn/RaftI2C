@@ -15,6 +15,8 @@
 // #define DEBUG_SCAN_PRIORITY_LISTS
 // #define DEBUG_SCAN_SEQUENCE
 // #define DEBUG_SCAN_SEQUENCE_PRIORITY_LISTS
+// #define DEBUG_NO_VALID_ADDRESS
+// #define DEBUG_CANT_ENABLE_SLOT
 
 static const char* MODULE_PREFIX = "BusScanner";
 
@@ -104,15 +106,20 @@ void BusScanner::service()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service called from I2C task
 /// @param curTimeUs Current time in microseconds
-/// @param maxTimeInLoopUs Maximum time allowed in this loop
+/// @param maxFastTimeInLoopUs Maximum time allowed in this loop when fast scanning
+/// @param maxSlowTimeInLoopUs Maximum time allowed in this loop when slow scanning
 /// @return true if fast scanning in progress
-bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
+bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, uint64_t maxSlowTimeInLoopUs)
 {
     // Time of last scan
     uint32_t curTimeMs = curTimeUs / 1000;
     _scanLastMs = curTimeMs;
     uint64_t scanLoopStartTimeUs = micros();
     bool sweepCompleted = false;
+
+#ifdef DEBUG_SCANNING_SWEEP_TIME
+    uint32_t startingScanAddressList = _scanAddressesCurrentList;
+#endif
 
     // Check scan state
     switch(_scanState)
@@ -145,7 +152,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
                 updateBusElemState(addr, 0, rslt);
 
                 // Check sweep completed or timeout
-                if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, maxTimeInLoopUs))
+                if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, maxFastTimeInLoopUs))
                     break;
             }
             break;
@@ -166,7 +173,12 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
                 // Get next address to scan
                 addrIsValid = getAddrAndGetSlotToScanNext(addr, slotPlus1, sweepCompleted, false, false, false);
                 if (!addrIsValid)
+                {
+#ifdef DEBUG_NO_VALID_ADDRESS
+                    LOG_I(MODULE_PREFIX, "taskService %s no valid address", getScanStateStr(_scanState));
+#endif
                     break;
+                }
 
                 // Skip addresses on slots when the address is known to be on the main bus
                 if (slotPlus1 == 0 || !_busStatusMgr.isAddrFoundOnMainBus(addr))
@@ -176,9 +188,16 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
                     {
                         // Enable slot if required
                         if (slotPlus1 == 0)
+                        {
                             _busExtenderMgr.disableAllSlots();
+                        }
                         else if (!_busExtenderMgr.enableOneSlot(slotPlus1))
+                        {
+#ifdef DEBUG_CANT_ENABLE_SLOT
+                            LOG_I(MODULE_PREFIX, "taskService %s can't enable slotPlus1 %d", getScanStateStr(_scanState), slotPlus1);
+#endif
                             break;
+                        }
                     }
                     lastSlotPlus1 = slotPlus1;
 
@@ -188,7 +207,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
                 }
 
                 // Check sweepComplete or timeout
-                if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, maxTimeInLoopUs))
+                if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, _scanState == SCAN_STATE_SCAN_FAST ? maxFastTimeInLoopUs : maxSlowTimeInLoopUs))
                     break;
             }
 
@@ -205,9 +224,13 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxTimeInLoopUs)
     if (sweepCompleted)
     {
 #ifdef DEBUG_SCANNING_SWEEP_TIME
-        uint32_t sweepTimeMs = Raft::timeElapsed(curTimeMs, _debugScanSweepStartMs);
-        LOG_I(MODULE_PREFIX, "taskService %s sweep completed time %dms", getScanStateStr(_scanState), sweepTimeMs);
-        _debugScanSweepStartMs = curTimeMs;
+        if (startingScanAddressList < _scanPriorityRecs.size())
+        {
+            uint32_t sweepTimeMs = Raft::timeElapsed(curTimeMs, _scanPriorityRecs[startingScanAddressList]._debugScanSweepStartMs);
+            LOG_I(MODULE_PREFIX, "taskService %s priority %d sweep completed time %dms (next priority %d)", 
+                        getScanStateStr(_scanState), startingScanAddressList, sweepTimeMs, _scanAddressesCurrentList);
+            _scanPriorityRecs[startingScanAddressList]._debugScanSweepStartMs = millis();
+        }
 #endif
 
         _scanStateRepeatCount++;
@@ -425,7 +448,9 @@ uint32_t BusScanner::getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& s
     {
         scanRec.scanSlotIndexPlus1 = 0;
         if (addressesOnSlotDone)
+        {
             sweepCompleted = true;
+        }
         return 0;
     }
 
@@ -434,7 +459,7 @@ uint32_t BusScanner::getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& s
         scanRec.scanSlotIndexPlus1 = 0;
 
     // Get the slotPlus1
-    uint32_t slotPlus1 = scanRec.scanSlotIndexPlus1 == 0 ? 0 : _busExtenderMgr.getBusExtenderSlots()[scanRec.scanSlotIndexPlus1-1];
+    uint32_t slotPlus1 = scanRec.scanSlotIndexPlus1 == 0 ? 0 : _busExtenderMgr.getBusExtenderSlots()[scanRec.scanSlotIndexPlus1-1] + 1;
 
     // Check if we are done with addresses on a slot
     if (addressesOnSlotDone)

@@ -62,9 +62,12 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
     });
 
     useEffect(() => {
-        const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(String);
+        const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(time => {
+            const date = new Date(time);
+            return date.toISOString().slice(11, 19);
+        });
         const datasets = Object.entries(deviceAttributes)
-            .filter(([attributeName, attributeDetails]) => attributeDetails.display !== false)
+            .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)
             .map(([attributeName, attributeDetails]) => {
                 const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
                 let colour = colourMapRef.current[attributeName];

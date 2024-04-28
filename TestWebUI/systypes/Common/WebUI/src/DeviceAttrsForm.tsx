@@ -24,7 +24,7 @@ const DeviceAttrsForm: React.FC<DeviceAttributesTableProps> = ({ deviceKey, last
             </thead>
             <tbody>
                 {Object.entries(deviceAttributes)
-                    .filter(([attributeName, attributeDetails]) => attributeDetails.display !== false)
+                    .filter(([attributeName, attributeDetails]) => attributeDetails.visibleForm !== false)
                     .map(([attributeName, attributeDetails]) => {
                         const valStr = deviceAttrGetLatestFormatted(attributeDetails)
                         return (

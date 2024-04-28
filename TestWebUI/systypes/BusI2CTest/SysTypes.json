@@ -146,7 +146,7 @@
                     "i2cPort": 0,
                     "sdaPin": 21,
                     "sclPin": 22,
-                    "i2cFreq": 100000,
+                    "i2cFreq": 400000,
                     "taskCore": 0,
                     "taskStack": 3000,
                     "taskPriority": 5,

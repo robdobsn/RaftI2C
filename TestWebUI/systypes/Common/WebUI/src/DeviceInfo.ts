@@ -95,7 +95,8 @@ export interface DeviceTypeAttribute {
     d?: number;                 // Divisor to convert the raw attribute value (after operations above) to the actual value
     a?: number;                 // Value to add after division
     f?: string;                 // Format string similar to C printf format string (e.g. %d, %x, %f, %04d, %08x, %08.2f etc.), %b = boolean (0 iff 0, else 1)
-    disp?: boolean | number;    // Display attribute value in the UI
+    vs: boolean | number;       // Display attribute value in time-series graphs
+    vf: boolean | number;       // Display attribute value in the device info panel
 }
 
 export interface DeviceTypeAttributeGroups {

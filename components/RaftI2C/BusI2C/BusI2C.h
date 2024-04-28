@@ -209,6 +209,7 @@ public:
 
     // Max fast scanning without yielding
     static const uint32_t I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS = 10;
+    static const uint32_t I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS = 2;
 
 private:
 
@@ -230,6 +231,7 @@ private:
 
     // I2C loop control
     uint32_t _loopFastUnyieldUs = I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS * 1000;
+    uint32_t _loopSlowUnyieldUs = I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS * 1000;
     uint32_t _loopYieldMs = I2C_BUS_LOOP_YIELD_MS;
 
     // Init ok

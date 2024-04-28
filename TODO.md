@@ -12,3 +12,8 @@
 [] deal with bus generic functions
 [] get working with problem devices like button and servo
 [] consider whether there is any benefit in different devices at different speeds based on them being isolated on slots? 
+[] possibly try toggling the SCL line multiple times (24 or more?) to remove bus-stuck conditions?
+[] add a value validity check - maybe overlapping the range used for actual values to avoid issues with reading - perhaps on each individual polled data value or perhaps as a whole - or both
+[] handling of invalid values in UI - see if chart can cope with nulls - form should maybe display N/A - or blank?
+[] check ALS values on VL6180 - in general VL6180 isn't working well
+[] handling of formatting of bit fields

@@ -101,8 +101,10 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotPlus1)
     // Get the power control record
     uint32_t slotIdx = 0;
     PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+
+    // If the power isn't controlled then assume power is stable
     if (pPwrCtrlRec == nullptr)
-        return false;
+        return true;
 
     // Get the slot record
     PowerControlSlotRec& slotRec = pPwrCtrlRec->pwrCtrlSlotRecs[slotIdx];

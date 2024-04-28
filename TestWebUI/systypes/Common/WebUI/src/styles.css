@@ -6,6 +6,14 @@ body, .device-screen, .device-block-heading, .device-attrs-form, .device-line-ch
     color: #fff; /* Light text for better readability */
 }
 
+h1 {
+    margin-left: 20px;
+    padding: 10px;
+    border: 1px solid #666; /* Adjusting border color for dark theme */
+    border-radius: 8px;
+    margin-bottom: -10px;
+}
+
 /* Style for the overall container that holds all devices */
 .devices-container {
     display: flex;
