@@ -175,8 +175,6 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             if (pBusElem && pBusElem->getBusName().equalsIgnoreCase(busName))
             {
                 // Access the bus
-                // TODO - refactor
-                // devInfo = ((BusI2C*)pBusElem)->getDevTypeInfoJsonByTypeName(devTypeName, false);
                 devInfo = pBusElem->getDevTypeInfoJsonByTypeName(devTypeName, false);
                 break;
             }
@@ -202,8 +200,6 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 
 String HWDevMan::getStatusJSON()
 {
-    // TODO - implement changes to BusBase
-
     String jsonStr;
     for (BusBase* pBus : _busList)
     {
@@ -255,7 +251,6 @@ String HWDevMan::getStatusJSON()
 void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
 {
     stateHash.clear();
-    // TODO - implement change to BusBase
 
     // Check all buses for data
     for (BusBase* pBus : _busList)
@@ -263,10 +258,7 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
         // Check bus
         if (pBus)
         {
-            // TODO - maybe change getIdentPollLastUpdateMs to a more generic function that gets last update of any kind
-
             // Check bus status
-            // uint32_t identPollLastMs = ((BusI2C*)pBus)->getLastStatusUpdateMs(true, true);
             uint32_t identPollLastMs = pBus->getLastStatusUpdateMs(true, true);
             stateHash.push_back(identPollLastMs & 0xff);
             stateHash.push_back((identPollLastMs >> 8) & 0xff);

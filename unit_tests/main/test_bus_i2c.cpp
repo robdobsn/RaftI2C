@@ -161,7 +161,9 @@ BusBase busBase(busElemStatusCB, busOperationStatusCB);
 
 // BusStatusMgr
 BusStatusMgr busStatusMgr(busBase);
-BusExtenderMgr busExtenderMgr(busReqSyncFn);
+BusPowerController busPowerController(busReqSyncFn);
+BusStuckHandler busStuckHandler;
+BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
 DeviceIdentMgr deviceIdentMgr(busExtenderMgr, busReqSyncFn);
 BusScanner busScanner(busStatusMgr, busExtenderMgr, deviceIdentMgr, busReqSyncFn);
 
@@ -200,7 +202,11 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
     {
         busStatusMgr.service(true);
         if (serviceScanner)
-            busScanner.taskService();
+            busScanner.taskService(micros(), 10000, 2000);
+        if ((i % 1000) == 0)
+        {
+            vTaskDelay(1);
+        }
     }
 }
 
@@ -288,7 +294,7 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
 TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
 {
     // Setup bus extenders
-    BusExtenderMgr busExtenderMgr(busReqSyncFn);
+    BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
     busExtenderMgr.setup(configJson);
 
     // Check next slot

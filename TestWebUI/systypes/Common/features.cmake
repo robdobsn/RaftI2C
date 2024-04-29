@@ -6,9 +6,8 @@ add_compile_definitions(SYSTEM_VERSION="1.0.0")
 
 # Raft components
 set(RAFT_COMPONENTS
-    # TODO -replace
-    # RaftSysMods@main
-    # RaftWebServer@main
+    RaftSysMods@main
+    RaftWebServer@main
 )
 
 # File system
@@ -27,22 +26,3 @@ set(UI_SOURCE_PATH "../Common/WebUI")
 
 # Uncomment the following line to include a source map for the web UI - this will increase the size of the web UI
 # set(WEB_UI_GEN_FLAGS ${WEB_UI_GEN_FLAGS} --incmap)
-
-# TODO - remove
-include(FetchContent)
-FetchContent_Declare(
-    raftwebserver
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/../../RaftWebServer
-)
-FetchContent_Populate(raftwebserver)
-set(EXTRA_COMPONENT_DIRS ${EXTRA_COMPONENT_DIRS} ${raftwebserver_SOURCE_DIR})
-set(ADDED_PROJECT_DEPENDENCIES ${ADDED_PROJECT_DEPENDENCIES} raftwebserver)
-
-FetchContent_Declare(
-    raftsysmods
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/../../RaftSysMods
-)
-FetchContent_Populate(raftsysmods)
-set(EXTRA_COMPONENT_DIRS ${EXTRA_COMPONENT_DIRS} ${raftsysmods_SOURCE_DIR})
-set(ADDED_PROJECT_DEPENDENCIES ${ADDED_PROJECT_DEPENDENCIES} raftsysmods)
-

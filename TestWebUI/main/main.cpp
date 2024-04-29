@@ -24,7 +24,7 @@ extern "C" void app_main(void)
     // Register sysmod
     raftCoreApp.registerSysMod("BusI2CTest", BusI2CTest::create, true);
 
-    // TODO - fix this as it should be somewhere else
+    // Device manager
     raftCoreApp.registerSysMod("HWDevMan", HWDevMan::create, true);
 
     // Loop forever
