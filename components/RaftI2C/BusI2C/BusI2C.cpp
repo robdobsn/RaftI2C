@@ -16,12 +16,12 @@
 
 static const char* MODULE_PREFIX = "BusI2C";
 
-#ifdef I2C_USE_RAFT_I2C
+#if defined(I2C_USE_RAFT_I2C)
 #include "RaftI2CCentral.h"
-#elif defined(I2C_USE_ESP_IDF_5)
+#elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
 #include "ESPIDF5I2CCentral.h"
 #else
-#include "BusI2CESPIDF.h"
+// #include "BusI2CESPIDF.h"
 #endif
 
 // The following will define a minimum time between I2C comms activities
@@ -74,9 +74,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     _pI2CCentral = pI2CCentralIF;
     if (!_pI2CCentral)
     {
-#ifdef I2C_USE_RAFT_I2C
+#if defined(I2C_USE_RAFT_I2C) 
         _pI2CCentral = new RaftI2CCentral();
-#elif defined(I2C_USE_ESP_IDF_5)
+#elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
         _pI2CCentral = new ESPIDF5I2CCentral();
 #else
         _pI2CCentral = new BusI2CESPIDF();
@@ -199,11 +199,11 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d maxUnyieldMs %d",
+    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d fastUnyieldMs %d slowUnyieldMs %d",
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
                 portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize,
-                _loopYieldMs, _loopFastUnyieldUs);
+                _loopYieldMs, (uint32_t) (_loopFastUnyieldUs/1000), (uint32_t) (_loopSlowUnyieldUs/1000));
 
     // Ok
     return true;

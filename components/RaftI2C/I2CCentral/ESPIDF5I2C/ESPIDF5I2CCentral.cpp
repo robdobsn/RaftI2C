@@ -51,7 +51,7 @@ bool ESPIDF5I2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, 
     _busFrequency = busFrequency;
     _busFilteringLevel = busFilteringLevel;
 
-    // I2C mater config
+    // I2C master config
     i2c_master_bus_config_t i2c_mst_config = {
         .i2c_port = i2cPort,
         .sda_io_num = (gpio_num_t)pinSDA,
@@ -124,7 +124,7 @@ bool ESPIDF5I2CCentral::isOperatingOk() const
 
 RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
                                                           uint8_t *pReadBuf, uint32_t numToRead, uint32_t &numRead)
-{
+{    
     // Check valid
     if (!_isInitialised)
         return ACCESS_RESULT_INVALID;
