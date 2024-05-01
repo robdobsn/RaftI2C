@@ -126,6 +126,10 @@ public:
     /// @param slotPlus1 slotPlus1
     void slotPoweringDown(uint32_t slotPlus1);
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Inform that the bus is stuck
+    void informBusStuck();
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 

@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-// #define DEBUG_POWER_CONTROL_SETUP
+#define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 
@@ -115,27 +115,51 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotPlus1)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Power cycle slot
-/// @param slotPlus1 Slot number (1-based)
+/// @param slotPlus1 Slot number (1-based) - 0 indicates power cycle entire bus
 void BusPowerController::powerCycleSlot(uint32_t slotPlus1)
 {
-    // Get the power control record
-    uint32_t slotIdx = 0;
-    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
-    if (pPwrCtrlRec == nullptr)
-        return;
+    // TODO - implement bus-wide power management and cycle entire bus here if slotPlus1 == 0
 
-    // Get the slot record
-    PowerControlSlotRec& slotRec = pPwrCtrlRec->pwrCtrlSlotRecs[slotIdx];
+    // Create a vector of slots to power cycle
+    std::vector<uint32_t> slotPlus1VecToPowerCycle;
+    if (slotPlus1 == 0)
+    {
+        // Add all slots to the list
+        for (PowerControlRec& pwrCtrlRec : _pwrCtrlRecs)
+        {
+            for (uint32_t slotIdx = 0; slotIdx < pwrCtrlRec.pwrCtrlSlotRecs.size(); slotIdx++)
+            {
+                slotPlus1VecToPowerCycle.push_back(pwrCtrlRec.minSlotPlus1 + slotIdx);
+            }
+        }
+    }
+    else
+    {
+        slotPlus1VecToPowerCycle.push_back(slotPlus1);
+    }
+
+    // Iterate over vector
+    for (auto slotPlus1 : slotPlus1VecToPowerCycle)
+    {
+        // Get the power control record
+        uint32_t slotIdx = 0;
+        PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+        if (pPwrCtrlRec == nullptr)
+            continue;
+
+        // Get the slot record
+        PowerControlSlotRec& slotRec = pPwrCtrlRec->pwrCtrlSlotRecs[slotIdx];
 
 #ifdef DEBUG_POWER_CONTROL_STATES
-    LOG_I(MODULE_PREFIX, "powerCycleSlot slotPlus1 %d slotIdx %d power off", slotPlus1, slotIdx);
+        LOG_I(MODULE_PREFIX, "powerCycleSlot slotPlus1 %d slotIdx %d power off", slotPlus1, slotIdx);
 #endif
 
-    // Turn the slot power off
-    pPwrCtrlRec->setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
+        // Turn the slot power off
+        pPwrCtrlRec->setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
 
-    // Set the state to power off pending cycling
-    slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, millis());
+        // Set the state to power off pending cycling
+        slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, millis());
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -265,84 +289,12 @@ BusPowerController::PowerControlRec* BusPowerController::getPowerControlRec(uint
     return nullptr;
 }
 
-// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Set voltage level for a slot (or all slots)
-// /// @param slotPlus1 Slot number (0 is all slots)
-// /// @param powerLevel Power level
-// void BusPowerController::setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powerLevel)
-// {
-//     // Check for one or more slots
-//     if (slotPlus1 == 0)
-//     {
-//         // Iterate all slots
-//         for (slotPlus1 = 1; slotPlus1 < I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size() + 1; slotPlus1++)
-//         {
-//             // Update mask and output registers for the slot
-//             updatePowerControlRegs(slotPlus1, powerLevel);
-//         }
-
-//         // Update state record for all slots
-//         for (BusExtender& busExtender : _busExtenderRecs)
-//         {
-//             busExtender.slotPowerCycleStatus = (powerLevel == POWER_CONTROL_OFF) ? POWER_CYCLE_STATE_DISABLED : POWER_CYCLE_STATE_POWER_CYCLING_RESETTING;
-//         }
-//     }
-//     else
-//     {
-//         // Update mask and output registers for the slot
-//         updatePowerControlRegs(slotPlus1, powerLevel);
-//     }
-// }
-
-// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Update power control registers for a single slot
-// /// @param slotPlus1 Slot number (1-based)
-// /// @param powerLevel Power level
-// void BusPowerController::updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel)
-// {
-//     // Get the bus extender index and slot index
-//     uint32_t slotIdx = 0;
-//     uint32_t extenderIdx = 0;
-//     if (!getExtenderAndSlotIdx(slotPlus1, extenderIdx, slotIdx))
-//         return;
-
-//     // Get the bus extender record
-//     BusExtender& busExtenderRec = _busExtenderRecs[extenderIdx];
-
-//     // Check if power control is for PCA9535 (only one option supported currently)
-//     if (busExtenderRec.pwrCtrlType != POWER_CONTROL_PCA9535)
-//         return;
-
-//     // Base bit mask for the slot if two bits (one for 3V and one for 5V)
-//     // There is both a configuration register and an output register and both are written on each change
-//     // In both registers an enabled voltage output is a 0 in the corresponding bit position
-//     // The base mask is inverse to this logic so that a shift and inversion results in the total mask required
-//     uint16_t orMask = 0b11 << (slotIdx * 2);
-//     static const uint16_t BASE_MASK_BITS[] = {0b00, 0b01, 0b10};
-//     uint16_t baseMask = ~((BASE_MASK_BITS[powerLevel]) << (slotIdx * 2));
-
-//     // Compute the new value for the control register (16 bits)
-//     uint16_t newRegVal = (busExtenderRec.pwrCtrlGPIOReg | orMask) & baseMask;
-
-// #ifdef DEBUG_BUS_EXTENDER_POWER_CONTROL
-//     uint16_t prevReg = busExtenderRec.pwrCtrlGPIOReg;
-// #endif
-
-//     // Check if the mask has changed
-//     if (newRegVal != busExtenderRec.pwrCtrlGPIOReg)
-//     {
-//         // Update the bus extender record
-//         busExtenderRec.pwrCtrlGPIOReg = newRegVal;
-//         busExtenderRec.pwrCtrlDirty = true;
-//     }
-
-// #ifdef DEBUG_BUS_EXTENDER_POWER_CONTROL
-//     LOG_I(MODULE_PREFIX, "updatePowerLevel hasChanged %s slotPlus1 %d SlotPlus1-1 %d extenderIdx %d slotIdx %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
-//             busExtenderRec.pwrCtrlDirty ? "YES" : "NO",
-//             slotPlus1, slotPlus1-1, extenderIdx, slotIdx, powerLevel, 
-//             busExtenderRec.pwrCtrlGPIOReg, prevReg);
-// #endif
-// }
+bool BusPowerController::isSlotPowerControlled(uint32_t slotPlus1)
+{
+    uint32_t slotIdx = 0;
+    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+    return pPwrCtrlRec != nullptr;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set voltage level for a slot

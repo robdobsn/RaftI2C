@@ -46,7 +46,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busPowerController(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busStuckHandler(),
+        _busStuckHandler(
+            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
+        ),
         _busExtenderMgr(_busPowerController, _busStuckHandler, _busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
@@ -239,9 +241,8 @@ void BusI2C::service()
     _busScanner.service();
 
     // Service bus status change detection
-
-    // TODO - maybe pass in bus stuck manager here?? and it can determine if bus is ok??
-    _busStatusMgr.service(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
+    bool busIsStuck = _busStuckHandler.isStuck();
+    _busStatusMgr.service(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
 
     // Service bus extender
     _busExtenderMgr.service();
@@ -501,13 +502,14 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 
     // Check address is within valid range and not barred
     BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
+    auto rslt = checkAddrValidAndNotBarred(addrAndSlot);
     if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
         return rslt;
 
     // Check if a bus extender slot is specified
-    if (!_busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1))
-        return RaftI2CCentralIF::ACCESS_RESULT_ARB_LOST;
+    rslt = _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        return rslt;
 
     // Buffer for read and address
     uint32_t readReqLen = pReqRec->getReadReqLen();
@@ -517,21 +519,20 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 
     // Access the bus
     uint32_t numBytesRead = 0;
-    RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
+    rslt = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
     if (!_pI2CCentral)
-        return rsltCode;
-    rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
+        return rslt;
+    rslt = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
     // Reset bus extenders to turn off all slots
-    if (addrAndSlot.slotPlus1 > 0)
-        _busExtenderMgr.disableAllSlots();
+    _busExtenderMgr.disableAllSlots(false);
 
     // Check for scanning
     if (!pReqRec->isScan())
     {
         // If not scanning handle the response (there is no response for scanning)
-        _busAccessor.handleResponse(pReqRec, rsltCode, readBuf, numBytesRead);
+        _busAccessor.handleResponse(pReqRec, rslt, readBuf, numBytesRead);
     }
 
     // Bar access to element if requested
@@ -540,7 +541,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 
     // Record time of comms
     _lastI2CCommsUs = micros();
-    return rsltCode;
+    return rslt;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

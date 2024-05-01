@@ -49,7 +49,8 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         BusI2CAddrAndSlot addrAndSlot = pollInfo.pollReqs[0].getAddrAndSlot();
 
         // Check if a bus extender slot can be set (if required)
-        if (!_busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1))
+        auto rslt = _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
             return;
 
         // Prep poll req data
@@ -89,8 +90,6 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             _busStatusMgr.pollResultStore(timeNowUs, pollInfo, addrAndSlot, _pollDataResult);
 
         // Restore the bus extender(s) if necessary
-        if (addrAndSlot.slotPlus1 > 0)
-            _busExtenderMgr.disableAllSlots();
-
+        _busExtenderMgr.disableAllSlots(false);
     }
 }

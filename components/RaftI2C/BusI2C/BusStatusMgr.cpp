@@ -490,16 +490,37 @@ void BusStatusMgr::slotPoweringDown(uint32_t slotPlus1)
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return;
 
-    // Go through all devices and set offline
+    // Go through all devices and set status
     for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         if (addrStatus.addrAndSlot.slotPlus1 == slotPlus1)
         {
+            addrStatus.isChange = addrStatus.isOnline;
             addrStatus.isOnline = false;
-            addrStatus.isChange = true;
             _busElemStatusChangeDetected = true;
             _lastBusElemOnlineStatusUpdateTimeUs = micros();
         }
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Inform that the bus is stuck
+void BusStatusMgr::informBusStuck()
+{
+    // Get semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Go through all devices and set status to offline
+    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        addrStatus.isChange = addrStatus.isOnline;
+        addrStatus.isOnline = false;
+        _busElemStatusChangeDetected = true;
+        _lastBusElemOnlineStatusUpdateTimeUs = micros();
     }
 
     // Return semaphore

@@ -17,7 +17,8 @@ static const char* MODULE_PREFIX = "BusStuck";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusStuckHandler::BusStuckHandler()
+BusStuckHandler::BusStuckHandler(BusI2CReqSyncFn busI2CReqSyncFn) :
+    _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }
 
@@ -57,9 +58,30 @@ bool BusStuckHandler::isStuck()
     // Check if SDA and SCL are high
     if (!(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin)))
     {
-        // Wait a moment and check again
-        delayMicroseconds(5);
+        // Wait a moment and check again just in case it was a spurious measurement
+        delayMicroseconds(1);
         return !(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin));
     }
     return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Clear bus stuck by clocking
+void BusStuckHandler::clearStuckByClocking()
+{
+    // Iterate
+    for (int i = 0; i < I2C_BUS_STUCK_REPEAT_COUNT; i++)
+    {
+        // Attempt to clear bus stuck by clocking
+        BusI2CAddrAndSlot addrAndSlot(I2C_BUS_STUCK_CLEAR_ADDR, 0);
+        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    addrAndSlot,
+                    0, 0,
+                    nullptr,
+                    0,
+                    0, 
+                    nullptr, 
+                    this);
+        _busI2CReqSyncFn(&reqRec, nullptr);
+    }
 }

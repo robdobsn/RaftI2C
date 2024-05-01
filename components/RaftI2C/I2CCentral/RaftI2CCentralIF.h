@@ -45,7 +45,9 @@ public:
         ACCESS_RESULT_NOT_READY,
         ACCESS_RESULT_INCOMPLETE,
         ACCESS_RESULT_BARRED,
-        ACCESS_RESULT_NOT_INIT
+        ACCESS_RESULT_NOT_INIT,
+        ACCESS_RESULT_BUS_STUCK,
+        ACCESS_RESULT_SLOT_POWER_UNSTABLE
     };
 
     // Access the bus
@@ -154,6 +156,8 @@ public:
         case ACCESS_RESULT_INCOMPLETE: return "incomplete";
         case ACCESS_RESULT_BARRED: return "barred";
         case ACCESS_RESULT_NOT_INIT: return "notInit";
+        case ACCESS_RESULT_BUS_STUCK: return "busStuck";
+        case ACCESS_RESULT_SLOT_POWER_UNSTABLE: return "slotPowerUnstable";
         default: return "unknown";
         }
     }

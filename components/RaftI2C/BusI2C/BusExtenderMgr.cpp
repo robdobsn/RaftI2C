@@ -14,7 +14,7 @@
 #include "freertos/task.h"
 
 // #define DEBUG_BUS_EXTENDER_SETUP
-// #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 19
+// #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
 // #define DEBUG_BUS_EXTENDERS
 // #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
@@ -88,8 +88,9 @@ void BusExtenderMgr::setup(const RaftJsonIF& config)
         }
     }
 
-    // Disable all slots on bus extenders
-    disableAllSlots();
+    // Set the flag to indicate that the bus extenders need to be initialized
+    for (auto &busExtender : _busExtenderRecs)
+        busExtender.maskWrittenOk = false;
 
     // Debug
     LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
@@ -127,6 +128,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
         {
             _busExtenderCount++;
             changeDetected = true;
+            _busExtenderRecs[elemIdx].maskWrittenOk = false;
 
             // Debug
 #ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
@@ -146,17 +148,17 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 
     }
 
-    // Update the available slots array
+    // Update the slot indices
     if (changeDetected)
     {
-        // Update the available slots array
-        _busExtenderSlots.clear();
+        // Update the slot indices
+        _busExtenderSlotIndices.clear();
         for (uint32_t i = 0; i < _busExtenderRecs.size(); i++)
         {
             if (_busExtenderRecs[i].isDetected)
             {
                 for (uint32_t slot = 0; slot < I2C_BUS_EXTENDER_SLOT_COUNT; slot++)
-                    _busExtenderSlots.push_back(i * I2C_BUS_EXTENDER_SLOT_COUNT + slot);
+                    _busExtenderSlotIndices.push_back(i * I2C_BUS_EXTENDER_SLOT_COUNT + slot);
             }
         }
     }
@@ -166,14 +168,34 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set bus extender channels using mask
-/// @param addr Address of bus extender
-/// @param channelMask Mask of channels to set (1 bit per channel, 0=off, 1=on)
-RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, uint32_t channelMask)
+/// @brief Set slot enables on extender
+/// @param extenderIdx Extender index
+/// @param slotMask Slot mask
+/// @param force Force enable/disable (even if status indicates it is not necessary)
+/// @return Result code
+RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setSlotEnables(uint32_t extenderIdx, uint32_t slotMask, bool force)
 {
+    // Check valid
+    if (extenderIdx >= _busExtenderRecs.size())
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    // Check if slot initialized
+    if (!_busExtenderRecs[extenderIdx].maskWrittenOk)
+    {
+        force = true;
+        _busExtenderRecs[extenderIdx].maskWrittenOk = true;
+    }
+    // Check if status indicates that the mask is already correct
+    if (!force)
+    {
+        BusExtender& busExtender = _busExtenderRecs[extenderIdx];
+        if (busExtender.curBitMask == slotMask)
+            return RaftI2CCentralIF::ACCESS_RESULT_OK;
+    }
+    // Calculate the address
+    uint32_t addr = _minAddr + extenderIdx;
     // Initialise bus extender
     BusI2CAddrAndSlot addrAndSlot(addr, 0);
-    uint8_t writeData[1] = { uint8_t(channelMask) };
+    uint8_t writeData[1] = { uint8_t(slotMask) };
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
                 addrAndSlot,
                 0, sizeof(writeData),
@@ -182,18 +204,56 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setChannels(uint32_t addr, ui
                 0, 
                 nullptr, 
                 this);
-    return _busI2CReqSyncFn(&reqRec, nullptr);
+    auto rslt = _busI2CReqSyncFn(&reqRec, nullptr);
+    // Store the resulting mask information if the operation was successful
+    if (rslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
+    {
+        _busExtenderRecs[extenderIdx].curBitMask = slotMask;
+    }
+    else
+    {
+        _busExtenderRecs[extenderIdx].maskWrittenOk = false;
+    }
+    return rslt;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Enable a single slot on bus extender(s)
 /// @param slotPlus1 Slot number (1-based)
-/// @return True if valid (false if slot is stuck or invalid)
-bool BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
+/// @return OK if successful, otherwise error code which may be invalid if the slotPlus1 doesn't exist or 
+///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
+RaftI2CCentralIF::AccessResultCode BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
 {
-    // Check if no slot is specified (in which case do nothing)
+    // If the bus is stuck at this point it implies that a main bus issue has occurred or there is an issue with the last slot
+    // that was enabled (if it was definitely a single-slot issue it would have been detected after the slot was first enabled).
+    // In this case we need to try to clear the bus-stuck problem in any way possible including clocking the bus,
+    // potentially power cycling individual slots and/or power cycling the entire bus (if hardware exists to do this)
+    bool busIsStuck = _busStuckHandler.isStuck();
+    if (busIsStuck)
+    {
+        // Repeat here seveal times to try to clear the bus-stuck problem
+        for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
+        {
+            // Attempt to clear bus-stuck
+            attemptToClearBusStuck(false, slotPlus1);
+
+            // Check again
+            busIsStuck = _busStuckHandler.isStuck();
+            if (!busIsStuck)
+                break;
+        }
+
+        // Check if still stuck
+        if (busIsStuck)
+            return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
+    }
+
+    // Check if main bus is specified
     if (slotPlus1 == 0)
-        return true;
+    {
+        disableAllSlots(false);
+        return RaftI2CCentralIF::ACCESS_RESULT_OK;
+    }
     // Get the bus extender index and slot index
     uint32_t slotIdx = 0;
     uint32_t extenderIdx = 0;
@@ -202,7 +262,7 @@ bool BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
 #ifdef DEBUG_SLOT_INDEX_INVALID
         LOG_I(MODULE_PREFIX, "enableOneSlot slotPlus1 %d invalid", slotPlus1);
 #endif
-        return false;
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
     }
 
     // Check if the slot has stable power
@@ -211,85 +271,76 @@ bool BusExtenderMgr::enableOneSlot(uint32_t slotPlus1)
 #ifdef DEBUG_POWER_STABILITY
         LOG_I(MODULE_PREFIX, "enableOneSlot slotPlus1 %d power not stable", slotPlus1);
 #endif
-        return false;
+        return RaftI2CCentralIF::ACCESS_RESULT_SLOT_POWER_UNSTABLE;
     }
 
-    // Debug
-#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
-    pinMode(DEBUG_BUS_STUCK_WITH_GPIO_NUM, OUTPUT);
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
-    delayMicroseconds(1);
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
-    delayMicroseconds(1);
-#endif
-
-    // Set all bus extender channels off except for one
+    // Enable the slot
     uint32_t mask = 1 << slotIdx;
-    uint32_t addr = _minAddr + extenderIdx;
-    setChannels(addr, mask);
+    bool slotSetOk = setSlotEnables(extenderIdx, mask, false) == RaftI2CCentralIF::ACCESS_RESULT_OK;
 
-#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
-    delayMicroseconds(1);
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
-    delayMicroseconds(1);
-#endif
-
-    // Check if bus is stuck
-    bool slotIsStuck = _busStuckHandler.isStuck();
-    if (slotIsStuck)
+    // Check if bus is now stuck - if we have an issue at this point it is probably due to a single slot because
+    // the earlier bus stuck check would have been true if it was a wider issue. So initially try to clear the
+    // single-slot issue if possible
+    busIsStuck = _busStuckHandler.isStuck();
+    if (busIsStuck)
     {
-#ifdef DEBUG_BUS_STUCK
-        LOG_I(MODULE_PREFIX, "enableOneSlot bus stuck so power cycling slotPlus1 %d", slotPlus1);
-#endif
-
-        // Clear the stuck bus problem by disabling all slots for now
-        disableAllSlots();
-        
-        // LOG_I(MODULE_PREFIX, "enableOneSlot bus stuck so resetting");
-#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
-        for (int i = 0; i < 5; i++)
+        // Repeat here seveal times to try to clear the bus-stuck problem
+        for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
         {
-            digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
-            delayMicroseconds(1);
-            digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
-            delayMicroseconds(1);
+            // If the bus is stuck at this point then it is not possible to enable a slot
+            // so try to clear the bus-stuck problem in any way possible
+            attemptToClearBusStuck(true, slotPlus1);
+
+            // Check if still stuck
+            busIsStuck = _busStuckHandler.isStuck();
+            if (!busIsStuck)
+                break;
         }
-#endif
-
-        delayMicroseconds(100);
-
-        // Inform the bus status manager that a slot is powering down
-        _busStatusMgr.slotPoweringDown(slotPlus1);
-
-        // Indicate to the power controller that the bus is stuck
-        _busPowerController.powerCycleSlot(slotPlus1);
     }
 
-#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
-    digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
-    delayMicroseconds(1);
-#endif
-    return !slotIsStuck;
+    // Check for bus still stuck
+    if (busIsStuck)
+        return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
+
+    // Return result
+    return slotSetOk ? RaftI2CCentralIF::ACCESS_RESULT_OK : RaftI2CCentralIF::ACCESS_RESULT_ACK_ERROR;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Disable all slots on bus extenders
-void BusExtenderMgr::disableAllSlots()
+void BusExtenderMgr::disableAllSlots(bool force)
 {
-    // Reset bus extenders
-    if (_resetPin >= 0)
-        gpio_set_level(_resetPin, 0);
-    if (_resetPinAlt >= 0)
-        gpio_set_level(_resetPinAlt, 0);
-    delayMicroseconds(10);
-    if (_resetPin >= 0)
-        gpio_set_level(_resetPin, 1);
-    if (_resetPinAlt >= 0)
-        gpio_set_level(_resetPinAlt, 1);
-    delayMicroseconds(10);
+    // Check if reset is available
+    if (_resetPin < 0)
+    {
+        // Set all bus extender channels off
+        for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
+        {
+            BusExtender& busExtender = _busExtenderRecs[extenderIdx];
+            if ((busExtender.isDetected) && (busExtender.isOnline))
+                setSlotEnables(extenderIdx, 0, force);
+        }
+    }
+    else
+    {
+        // Reset bus extenders
+        if (_resetPin >= 0)
+            gpio_set_level(_resetPin, 0);
+        if (_resetPinAlt >= 0)
+            gpio_set_level(_resetPinAlt, 0);
+        delayMicroseconds(1);
+        if (_resetPin >= 0)
+            gpio_set_level(_resetPin, 1);
+        if (_resetPinAlt >= 0)
+            gpio_set_level(_resetPinAlt, 1);
+        delayMicroseconds(1);
+
+        // Clear mask values
+        for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
+        {
+            _busExtenderRecs[extenderIdx].curBitMask = 0;
+        }
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -329,14 +380,111 @@ bool BusExtenderMgr::getExtenderAndSlotIdx(uint32_t slotPlus1, uint32_t& extende
 uint32_t BusExtenderMgr::getNextSlot(uint32_t slotPlus1)
 {
     // Check if no slots available
-    if (_busExtenderSlots.size() == 0)
+    if (_busExtenderSlotIndices.size() == 0)
         return 0;
     // Find first slot which is >= slotPlus1
-    for (uint32_t slot : _busExtenderSlots)
+    for (uint32_t slot : _busExtenderSlotIndices)
     {
         if (slot >= slotPlus1)
             return slot+1;
     }
     // Return to main bus
     return 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Attempt to clear bus stuck problem
+/// @param failAfterSlotSet Bus stuck after setting slot (so an individual slot maybe at fault)
+/// @param slotPlus1 Slot number (1-based) (valid if after slot set)
+/// @return true if slot setting is still valid
+bool BusExtenderMgr::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotPlus1)
+{
+#ifdef DEBUG_BUS_STUCK
+    LOG_I(MODULE_PREFIX, "attemptToClearBusStuck %s slotPlus1 %d", 
+            failAfterSlotSet ? "FAIL_AFTER_SLOT_SET" : "FAIL_BEFORE_SLOT_SET",
+            slotPlus1);
+#endif
+
+#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
+    pinMode(DEBUG_BUS_STUCK_WITH_GPIO_NUM, OUTPUT);
+    for (int i = 0; i < (failAfterSlotSet ? 25 : 5); i++)
+    {
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
+        delayMicroseconds(1);
+    }
+#endif
+
+    // Attempt to clear the bus-stuck issue by clocking the bus
+    _busStuckHandler.clearStuckByClocking();
+
+#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
+    delayMicroseconds(10);
+    for (int i = 0; i < 3; i++)
+    {
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
+        delayMicroseconds(1);
+    }
+    delayMicroseconds(10);
+#endif
+
+    // Check if still stuck
+    bool busIsStuck = _busStuckHandler.isStuck();
+    if (busIsStuck)
+    {
+        // Clear the stuck bus problem by initially disabling all slots 
+        disableAllSlots(true);
+        
+        // Check if failure occurred after the slot was set
+        if (failAfterSlotSet)
+        {
+            // Check if the slot is power controlled
+            if (_busPowerController.isSlotPowerControlled(slotPlus1))
+            {
+                // Inform the bus status manager that a slot is powering down
+                _busStatusMgr.slotPoweringDown(slotPlus1);
+
+                // Start power cycling the slot
+                _busPowerController.powerCycleSlot(slotPlus1);
+
+                // Wait here to allow power off to take effect
+                delay(200);
+            }
+
+            // Attempt to clear the bus-stuck issue by clocking the bus
+            _busStuckHandler.clearStuckByClocking();
+        }
+
+        // Check if still stuck
+        busIsStuck = _busStuckHandler.isStuck();
+        if (busIsStuck)
+        {
+            // Clear the stuck bus problem by power cycling the entire bus
+            _busPowerController.powerCycleSlot(0);
+
+            // Wait here to allow power off to take effect
+            delay(200);
+
+            // Attempt to clear the bus-stuck issue by clocking the bus
+            _busStuckHandler.clearStuckByClocking();
+
+            // Check if still stuck
+            busIsStuck = _busStuckHandler.isStuck();
+        }
+    }
+
+#ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
+    for (int i = 0; i < 5; i++)
+    {
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(DEBUG_BUS_STUCK_WITH_GPIO_NUM, LOW);
+        delayMicroseconds(1);
+    }
+#endif
+
+    return !busIsStuck;
 }

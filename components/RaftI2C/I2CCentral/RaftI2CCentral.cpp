@@ -252,7 +252,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
 
     // The ESP32 I2C engine can accommodate up to 14 write/read commands
     // each of which can request up to 255 bytes of writing/reading
-    // If reading is involved then an RSTART command and second address is needed
+    // If writing and reading reading is involved then an RSTART command and second address is needed
     // as well as a final command reading one byte which is NACKed
     // Check max lengths to write/read (including the RSTART command if needed)
     // don't result in exceeding these 14 commands
@@ -260,9 +260,8 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
     writeCommands = (numToWrite + 1 + I2C_ENGINE_CMD_MAX_TX_BYTES - 1) / I2C_ENGINE_CMD_MAX_TX_BYTES;
     uint32_t readCommands = 0;
     if ((i2cOpType == ACCESS_READ_ONLY) || (i2cOpType == ACCESS_WRITE_RESTART_READ))
-        readCommands = numToRead == 1 ? 1 : 1 + ((numToRead + I2C_ENGINE_CMD_MAX_RX_BYTES - 1) / I2C_ENGINE_CMD_MAX_RX_BYTES);
-    uint32_t rstartAndSecondAddrCommands = (i2cOpType == ACCESS_READ_ONLY ? 1 : (i2cOpType == ACCESS_WRITE_RESTART_READ) ? 2
-                                                                                                                         : 0);
+        readCommands = 1 + ((numToRead + I2C_ENGINE_CMD_MAX_RX_BYTES - 2) / I2C_ENGINE_CMD_MAX_RX_BYTES);
+    uint32_t rstartAndSecondAddrCommands = (i2cOpType == ACCESS_READ_ONLY ? 1 : ((i2cOpType == ACCESS_WRITE_RESTART_READ) ? 2 : 0));
     if (writeCommands + readCommands + rstartAndSecondAddrCommands > (I2C_ENGINE_CMD_QUEUE_SIZE - 2))
         return ACCESS_RESULT_INVALID;
 

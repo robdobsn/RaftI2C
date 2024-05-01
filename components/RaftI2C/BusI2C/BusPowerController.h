@@ -35,6 +35,9 @@ public:
     // Power cycle slot
     void powerCycleSlot(uint32_t slotPlus1);
 
+    // Check if slot power is controlled
+    bool isSlotPowerControlled(uint32_t slotPlus1);
+
 private:
     // Bus access function
     BusI2CReqSyncFn _busI2CReqSyncFn;
@@ -128,59 +131,5 @@ private:
 
     // Helpers
     PowerControlRec* getPowerControlRec(uint32_t slotPlus1, uint32_t& slotIdx);
-
-    // // Power cycle states which are using in the powerStatus2BitsPerSlot member
-    // // Only one slot can be power cycling at a time so when a problem is discovered
-    // // the power is immediately turned off and then the power cycle state is set
-    // // to await the power cycle resource - once the power cycle resource is available
-    // // the power cycle state is set to power cycling in progress and no other
-    // // slot can be power cycled until the power cycle is complete
-    // enum PowerCycleState
-    // {
-    //     POWER_CYCLE_STATE_DISABLED = 0,
-    //     POWER_CYCLE_STATE_ON = 1,
-    //     POWER_CYCLE_STATE_AWAITING_POWER_CYCLE_RESOURCE = 2,
-    //     POWER_CYCLE_STATE_POWER_CYCLING_IN_PROGRESS = 3
-    // };
-    // static uint32_t POWER_CYCLE_OFF_DEFAULT_MS = 1000;
-    // static uint32_t POWER_CYCLE_RESET_DEFAULT_MS = 1000;
-
-    // // Power cycling
-    // enum PowerCycleResourceState
-    // {
-    //     POWER_CYCLE_RESOURCE_IDLE = 0,
-    //     POWER_CYCLE_RESOURCE_IN_PROGRESS = 1,
-    // };
-    // PowerCycleResourceState _powerCycleResourceState = POWER_CYCLE_RESOURCE_IDLE;
-    // uint32_t _powerCycleOffMs = POWER_CYCLE_OFF_DEFAULT_MS;
-    // uint32_t _powerCycleResetMs = POWER_CYCLE_RESET_DEFAULT_MS;
-
-    // // Initialisation state for power control
-    // enum PowerControlInitState
-    // {
-    //     POWER_CONTROL_INIT_NONE = 0,
-    //     POWER_CONTROL_INIT_OFF = 1,
-    //     POWER_CONTROL_INIT_ON = 2,
-    // };
-    // PowerControlInitState _powerControlInitState = POWER_CONTROL_INIT_NONE;
-    // uint32_t _powerControlInitLastMs = 0;
-    // static const uint32_t STARTUP_POWER_OFF_MS = 100;
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // /// @brief Set power level for a slot (or all slots)
-    // /// @param slotPlus1 Slot number (0 is all slots)
-    // /// @param powerLevel Power level
-    // void setVoltageLevel(uint32_t slotPlus1, PowerControlLevels powerLevel);
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // /// @brief Update power control registers for a single slot
-    // /// @param slotPlus1 Slot number (1-based)
-    // /// @param powerLevel Power level
-    // void updatePowerControlRegs(uint32_t slotPlus1, PowerControlLevels powerLevel);
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // /// @brief Write the power control registers
-    // void writePowerControlRegisters();
-
 
 };
