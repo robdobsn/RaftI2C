@@ -1,7 +1,7 @@
 import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
-import { AttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding } from "./DeviceInfo";
+import { AttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding, DeviceTypeAction } from "./DeviceInfo";
 import struct from 'python-struct';
 import TestDataGen from "./TestDataGen";
 
@@ -50,6 +50,10 @@ export class DeviceManager {
 
     // Websocket
     private _websocket: WebSocket | null = null;
+
+    // Message timestamp size
+    private MSG_TIMESTAMP_SIZE_HEX_CHARS = 4;
+    private MSG_TIMESTAMP_WRAP_VALUE = 65536;
 
     // Get instance
     public static getInstance(): DeviceManager {
@@ -432,7 +436,7 @@ export class DeviceManager {
                 if (!(deviceKey in this._devicesState)) {
                     
                     let deviceTypeName = "";
-                    if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups) {
+                    if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups && typeof attrGroups._t === "string") {
                         deviceTypeName = attrGroups._t || "";
                     } else {
                         console.warn(`DeviceManager missing device type attrGroups ${JSON.stringify(attrGroups)}`);
@@ -454,165 +458,25 @@ export class DeviceManager {
                 
                 // Check for online/offline state information
                 if (attrGroups && typeof attrGroups === "object" && "_o" in attrGroups) {
-                    this._devicesState[deviceKey].deviceIsOnline = attrGroups._o == "1";
+                    this._devicesState[deviceKey].deviceIsOnline = ((attrGroups._o === "1") || (attrGroups._o === 1));
                 }
 
                 // Iterate attribute groups
                 Object.entries(attrGroups).forEach(([attrGroup, msgHexStr]) => {
 
                     // Check valid
-                    // TODO - change 4 to number of chars in timestamp hex
-                    if (attrGroup.startsWith("_") || (typeof msgHexStr != 'string') || (msgHexStr.length < 4)) {
+                    if (attrGroup.startsWith("_") || (typeof msgHexStr != 'string')) {
                         return;
                     }
 
-                    // Extract timestamp which is the first 2 bytes
-                    let timestamp = parseInt(msgHexStr.slice(0, 4), 16);
+                    // Work through the message which may contain multiple data instances
+                    let msgHexStrIdx = 0;
 
-                    // Check if time is before lastReportTimeMs - in which case a wrap around occurred to add on the max value
-                    if (timestamp < this._devicesState[deviceKey].lastReportTimestampMs) {
-                        this._devicesState[deviceKey].reportTimestampOffsetMs += 65536;
-                    }
-                    this._devicesState[deviceKey].lastReportTimestampMs = timestamp;
-
-                    // Offset timestamp
-                    const origTimestamp = timestamp;
-                    timestamp += this._devicesState[deviceKey].reportTimestampOffsetMs;
-
-                    // Flag indicating any attrs added
-                    let attrsAdded = false;
-
-                    // Check for the attrGroup name in the device type info
-                    if (attrGroup in this._devicesState[deviceKey].deviceTypeInfo.attr) {
-
-                        // Set device state changed flag
-                        this._devicesState[deviceKey].deviceStateChanged = true;
-
-                        // Iterate over attributes in the group
-                        const devAttrDefinitions: DeviceTypeAttribute[] = this._devicesState[deviceKey].deviceTypeInfo.attr[attrGroup];
-                        let attrIdx = 0;
-                        let hexStrIdx = 4; // TODO - set this to the number of bytes in the timestamp
-                        while (hexStrIdx < msgHexStr.length) {
-                            if (attrIdx >= devAttrDefinitions.length) {
-                                console.warn(`DeviceManager msg too many attributes attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp}`);
-                                break;
-                            }
-                            const attr: DeviceTypeAttribute = devAttrDefinitions[attrIdx];
-                            if (!("t" in attr && attr.t.split(":")[0] in AttrTypeBits)) {
-                                console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
-                                break;
-                            }
-
-                            // Attr type can be of the form AA:NN:MM where:
-                            //   AA is the python struct type (e.g. >h)
-                            //   NN is the number of bits to read from the message (this has to be a multiple of 4)
-                            //   MM is for signed (2s compliment) numbers and specifies the position of the sign bit
-                            const attrSplit = attr.t.split(":");
-                            const attrStructBits = AttrTypeBits[attrSplit[0]];
-                            const attrReadBits = attrSplit.length > 1 ? parseInt(attrSplit[1]) : attrStructBits;
-                            const attrReadHexChars = Math.ceil(attrReadBits / 4);
-                            let attrTypeDefForStruct = attrSplit[0];
-                            const signExtendableMaskSignPos = attrSplit.length > 2 ? parseInt(attrSplit[2]) : 0;
-
-                            // Extract the hex chars for the value
-                            let valueHexChars = msgHexStr.slice(hexStrIdx, hexStrIdx + attrReadHexChars);
-
-                            // Pad the value to the right length for the conversion
-                            const padDigitsReqd = Math.ceil(attrStructBits / 4) - valueHexChars.length;
-                            if (attrTypeDefForStruct.startsWith("<")) {
-                                for (let i = 0; i < padDigitsReqd; i++)
-                                    valueHexChars += "0";
-                            } else {
-                                for (let i = 0; i < padDigitsReqd; i++)
-                                    valueHexChars = "0" + valueHexChars;
-                            }
-
-                            // Check if an MM part is present
-                            const mmSpecifiedOnSignedValue = (signExtendableMaskSignPos > 0) && isAttrTypeSigned(attrTypeDefForStruct);
-                            if (mmSpecifiedOnSignedValue) {
-                                // Make the conversion unsigned for now
-                                attrTypeDefForStruct = attrSplit[0].toUpperCase();
-                            }
-
-                            // Convert the value using python-struct
-                            let value = 0;
-                            const dataBuf = Buffer.from(valueHexChars, 'hex')
-                            value = struct.unpack(attrSplit[0], dataBuf)[0] as number;
-
-                            // Check if sign extendable mask specified on signed value
-                            if (mmSpecifiedOnSignedValue) {
-                                const signBitMask = 1 << (signExtendableMaskSignPos - 1);
-                                const valueOnlyMask = signBitMask - 1;
-                                if (value & signBitMask) {
-                                    value = (value & valueOnlyMask) - signBitMask;
-                                } else {
-                                    value = value & valueOnlyMask;
-                                }
-                            }
-
-                            // Check for simple mask
-                            if ("m" in attr) {
-                                if (typeof attr.m === "string")
-                                    value = value & parseInt(attr.m, 16);
-                                else if (typeof attr.m === "number")
-                                    value = (value & attr.m);
-                            }
-
-                            // Check for bit shift required
-                            if ("s" in attr && attr.s) {
-                                if (attr.s > 0) {
-                                    value = value >> attr.s;
-                                } else if (attr.s < 0) {
-                                    value = value << -attr.s;
-                                }
-                            }
-
-                            // Check for divisor
-                            if ("d" in attr && attr.d) {
-                                value = value / attr.d;
-                            }
-
-                            // Check for value to add
-                            if ("a" in attr && attr.a !== undefined) {
-                                value += attr.a;
-                            }
-                            console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
-                            hexStrIdx += attrReadHexChars;
-                            attrIdx++;
-
-                            // Check if attribute already exists in the device state
-                            if (attr.n in this._devicesState[deviceKey].deviceAttributes) {
-
-                                // Limit to MAX_DATA_POINTS_TO_STORE
-                                if (this._devicesState[deviceKey].deviceAttributes[attr.n].values.length >= this.MAX_DATA_POINTS_TO_STORE) {
-                                    this._devicesState[deviceKey].deviceAttributes[attr.n].values.shift();
-                                }
-                                this._devicesState[deviceKey].deviceAttributes[attr.n].values.push(value);
-                                this._devicesState[deviceKey].deviceAttributes[attr.n].newData = true;
-                            } else {
-                                this._devicesState[deviceKey].deviceAttributes[attr.n] = {
-                                    name: attr.n,
-                                    newAttribute: true,
-                                    newData: true,
-                                    values: [value],
-                                    units: decodeAttrUnitsEncoding(attr.u || ""),
-                                    range: attr.r || [0, 0],
-                                    format: ("f" in attr && typeof attr.f == "string") ? attr.f : "",
-                                    visibleSeries: "vs" in attr ? (attr.vs === 0 || attr.vs === false ? false : !!attr.vs) : true,
-                                    visibleForm: "vf" in attr ? (attr.vf === 0 || attr.vf === false ? false : !!attr.vf) : true,
-                                };
-                            }
-                            attrsAdded = true;
-                        }
-                    }
-
-                    // If any attributes added then add the timestamp to the device timeline
-                    if (attrsAdded) {
-                        // Limit to MAX_DATA_POINTS_TO_STORE
-                        if (this._devicesState[deviceKey].deviceTimeline.length >= this.MAX_DATA_POINTS_TO_STORE) {
-                            this._devicesState[deviceKey].deviceTimeline.shift();
-                        }
-                        this._devicesState[deviceKey].deviceTimeline.push(timestamp);
+                    // Loop
+                    while (msgHexStrIdx < msgHexStr.length) {
+                        msgHexStrIdx = this.processMsgAttrGroup(msgHexStr, msgHexStrIdx, deviceKey, attrGroup);
+                        if (msgHexStrIdx < 0)
+                            break;
                     }
                 });
             });
@@ -632,6 +496,163 @@ export class DeviceManager {
         // Process the callback
         this.processStateCallback();
 
+    }
+
+    private processMsgAttrGroup(msgHexStr: string, msgHexStrIdx: number, deviceKey: string, attrGroup: string): number {
+
+        // Check there are enough characters for the timestamp
+        if (msgHexStrIdx + 4 > msgHexStr.length) {
+            return -1;
+        }
+
+        // Extract timestamp which is the first MSG_TIMESTAMP_SIZE_HEX_CHARS chars of the hex string
+        let timestamp = parseInt(msgHexStr.slice(msgHexStrIdx, msgHexStrIdx+this.MSG_TIMESTAMP_SIZE_HEX_CHARS), 16);
+
+        // Check if time is before lastReportTimeMs - in which case a wrap around occurred to add on the max value
+        if (timestamp < this._devicesState[deviceKey].lastReportTimestampMs) {
+            this._devicesState[deviceKey].reportTimestampOffsetMs += this.MSG_TIMESTAMP_WRAP_VALUE;
+        }
+        this._devicesState[deviceKey].lastReportTimestampMs = timestamp;
+
+        // Offset timestamp
+        const origTimestamp = timestamp;
+        timestamp += this._devicesState[deviceKey].reportTimestampOffsetMs;
+
+        // Flag indicating any attrs added
+        let attrsAdded = false;
+        msgHexStrIdx += this.MSG_TIMESTAMP_SIZE_HEX_CHARS;
+
+        // Check for the attrGroup name in the device type info
+        if (attrGroup in this._devicesState[deviceKey].deviceTypeInfo.attr) {
+
+            // Set device state changed flag
+            this._devicesState[deviceKey].deviceStateChanged = true;
+
+            // Iterate over attributes in the group
+            const devAttrDefinitions: DeviceTypeAttribute[] = this._devicesState[deviceKey].deviceTypeInfo.attr[attrGroup];
+            let attrIdx = 0;
+            while (msgHexStrIdx < msgHexStr.length) {
+                if (attrIdx >= devAttrDefinitions.length) {
+                    break;
+                }
+                const attr: DeviceTypeAttribute = devAttrDefinitions[attrIdx];
+                if (!("t" in attr && attr.t.split(":")[0] in AttrTypeBits)) {
+                    console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
+                    break;
+                }
+
+                // Attr type can be of the form AA:NN:MM where:
+                //   AA is the python struct type (e.g. >h)
+                //   NN is the number of bits to read from the message (this has to be a multiple of 4)
+                //   MM is for signed (2s compliment) numbers and specifies the position of the sign bit
+                const attrSplit = attr.t.split(":");
+                const attrStructBits = AttrTypeBits[attrSplit[0]];
+                const attrReadBits = attrSplit.length > 1 ? parseInt(attrSplit[1]) : attrStructBits;
+                const attrReadHexChars = Math.ceil(attrReadBits / 4);
+                let attrTypeDefForStruct = attrSplit[0];
+                const signExtendableMaskSignPos = attrSplit.length > 2 ? parseInt(attrSplit[2]) : 0;
+
+                // Extract the hex chars for the value
+                let valueHexChars = msgHexStr.slice(msgHexStrIdx, msgHexStrIdx + attrReadHexChars);
+
+                // Pad the value to the right length for the conversion
+                const padDigitsReqd = Math.ceil(attrStructBits / 4) - valueHexChars.length;
+                if (attrTypeDefForStruct.startsWith("<")) {
+                    for (let i = 0; i < padDigitsReqd; i++)
+                        valueHexChars += "0";
+                } else {
+                    for (let i = 0; i < padDigitsReqd; i++)
+                        valueHexChars = "0" + valueHexChars;
+                }
+
+                // Check if an MM part is present
+                const mmSpecifiedOnSignedValue = (signExtendableMaskSignPos > 0) && isAttrTypeSigned(attrTypeDefForStruct);
+                if (mmSpecifiedOnSignedValue) {
+                    // Make the conversion unsigned for now
+                    attrTypeDefForStruct = attrSplit[0].toUpperCase();
+                }
+
+                // Convert the value using python-struct
+                let value = 0;
+                const dataBuf = Buffer.from(valueHexChars, 'hex')
+                value = struct.unpack(attrSplit[0], dataBuf)[0] as number;
+
+                // Check if sign extendable mask specified on signed value
+                if (mmSpecifiedOnSignedValue) {
+                    const signBitMask = 1 << (signExtendableMaskSignPos - 1);
+                    const valueOnlyMask = signBitMask - 1;
+                    if (value & signBitMask) {
+                        value = (value & valueOnlyMask) - signBitMask;
+                    } else {
+                        value = value & valueOnlyMask;
+                    }
+                }
+
+                // Check for simple mask
+                if ("m" in attr) {
+                    if (typeof attr.m === "string")
+                        value = value & parseInt(attr.m, 16);
+                    else if (typeof attr.m === "number")
+                        value = (value & attr.m);
+                }
+
+                // Check for bit shift required
+                if ("s" in attr && attr.s) {
+                    if (attr.s > 0) {
+                        value = value >> attr.s;
+                    } else if (attr.s < 0) {
+                        value = value << -attr.s;
+                    }
+                }
+
+                // Check for divisor
+                if ("d" in attr && attr.d) {
+                    value = value / attr.d;
+                }
+
+                // Check for value to add
+                if ("a" in attr && attr.a !== undefined) {
+                    value += attr.a;
+                }
+                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
+                msgHexStrIdx += attrReadHexChars;
+                attrIdx++;
+
+                // Check if attribute already exists in the device state
+                if (attr.n in this._devicesState[deviceKey].deviceAttributes) {
+
+                    // Limit to MAX_DATA_POINTS_TO_STORE
+                    if (this._devicesState[deviceKey].deviceAttributes[attr.n].values.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                        this._devicesState[deviceKey].deviceAttributes[attr.n].values.shift();
+                    }
+                    this._devicesState[deviceKey].deviceAttributes[attr.n].values.push(value);
+                    this._devicesState[deviceKey].deviceAttributes[attr.n].newData = true;
+                } else {
+                    this._devicesState[deviceKey].deviceAttributes[attr.n] = {
+                        name: attr.n,
+                        newAttribute: true,
+                        newData: true,
+                        values: [value],
+                        units: decodeAttrUnitsEncoding(attr.u || ""),
+                        range: attr.r || [0, 0],
+                        format: ("f" in attr && typeof attr.f == "string") ? attr.f : "",
+                        visibleSeries: "vs" in attr ? (attr.vs === 0 || attr.vs === false ? false : !!attr.vs) : true,
+                        visibleForm: "vf" in attr ? (attr.vf === 0 || attr.vf === false ? false : !!attr.vf) : true,
+                    };
+                }
+                attrsAdded = true;
+            }
+        }
+
+        // If any attributes added then add the timestamp to the device timeline
+        if (attrsAdded) {
+            // Limit to MAX_DATA_POINTS_TO_STORE
+            if (this._devicesState[deviceKey].deviceTimeline.length >= this.MAX_DATA_POINTS_TO_STORE) {
+                this._devicesState[deviceKey].deviceTimeline.shift();
+            }
+            this._devicesState[deviceKey].deviceTimeline.push(timestamp);
+        }
+        return msgHexStrIdx;
     }
 
     private processStateCallback() {
@@ -714,5 +735,40 @@ export class DeviceManager {
             console.error(`DeviceManager getDeviceTypeInfo error ${error}`);
             return emptyRec;
         }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Send action to device
+    ////////////////////////////////////////////////////////////////////////////
+
+    public sendAction(deviceKey: string, action: DeviceTypeAction, value: number): void {
+        console.log(`DeviceManager sendAction ${deviceKey} action name ${action.n} value ${value} prefix ${action.w}`);
+
+        // Form the write bytes
+        let writeBytes = struct.pack(action.t, value);
+
+        // Convert to hex string
+        let writeHexStr = Buffer.from(writeBytes).toString('hex');
+
+        // Add prefix
+        writeHexStr = action.w + writeHexStr;
+
+        // Separate the bus and address in the deviceKey (_ char)
+        const devBus = deviceKey.split("_")[0]
+        const devAddr = deviceKey.split("_")[1]
+
+        // Send the action to the server
+        const url = this._serverAddressPrefix + this._urlPrefix + "/devman/cmdraw?bus=" + devBus + "&addr=" + devAddr + "&hexWr=" + writeHexStr;
+
+        console.log(`DeviceManager deviceKey ${deviceKey} sendAction ${url}`);
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    console.error(`DeviceManager sendAction response not ok ${response.status}`);
+                }
+            })
+            .catch(error => {
+                console.error(`DeviceManager sendAction error ${error}`);
+            }); 
     }
 }

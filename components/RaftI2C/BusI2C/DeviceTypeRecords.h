@@ -14,17 +14,27 @@
 #include "RaftJson.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Callback function definitions
+/// @brief Get length of a data record
+typedef uint32_t (*BusI2CDevTypeRecordLengthFn)();
+
+/// @brief Get decoded data record
+typedef void (*BusI2CDevTypeRecordDecodeFn)(uint8_t* pPollResult, uint32_t pollResultLen, void* pDest);
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class BusI2CDevTypeRecord
 /// @brief Device Type Record
 class BusI2CDevTypeRecord
 {
 public:
-    const char* deviceType;
-    const char* addresses;
-    const char* detectionValues;
-    const char* initValues;
-    const char* pollingConfigJson;
-    const char* devInfoJson;
+    const char* deviceType = nullptr;
+    const char* addresses = nullptr;
+    const char* detectionValues = nullptr;
+    const char* initValues = nullptr;
+    const char* pollingConfigJson = nullptr;
+    const char* devInfoJson = nullptr;
+    BusI2CDevTypeRecordLengthFn pollResultLenFn = nullptr;
+    BusI2CDevTypeRecordDecodeFn pollResultDecodeFn = nullptr;
 
     String getJson(bool includePlugAndPlayInfo) const
     {

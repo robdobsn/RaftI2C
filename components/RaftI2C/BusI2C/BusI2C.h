@@ -195,14 +195,25 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus address and status as a string
-    /// @param busElemAddr - bus element address and status
-    virtual String busElemAddrAndStatusToString(BusElemAddrAndStatus busElemAddr) const override final
+    /// @brief Convert bus address to string
+    /// @param addr - address
+    /// @return address as a string
+    virtual String addrToString(uint32_t addr) const override final
     {
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busElemAddr.address);
-        return addrAndSlot.toString() + ":" +
-                        (busElemAddr.isChangeToOnline ? "Online" : "Offline" + String(busElemAddr.isChangeToOffline ? " (was online)" : ""));
-    }     
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr);
+        return addrAndSlot.toString();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Convert string to bus address
+    /// @param addrStr - address as a string
+    /// @return address
+    virtual uint32_t stringToAddr(const String& addrStr) const override final
+    {
+        BusI2CAddrAndSlot addrAndSlot;
+        addrAndSlot.fromString(addrStr);
+        return addrAndSlot.toCompositeAddrAndSlot();
+    }
 
     // Yield value on each bus processing loop
     static const uint32_t I2C_BUS_LOOP_YIELD_MS = 5;

@@ -56,6 +56,21 @@ public:
     {
         return "0x" + String(addr, 16) + "@" + String(slotPlus1);
     }
+    void fromString(const String& str)
+    {
+        // Split into address and slot
+        int atPos = str.indexOf('@');
+        if (atPos < 0)
+        {
+            addr = strtol(str.c_str(), NULL, 0);
+            slotPlus1 = 0;
+        }
+        else
+        {
+            addr = strtol(str.substring(0, atPos).c_str(), NULL, 0);
+            slotPlus1 = strtol(str.substring(atPos + 1).c_str(), NULL, 0);
+        }
+    }
     uint16_t addr:10;
     uint8_t slotPlus1:6;
 };

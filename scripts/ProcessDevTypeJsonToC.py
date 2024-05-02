@@ -1,6 +1,9 @@
 import json
 import sys
 import re
+import argparse
+
+from DecodeGenerator import decode_generator_len_fn
 
 # ProcessDevTypeJsonToC.py
 # Rob Dobson 2024
@@ -14,7 +17,7 @@ import re
 # - The path to the JSON file with the device types
 # - The path to the header file to generate
 
-def process_dev_types(json_path, header_path):
+def process_dev_types(json_path, header_path, gen_decode):
     with open(json_path, 'r') as json_file:
         dev_ident_json = json.load(json_file)
 
@@ -127,8 +130,13 @@ def process_dev_types(json_path, header_path):
             header_file.write(f'        R"({dev_type["detectionValues"]})",\n')
             header_file.write(f'        R"({dev_type["initValues"]})",\n')
             header_file.write(f'        R"({polling_config_json_str})",\n')
-            header_file.write(f'        R"({dev_info_json_str})"\n')
-            header_file.write('    },\n')
+            header_file.write(f'        R"({dev_info_json_str})"')
+
+            # Check if gen_decode is set
+            if gen_decode:
+                header_file.write(f',\n        {decode_generator_len_fn(dev_type)}')
+
+            header_file.write('\n    },\n')
             dev_record_index += 1
 
         header_file.write('};\n\n')
@@ -206,5 +214,11 @@ def process_dev_types(json_path, header_path):
         header_file.write(f'\nstatic const uint8_t numScanPriorityLists = {NUM_PRIORITY_LEVELS};\n')
 
 if __name__ == "__main__":
-    process_dev_types(sys.argv[1], sys.argv[2])
+    argparse = argparse.ArgumentParser()
+    argparse.add_argument("json_path", help="Path to the JSON file with the device types")
+    argparse.add_argument("header_path", help="Path to the header file to generate")
+    # Add arg for generation of c++ code to decode poll results
+    argparse.add_argument("--gendecode", help="Generate C++ code to decode poll results", action="store_false")
+    args = argparse.parse_args()
+    process_dev_types(args.json_path, args.header_path, args.gendecode)
     sys.exit(0)

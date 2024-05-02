@@ -15,12 +15,16 @@
 #include "SysManager.h"
 #include "CommsChannelMsg.h"
 #include "BusI2C.h"
+#include "BusRequestInfo.h"
 
 // Warn
 #define WARN_ON_NO_BUSES_DEFINED
 
 // Debug
 #define DEBUG_BUSES_CONFIGURATION
+#define DEBUG_MAKE_BUS_REQUEST_VERBOSE
+#define DEBUG_API_CMDRAW
+#define DEBUG_CMD_RESULT
 
 static const char *MODULE_PREFIX = "HWDevMan";
 
@@ -130,7 +134,7 @@ void HWDevMan::addRestAPIEndpoints(RestAPIEndpointManager &endpointManager)
     // REST API endpoints
     endpointManager.addEndpoint("devman", RestAPIEndpoint::ENDPOINT_CALLBACK, RestAPIEndpoint::ENDPOINT_GET,
                             std::bind(&HWDevMan::apiDevMan, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
-                            "devman/typeinfo?bus=<busName>&type=<typename> - Get device info for type");
+                            "devman/typeinfo?bus=<busName>&type=<typename> - Get device info for type, devman/cmdraw?bus=<busName>&addr=<addr>&hexWr=<hexWriteData>&numToRd=<numBytesToRead>&msgKey=<msgKey> - Send raw command to device");
     LOG_I(MODULE_PREFIX, "addRestAPIEndpoints added devman");
 }
 
@@ -157,30 +161,20 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
         // Get bus name
         String busName = jsonParams.getString("bus", "");
         if (busName.length() == 0)
-        {
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusMissing");
-        }
 
         // Get device name
         String devTypeName = jsonParams.getString("type", "");
         if (devTypeName.length() == 0)
-        {
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeMissing");
-        }
 
         // Find the bus
-        String devInfo;
-        for (BusBase* pBusElem : _busList)
-        {
-            if (pBusElem && pBusElem->getBusName().equalsIgnoreCase(busName))
-            {
-                // Access the bus
-                devInfo = pBusElem->getDevTypeInfoJsonByTypeName(devTypeName, false);
-                break;
-            }
-        }
+        BusBase* pBus = getBusByName(busName);
+        if (!pBus)
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
-        // Check device info
+        // Get device info
+        String devInfo = pBus->getDevTypeInfoJsonByTypeName(devTypeName, false);
         if (devInfo.length() == 0)
         {
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
@@ -188,6 +182,83 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 
         // Set result
         return Raft::setJsonBoolResult(reqStr.c_str(), respStr, true, ("\"devinfo\":" + devInfo).c_str());
+    }
+
+    // Check for raw command
+    if (cmdName.equalsIgnoreCase("cmdraw"))
+    {
+        // Get bus name
+        String busName = jsonParams.getString("bus", "");
+        if (busName.length() == 0)
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusMissing");
+
+        // Get args
+        String addrStr = jsonParams.getString("addr", "");
+        String hexWriteData = jsonParams.getString("hexWr", "");
+        int numBytesToRead = jsonParams.getLong("numToRd", 0);
+        // String msgKey = jsonParams.getString("msgKey", "");
+
+        // Check valid
+        if (addrStr.length() == 0)
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failMissingAddr");
+
+        // Find the bus
+        BusBase* pBus = getBusByName(busName);
+        if (!pBus)
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
+
+        // Convert address
+        uint32_t addr = pBus->stringToAddr(addrStr);
+
+        // Get bytes to write
+        uint32_t numBytesToWrite = hexWriteData.length() / 2;
+        std::vector<uint8_t> writeVec;
+        writeVec.resize(numBytesToWrite);
+        uint32_t writeBytesLen = Raft::getBytesFromHexStr(hexWriteData.c_str(), writeVec.data(), numBytesToWrite);
+        writeVec.resize(writeBytesLen);
+
+        // Store the msg key for response
+        // TODO store the msgKey for responses
+        // _cmdResponseMsgKey = msgKey;
+
+        // Form HWElemReq
+        static const uint32_t CMDID_CMDRAW = 100;
+        HWElemReq hwElemReq = {writeVec, numBytesToRead, CMDID_CMDRAW, "cmdraw", 0};
+
+        // Form request
+        BusRequestInfo busReqInfo("", addr);
+        busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0, 
+                [](void* pCallbackData, BusRequestResult& reqResult)
+                    {
+                        if (pCallbackData)
+                            ((HWDevMan *)pCallbackData)->cmdResultReportCallback(reqResult);
+                    }, 
+                this);
+
+#ifdef DEBUG_MAKE_BUS_REQUEST_VERBOSE
+        String outStr;
+        Raft::getHexStrFromBytes(hwElemReq._writeData.data(), 
+                    hwElemReq._writeData.size() > 16 ? 16 : hwElemReq._writeData.size(),
+                    outStr);
+        LOG_I(MODULE_PREFIX, "apiHWDevice addr %s len %d data %s ...", 
+                        addrStr.c_str(), 
+                        hwElemReq._writeData.size(),
+                        outStr.c_str());
+#endif
+
+        bool rslt = pBus->addRequest(busReqInfo);
+        if (!rslt)
+        {
+            LOG_W(MODULE_PREFIX, "apiHWDevice failed send raw command");
+        }
+
+        // Debug
+#ifdef DEBUG_API_CMDRAW
+        LOG_I(MODULE_PREFIX, "apiHWDevice hexWriteData %s numToRead %d", hexWriteData.c_str(), numBytesToRead);
+#endif
+
+        // Set result
+        return Raft::setJsonBoolResult(reqStr.c_str(), respStr, rslt);    
     }
 
     // Set result
@@ -417,8 +488,55 @@ void HWDevMan::busElemStatusCB(BusBase& bus, const std::vector<BusElemAddrAndSta
     // Debug
     for (const auto& el : statusChanges)
     {
-        LOG_I(MODULE_PREFIX, "busElemStatusInfo %s %s", bus.getBusName().c_str(), 
-            bus.busElemAddrAndStatusToString(el).c_str());
+        LOG_I(MODULE_PREFIX, "busElemStatusInfo %s %s %s", bus.getBusName().c_str(), 
+            bus.addrToString(el.address).c_str(), el.isChangeToOnline ? "Online" : ("Offline" + String(el.isChangeToOffline ? " (was online)" : "")).c_str());
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get bus by name
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+BusBase* HWDevMan::getBusByName(const String& busName)
+{
+    for (BusBase* pBus : _busList)
+    {
+        if (pBus && pBus->getBusName().equalsIgnoreCase(busName))
+            return pBus;
+    }
+    return nullptr;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cmd result report callbacks
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void HWDevMan::cmdResultReportCallback(BusRequestResult &reqResult)
+{
+#ifdef DEBUG_CMD_RESULT
+    LOG_I(MODULE_PREFIX, "cmdResultReportCallback len %d", reqResult.getReadDataLen());
+    Raft::logHexBuf(reqResult.getReadData(), reqResult.getReadDataLen(), MODULE_PREFIX, "cmdResultReportCallback");
+#endif
+
+    // // Generate hex response
+    // String hexResp;
+    // Raft::getHexStrFromBytes(reqResult.getReadData(), reqResult.getReadDataLen(), hexResp);
+
+    // Report
+    // TODO 
+//     RICRESTMsg ricRESTMsg;
+//     ricRESTMsg.setElemCode(RICRESTMsg::RICREST_ELEM_CODE_CMDRESPJSON);
+//     CommsChannelMsg endpointMsg(MSG_CHANNEL_ID_ALL, MSG_PROTOCOL_RICREST, 0, MSG_TYPE_REPORT);
+//     char msgBuf[200];
+//     snprintf(msgBuf, sizeof(msgBuf), R"({"msgType":"raw","hexRd":"%s","elemName":"%s","IDNo":%d,"msgKey":"%s","addr":"0x%02x"})", 
+//                 hexResp.c_str(), _name.c_str(), (int)_IDNo, _cmdResponseMsgKey.c_str(), _address);
+//     ricRESTMsg.encode(msgBuf, endpointMsg, RICRESTMsg::RICREST_ELEM_CODE_CMDRESPJSON);
+
+// #ifdef DEBUG_CMD_RESULT
+//     LOG_I(MODULE_PREFIX, "cmdResultReportCallback responseJSON %s", msgBuf);
+// #endif
+
+//     // Send message on the appropriate channel
+//     if (_pCommsCore)
+//         _pCommsCore->outboundHandleMsg(endpointMsg);
+}

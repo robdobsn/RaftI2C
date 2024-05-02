@@ -5,6 +5,7 @@ import DeviceAttrsForm from './DeviceAttrsForm';
 import DeviceLineChart from './DeviceLineChart';
 import './styles.css';
 import { DeviceManager } from './DeviceManager';
+import DeviceCmdsForm from './DeviceActionsForm';
 
 const deviceManager = DeviceManager.getInstance();
 
@@ -18,8 +19,7 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
     const data: DeviceState = deviceManager.getDeviceState(deviceKey);
 
     // Gray out the device screen if the device is offline
-    const isOnline = data.deviceIsOnline;
-    const offlineClass = isOnline ? '' : 'offline';
+    const offlineClass = data.deviceIsOnline ? '' : 'offline';
 
     const [timedChartUpdate, setTimedChartUpdate] = useState<number>(0);
 
@@ -40,8 +40,13 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
         </div>
         <div className="device-block-data">
           {/* <p>Data: {JSON.stringify(data)}</p> */}
-          <div  className="device-attrs-form">
-            <DeviceAttrsForm deviceKey={deviceKey} lastUpdated={lastUpdated} />
+          <div className="device-attrs-and-actions">
+            <div  className="device-attrs-form">
+              <DeviceAttrsForm deviceKey={deviceKey} lastUpdated={lastUpdated} />
+            </div>
+            <div className="device-actions">
+              <DeviceCmdsForm deviceKey={deviceKey} />
+            </div>
           </div>
           <div className="device-line-chart">
             <DeviceLineChart deviceKey={deviceKey} lastUpdated={timedChartUpdate} />

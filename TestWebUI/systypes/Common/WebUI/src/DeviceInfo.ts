@@ -72,7 +72,6 @@ export type AttrTypeBitsType = {
     d: number;
     ">d": number;
     "<d": number;
-    "t20": number;
 };
 
 export function isAttrTypeSigned(attrType: string): boolean {
@@ -87,7 +86,7 @@ export function decodeAttrUnitsEncoding(attr: string): string {
 
 export interface DeviceTypeAttribute {
     n: string;                  // Attribute name
-    t: string;                  // Attribute type (e.g. uint16 - defines number of bytes used to store the attribute value)
+    t: string;                  // Attribute type using python struct module format (e.g. 'H' for unsigned short, 'h' for signed short, 'f' for float etc.)
     u: string;                  // Attribute unit
     r: number[];                // Attribute range (either min, max or min, max, step or discrete values)
     m?: number | string;        // Bit mask to extract the attribute value from the message
@@ -103,12 +102,24 @@ export interface DeviceTypeAttributeGroups {
     [groupName: string]: DeviceTypeAttribute[];
 }
 
+export interface DeviceTypeAction {
+    n: string;                  // Action name
+    t: string;                  // Action type using python struct module format (e.g. 'H' for unsigned short, 'h' for signed short, 'f' for float etc.)
+    w: string;                  // Prefix to write to cmd API
+    r: number[];                // Range of valid values for the action
+}
+
+export interface DeviceTypeActionGroups {
+    [groupName: string]: DeviceTypeAction[];
+}
+
 export interface DeviceTypeInfo {
     name: string;
     desc: string;
     manu: string;
     type: string;
     attr: DeviceTypeAttributeGroups;
+    actions?: DeviceTypeActionGroups;
 }
 
 export interface DeviceTypeInfoTestJsonRec {

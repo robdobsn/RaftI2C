@@ -64,8 +64,8 @@ class TestDataGen {
             const online3Value = Math.floor(iterCount / 200) % 2 === 0;
             const online4Value = Math.floor(iterCount / 300) % 2 === 1;
             const dev2MsgPresent = iterCount % 500 > 250;
-            const dev3MsgPresent = iterCount % 200 > 100;
-            const dev4MsgPresent = iterCount % 200 > 150;
+            const dev3MsgPresent = iterCount % 200 < 150;
+            const dev4MsgPresent = iterCount % 200 > 100;
 
             // Templates
             const dev1Msg = `

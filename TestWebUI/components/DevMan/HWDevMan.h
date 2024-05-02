@@ -13,6 +13,7 @@
 #include "RaftSysMod.h"
 #include "BusBase.h"
 #include "SupervisorStats.h"
+#include "BusRequestResult.h"
 
 class APISourceInfo;
 
@@ -99,7 +100,9 @@ private:
     void getStatusHash(std::vector<uint8_t>& stateHash);
     void busRegister(const char* busConstrName, BusFactoryCreatorFn busCreateFn);
     void setupBuses();
-
+    BusBase* getBusByName(const String& busName);
+    void cmdResultReportCallback(BusRequestResult& reqResult);
+ 
     // Bus operation and status functions
     void busElemStatusCB(BusBase& bus, const std::vector<BusElemAddrAndStatus>& statusChanges);
     void busOperationStatusCB(BusBase& bus, BusOperationStatus busOperationStatus);

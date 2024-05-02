@@ -61,6 +61,12 @@ h1 {
     min-height: 10rem;  /* Minimum height to ensure sufficient visibility */    
 }
 
+.device-attrs-and-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;  /* Space between the form and the actions */
+}
+
 /* Styles for the form and chart to adjust space */
 .device-attrs-form {
     flex: 0 0 auto; /* Form takes only as much space as it needs */
@@ -68,6 +74,14 @@ h1 {
     border: 1px solid #666; /* Adjusting border color for dark theme */
     border-radius: 4px;
     background: #444; /* Slightly lighter dark background for distinction */    
+}
+
+.device-cmds-form {
+    flex: 0 0 auto; /* Form takes only as much space as it needs */
+    padding: 10px;
+    border: 1px solid #666; /* Adjusting border color for dark theme */
+    border-radius: 4px;
+    background: #444; /* Slightly lighter dark background for distinction */
 }
 
 .device-line-chart {
