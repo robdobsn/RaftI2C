@@ -614,7 +614,8 @@ export class DeviceManager {
                 if ("a" in attr && attr.a !== undefined) {
                     value += attr.a;
                 }
-                console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
+
+                // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
                 msgHexStrIdx += attrReadHexChars;
                 attrIdx++;
 
@@ -742,7 +743,7 @@ export class DeviceManager {
     ////////////////////////////////////////////////////////////////////////////
 
     public sendAction(deviceKey: string, action: DeviceTypeAction, value: number): void {
-        console.log(`DeviceManager sendAction ${deviceKey} action name ${action.n} value ${value} prefix ${action.w}`);
+        // console.log(`DeviceManager sendAction ${deviceKey} action name ${action.n} value ${value} prefix ${action.w}`);
 
         // Form the write bytes
         let writeBytes = struct.pack(action.t, value);
@@ -760,7 +761,7 @@ export class DeviceManager {
         // Send the action to the server
         const url = this._serverAddressPrefix + this._urlPrefix + "/devman/cmdraw?bus=" + devBus + "&addr=" + devAddr + "&hexWr=" + writeHexStr;
 
-        console.log(`DeviceManager deviceKey ${deviceKey} sendAction ${url}`);
+        console.log(`DeviceManager deviceKey ${deviceKey} action name ${action.n} value ${value} prefix ${action.w} sendAction ${url}`);
         fetch(url)
             .then(response => {
                 if (!response.ok) {

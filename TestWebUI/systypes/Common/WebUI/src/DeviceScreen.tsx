@@ -41,16 +41,10 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
         <div className="device-block-data">
           {/* <p>Data: {JSON.stringify(data)}</p> */}
           <div className="device-attrs-and-actions">
-            <div  className="device-attrs-form">
-              <DeviceAttrsForm deviceKey={deviceKey} lastUpdated={lastUpdated} />
-            </div>
-            <div className="device-actions">
-              <DeviceCmdsForm deviceKey={deviceKey} />
-            </div>
+            <DeviceAttrsForm deviceKey={deviceKey} lastUpdated={lastUpdated} />
+            <DeviceCmdsForm deviceKey={deviceKey} />
           </div>
-          <div className="device-line-chart">
-            <DeviceLineChart deviceKey={deviceKey} lastUpdated={timedChartUpdate} />
-          </div>
+          <DeviceLineChart deviceKey={deviceKey} lastUpdated={timedChartUpdate} />
         </div>
       </div>
     );

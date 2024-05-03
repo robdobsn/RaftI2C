@@ -107,6 +107,10 @@ export interface DeviceTypeAction {
     t: string;                  // Action type using python struct module format (e.g. 'H' for unsigned short, 'h' for signed short, 'f' for float etc.)
     w: string;                  // Prefix to write to cmd API
     r: number[];                // Range of valid values for the action
+    f?: string;                 // Custom formatting options (e.g. LEDPIX for LED pixel grid)
+    NX?: number;                // Number of X in the LED pixel grid
+    NY?: number;                // Number of Y in the LED pixel grid
+    concat?: boolean;           // Concatenate the all values into a single command
 }
 
 export interface DeviceTypeActionGroups {

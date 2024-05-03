@@ -63,9 +63,12 @@ class TestDataGen {
             const online2Value = Math.floor(iterCount / 150) % 2 === 1;
             const online3Value = Math.floor(iterCount / 200) % 2 === 0;
             const online4Value = Math.floor(iterCount / 300) % 2 === 1;
-            const dev2MsgPresent = iterCount % 500 > 250;
-            const dev3MsgPresent = iterCount % 200 < 150;
-            const dev4MsgPresent = iterCount % 200 > 100;
+            const online5Value = 1;
+            const allPresent = true;
+            const dev2MsgPresent = allPresent || iterCount % 500 > 250;
+            const dev3MsgPresent = allPresent || iterCount % 200 < 150;
+            const dev4MsgPresent = allPresent || iterCount % 200 > 100;
+            const dev5MsgPresent = allPresent || iterCount % 200 < 180;
 
             // Templates
             const dev1Msg = `
@@ -92,15 +95,22 @@ class TestDataGen {
             const dev3Msg = `
                 "0x6f@41": {
                     "x": "${tsHexHighLow}${but1Val}",
-                    "_t": "QWIICBUTTON"
+                    "_t": "QwiicButton"
                     ${online3Value ? ', "_o": 1' : ', "_o": 0'}
                 }
             `;
             const dev4Msg = `
                 "0x6f@42": {
                     "x": "${tsHexHighLow}${but2Val}",
-                    "_t": "QWIICBUTTON"
+                    "_t": "QwiicButton"
                     ${online4Value ? ', "_o": 1' : ', "_o": 0'}
+                }
+            `;
+            const dev5Msg = `
+                "0x23@0": {
+                    "x": "",
+                    "_t": "QwiicLEDStick"
+                    ${online5Value ? ', "_o": 1' : ', "_o": 0'}
                 }
             `;
             const msg = `{
@@ -110,6 +120,7 @@ class TestDataGen {
                         ${dev2MsgPresent ? ',' + dev2Msg : ''}
                         ${dev3MsgPresent ? ',' + dev3Msg : ''}
                         ${dev4MsgPresent ? ',' + dev4Msg : ''}
+                        ${dev5MsgPresent ? ',' + dev5Msg : ''}
                     }
                 }`;
 
@@ -121,7 +132,7 @@ class TestDataGen {
             handleDeviceMsgJson(msg);
             const debugHandleMsgEnd = performance.now();
 
-            console.log(`iterCount ${iterCount} genTestDataTime ${debugPerfTimerEnd - debugPerfTimerStart} handleTestDataTime ${debugHandleMsgEnd - debugHandleMsgStart}`);
+            // console.log(`iterCount ${iterCount} genTestDataTime ${debugPerfTimerEnd - debugPerfTimerStart} handleTestDataTime ${debugHandleMsgEnd - debugHandleMsgStart}`);
 
             // console.log(`iterCount ${iterCount} x ${x} Test message sent: ${JSON.stringify(JSON.parse(msg))}`);
         }, 200);

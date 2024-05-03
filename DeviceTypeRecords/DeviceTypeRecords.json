@@ -52,9 +52,9 @@
             "addresses": "0x29",
             "deviceType": "VL6180",
             "detectionValues": "0x0000=0b10110100",
-            "initValues": "0x020701=&0x020801=&0x009600=&0x0097fd=&0x00e301=&0x00e403=&0x00e502=&0x00e601=&0x00e703=&0x00f502=&0x00d905=&0x00dbce=&0x00dc03=&0x00ddf8=&0x009f00=&0x00a33c=&0x00b700=&0x00bb3c=&0x00b209=&0x00ca09=&0x019801=&0x01b017=&0x01ad00=&0x00ff05=&0x010005=&0x019905=&0x01a61b=&0x01ac3e=&0x01a71f=&0x003000=&0x001110=&0x010a30=&0x003f40=&0x0031ff=&0x004163=&0x002e01=&0x001b09=&0x003e09=&0x004063=&0x02a301=",
+            "initValues": "0x020701&0x020801&0x009600&0x0097fd&0x00e301&0x00e403&0x00e502&0x00e601&0x00e703&0x00f502&0x00d905&0x00dbce&0x00dc03&0x00ddf8&0x009f00&0x00a33c&0x00b700&0x00bb3c&0x00b209&0x00ca09&0x019801&0x01b017&0x01ad00&0x00ff05&0x010005&0x019905&0x01a61b&0x01ac3e&0x01a71f&0x003000&0x001110&0x010a30&0x003f42&0x0031ff&0x004000&0x004163&0x002e01&0x001b09&0x003e31&0x001424&0x003801",
             "pollingConfigJson": {
-                "c": "0x004f=r1&0x0062=r1&0x004d=r1&0x0050=r1&0x001507=",
+                "c": "0x004f=r1&0x0062=r1&0x001507&0x001801",
                 "i": 200,
                 "s": 10
             },
@@ -83,21 +83,6 @@
                             "u": "mm",
                             "r": [0,255],
                             "f": "3d"
-                        },
-                        {
-                            "n": "flags",
-                            "t": "B",
-                            "u": "",
-                            "r": [0,255],
-                            "f": "02x",
-                            "vs": false
-                        },
-                        {
-                            "n": "als",
-                            "t": "B",
-                            "u": "",
-                            "r": [0,255],
-                            "f": "5.2f"
                         }
                     ]
                 }
@@ -144,6 +129,53 @@
                             "u": "g",
                             "r": [-4.0,4.0],
                             "d": 1024,
+                            "f": ".2f"
+                        }
+                    ]
+                }
+            }
+        },        
+        "MSA301": {
+            "addresses": "0x26",
+            "deviceType": "MSA301",
+            "detectionValues": "0x01=0x13",
+            "initValues": "0x1100&0x1007&0x0f01",
+            "pollingConfigJson": {
+                "c": "0x02=r6",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "MSA301",
+                "desc": "3-DoF",
+                "manu": "",
+                "type": "MSA301",
+                "attr": {
+                    "x": 
+                    [
+                        {
+                            "n": "x",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0, 4.0],
+                            "d": 8000.0,
+                            "f": ".2f"
+                        },
+                        {
+                            "n": "y",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 8000.0,
+                            "f": ".2f"
+                        },
+                        {
+                            "n": "z",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 8000.0,
                             "f": ".2f"
                         }
                     ]
@@ -268,9 +300,9 @@
                 }
             }
         },
-        "QWIICBUTTON": {
+        "QwiicButton": {
             "addresses": "0x6f",
-            "deviceType": "QWIICBUTTON",
+            "deviceType": "QwiicButton",
             "detectionValues": "0x00=0b01011101",
             "initValues": "",
             "pollingConfigJson": {
@@ -280,10 +312,10 @@
             },
             "scanPriority": "high",
             "devInfoJson": {
-                "name": "QWIIC Button",
+                "name": "Qwiic Button",
                 "desc": "Button",
                 "manu": "Sparkfun",
-                "type": "QWIICBUTTON",
+                "type": "QwiicButton",
                 "attr": {
                     "x":
                     [
@@ -304,6 +336,53 @@
                             "n": "brightness",
                             "t": "B",
                             "w": "19",
+                            "r": [0,255]
+                        },
+                        {
+                            "n": "granularity",
+                            "t": "B",
+                            "w": "1a",
+                            "r": [1,255]
+                        },
+                        {
+                            "n": "cycle time",
+                            "t": "<H",
+                            "w": "1b",
+                            "r": [0,65535]
+                        },
+                        {
+                            "n": "off time",
+                            "t": "<H",
+                            "w": "1d",
+                            "r": [0,65535]
+                        }
+                    ]
+                }
+            }
+        },
+        "QwiicLEDStick": {
+            "addresses": "0x23",
+            "deviceType": "QwiicLEDStick",
+            "detectionValues": "",
+            "initValues": "",
+            "pollingConfigJson": {},
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "Qwiic LED Stick",
+                "desc": "LEDs",
+                "manu": "Sparkfun",
+                "type": "QwiicLEDStick",
+                "attr": {},
+                "actions": {
+                    "x": [
+                        {
+                            "n": "pixels",
+                            "t": "NRGB",
+                            "w": "71",
+                            "f": "LEDPIX",
+                            "NX": 10,
+                            "NY": 1,
+                            "concat": false,
                             "r": [0,255]
                         }
                     ]

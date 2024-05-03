@@ -57,6 +57,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         x: "hsl(240, 70%, 60%)",
         y: "hsl(300, 70%, 60%)",
         z: "hsl(0, 70%, 60%)",
+        dist: "hsl(60, 70%, 60%)",
         temperature: "hsl(360, 70%, 60%)",
         humidity: "hsl(200, 70%, 60%)",
     });
@@ -86,7 +87,14 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         setChartData({ labels, datasets });
     }, [lastUpdated]);
 
-    return <Line data={chartData} options={options} />;
+    if (Object.keys(deviceAttributes).length === 0) {
+        return <></>;
+    }
+    return (
+        <div className="device-line-chart">
+            <Line data={chartData} options={options} />
+        </div>
+    );
 });
 
 export default DeviceLineChart;

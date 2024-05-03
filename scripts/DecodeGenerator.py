@@ -7,7 +7,7 @@ def get_polling_config_result_len_bytes(polling_config_record):
     for pc in pc_split:
         # Split on =
         pc_eq = pc.split("=")
-        pc_read_def = pc_eq[1].strip()
+        pc_read_def = pc_eq[1].strip() if len(pc_eq) > 1 else ""
         # Check if the value is a binary string
         if pc_read_def.startswith("0b"):
             pc_bit_len = len(pc_read_def) - 2

@@ -1,7 +1,7 @@
 /* styles.css */
 
 /* General styling for the dark theme */
-body, .device-screen, .device-block-heading, .device-attrs-form, .device-line-chart {
+body, .device-screen, .device-block-heading, .device-attrs-and-actions, .device-attrs-form, .device-actions-form, .device-line-chart {
     background-color: #333; /* Dark background for all components */
     color: #fff; /* Light text for better readability */
 }
@@ -67,17 +67,22 @@ h1 {
     gap: 10px;  /* Space between the form and the actions */
 }
 
+
 /* Styles for the form and chart to adjust space */
 .device-attrs-form {
-    flex: 0 0 auto; /* Form takes only as much space as it needs */
+    flex: 0 1 auto;  /* Don't grow, but allow shrinking */
+    width: auto;  /* Adjust based on content or set a max-width */
+    min-width: 200px;  /* Ensure it doesn't shrink too much */
     padding: 10px;
     border: 1px solid #666; /* Adjusting border color for dark theme */
     border-radius: 4px;
     background: #444; /* Slightly lighter dark background for distinction */    
 }
 
-.device-cmds-form {
-    flex: 0 0 auto; /* Form takes only as much space as it needs */
+.device-actions-form {
+    flex: 0 1 auto;  /* Don't grow, but allow shrinking */
+    width: auto;  /* Adjust based on content or set a max-width */
+    min-width: 200px;  /* Ensure it doesn't shrink too much */
     padding: 10px;
     border: 1px solid #666; /* Adjusting border color for dark theme */
     border-radius: 4px;
@@ -85,16 +90,12 @@ h1 {
 }
 
 .device-line-chart {
-    width: 100%; /* Chart takes the rest of the space */
-    flex: 1; /* Chart takes the rest of the space */
+    flex: 1 1 auto;
+    min-width: 50%;
     padding: 10px;
     border: 1px solid #666; /* Adjusting border color for dark theme */
     border-radius: 4px;
     min-height: 15rem;  /* Setting a minimum height to ensure the chart is clearly visible */
-}
-
-/* Default height for the chart, suitable for landscape orientation */
-.device-line-chart {
     height: 25vh; /* Chart is approximately 1/4 of the viewport height in landscape */
 }
 
@@ -108,7 +109,6 @@ h1 {
 /* Responsive adjustments for smaller screens */
 @media (max-width: 600px) {
     .device-line-chart, .device-attrs-form {
-        width: 100%; /* Full width on smaller screens */
         height: 25vh; /* Adjust height to a suitable value on small screens */
     }
 }

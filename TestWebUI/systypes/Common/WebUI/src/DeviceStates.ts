@@ -23,14 +23,14 @@ export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
     } else if (format.endsWith('x')) {
         // Hexadecimal formatting
         const totalLength = parseInt(format.slice(0, -1), 10);
-        return Math.floor(value).toString(16).padStart(totalLength, '0');
+        return Math.floor(value).toString(16).padStart(totalLength, format.startsWith('0') ? '0' : ' ');
     } else if (format.endsWith('d')) {
         // Decimal integer formatting
         const totalLength = parseInt(format.slice(0, -1), 10);
-        return Math.floor(value).toString(10).padStart(totalLength, '0');
+        return Math.floor(value).toString(10).padStart(totalLength, format.startsWith('0') ? '0' : ' ');
     } else if (format.endsWith('b')) {
         // Binary formatting
-        return Math.floor(value) === 0 ? '0' : '1';
+        return Math.floor(value) === 0 ? 'no' : 'yes';
     }
     return value.toString();
 }
