@@ -65,7 +65,9 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
     useEffect(() => {
         const labels = deviceTimeline.slice(-MAX_DATA_POINTS).map(time => {
             const date = new Date(time);
-            return date.toISOString().slice(11, 19);
+            const timeStr = date.toISOString().slice(11, 19);
+            console.log(`useEffect linechart incoming time ${time} timeStr: ${timeStr}`);
+            return timeStr;
         });
         const datasets = Object.entries(deviceAttributes)
             .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)

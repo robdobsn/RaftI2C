@@ -12,6 +12,7 @@ Main library
 [] plugged into main bus - detected on slots incorrectly - try with Qwiic Button for instance
 [] work out divisor on MSA301 - try out on qtpy hardware as address conflict on pwr management
 [] bus stuck on LEDStick - maybe power - be good to work out if it is fixable
+[] consider whether sync messages a good idea - maybe general call 0x00 address can be used? a time-stamp in ms could be sent to all devices this way
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

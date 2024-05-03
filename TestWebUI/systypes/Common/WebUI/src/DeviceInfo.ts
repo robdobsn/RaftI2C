@@ -1,78 +1,19 @@
 
-export const AttrTypeBits: AttrTypeBitsType = {
-    "c": 8,
-    "b": 8,
-    "B": 8,
-    "?": 8,
-    "h": 16,
-    "H": 16,
-    ">h": 16,
-    "<h": 16,
-    ">H": 16,
-    "<H": 16,
-    "i": 32,
-    "I": 32,
-    ">i": 32,
-    "<i": 32,
-    ">I": 32,
-    "<I": 32,
-    "l": 32,
-    "L": 32,
-    ">l": 32,
-    "<l": 32,
-    ">L": 32,
-    "<L": 32,
-    "q": 64,
-    "Q": 64,
-    ">q": 64,
-    "<q": 64,
-    ">Q": 64,
-    "<Q": 64,
-    "f": 32,
-    ">f": 32,
-    "<f": 32,
-    "d": 64,
-    ">d": 64,
-    "<d": 64,
-};
+const attrTypeBits: { [key: string]: number } = {
+    "c": 8, "b": 8, "B": 8, "?": 8,
+    "h": 16, "H": 16, ">h": 16, "<h": 16, ">H": 16, "<H": 16,
+    "i": 32, "I": 32, ">i": 32, "<i": 32, ">I": 32, "<I": 32, "l": 32, "L": 32, ">l": 32, "<l": 32, ">L": 32, "<L": 32,
+    "q": 64, "Q": 64, ">q": 64, "<q": 64, ">Q": 64, "<Q": 64,
+    "f": 32, ">f": 32, "<f": 32,
+    "d": 64, ">d": 64, "<d": 64,
+    };
 
-export type AttrTypeBitsType = {
-    [key: string]: number;
-    c: number;
-    b: number;
-    B: number;
-    "?": number;
-    h: number;
-    H: number;
-    ">h": number;
-    "<h": number;
-    ">H": number;
-    "<H": number;
-    i: number;
-    I: number;
-    ">i": number;
-    "<i": number;
-    ">I": number;
-    "<I": number;
-    l: number;
-    L: number;
-    ">l": number;
-    "<l": number;
-    ">L": number;
-    "<L": number;
-    q: number;
-    Q: number;
-    ">q": number;
-    "<q": number;
-    ">Q": number;
-    "<Q": number;
-    f: number;
-    ">f": number;
-    "<f": number;
-    d: number;
-    ">d": number;
-    "<d": number;
-};
+export function getAttrTypeBits(attrType: string): number {
+    if (attrType in attrTypeBits) {
+        return attrTypeBits[attrType];
+    }
+    return 8;
+}
 
 export function isAttrTypeSigned(attrType: string): boolean {
     const attrStr = attrType.charAt(0) === ">" || attrType.charAt(0) === "<" ? attrType.slice(1).charAt(0) : attrType.charAt(0);

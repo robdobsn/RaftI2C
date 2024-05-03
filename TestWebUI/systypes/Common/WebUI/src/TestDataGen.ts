@@ -34,6 +34,7 @@ class TestDataGen {
                 whiteValInc = -whiteValInc;
             }
             const tsHexHighLow = ((Date.now()) & 0xffff).toString(16).padStart(4, '0');
+            const tsHexNextHighLow = ((Date.now()+1) & 0xffff).toString(16).padStart(4, '0');
             const psHexLowHigh = ((psVar & 0xff) << 8 | (psVar >> 8)).toString(16).padStart(4, '0');
             const alsHexLowHigh = ((alsVar & 0xff) << 8 | (alsVar >> 8)).toString(16).padStart(4, '0');
             const whiteHexLowHigh = ((whiteVar & 0xff) << 8 | (whiteVar >> 8)).toString(16).padStart(4, '0');
@@ -53,76 +54,64 @@ class TestDataGen {
             const xHexLowHigh = ((x & 0xff) << 8 | (x >> 8)).toString(16).padStart(4, '0');
             const yHexLowHigh = ((y & 0xff) << 8 | (y >> 8)).toString(16).padStart(4, '0');
             const zHexLowHigh = ((z & 0xff) << 8 | (z >> 8)).toString(16).padStart(4, '0');
-            
-            // Buttons
-            const but1Val = Math.floor(Math.random() * 2).toString(16).padStart(2, '0');
-            const but2Val = Math.floor(Math.random() * 2).toString(16).padStart(2, '0');
-            
-            // Online / offline status
-            const online1Value = Math.floor(iterCount / 100) % 2 === 0;
-            const online2Value = Math.floor(iterCount / 150) % 2 === 1;
-            const online3Value = Math.floor(iterCount / 200) % 2 === 0;
-            const online4Value = Math.floor(iterCount / 300) % 2 === 1;
-            const online5Value = 1;
-            const allPresent = true;
-            const dev2MsgPresent = allPresent || iterCount % 500 > 250;
-            const dev3MsgPresent = allPresent || iterCount % 200 < 150;
-            const dev4MsgPresent = allPresent || iterCount % 200 > 100;
-            const dev5MsgPresent = allPresent || iterCount % 200 < 180;
 
-            // Templates
-            const dev1Msg = `
-                    "0x60@1": {
-                        "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
-                        "_t": "VCNL4040"
-                        ${online1Value ? ', "_o": 1' : ', "_o": 0'}
-                    }
-                `;
-                const dev2Msg = `
-                "0x60@2": {
-                    "x": "${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}",
-                    "_t": "VCNL4040"
-                    ${online1Value ? ', "_o": 1' : ', "_o": 0'}
-                }
-            `;
-        // const dev2Msg = `
-            //         "0x38@1": {
-            //             "x": "${tsHexHighLow}${xHexLowHigh}${yHexLowHigh}${zHexLowHigh}",
-            //             "_t": "ADXL313"
-            //             ${online2Value ? ', "_o": 1' : ', "_o": 0'}
-            //         }
-            //     `;
-            const dev3Msg = `
+            interface DevMsg {
+                x: string;
+                _t: string;
+                _o: boolean;
+            }
+            
+            interface DevMsgs {
+                [address: string]: DevMsg;
+            }
+
+            // Dev messages
+            let devMsgs: DevMsgs = {
+                "0x60@1": {
+                    x: `${tsHexHighLow}${psHexLowHigh}${alsHexLowHigh}${whiteHexLowHigh}`,
+                    _t: "VCNL4040",
+                    _o: this.onlineFrom(iterCount, 0, 100)
+                },
+                "0x38@1": {
+                    x: `${tsHexHighLow}${xHexLowHigh}${yHexLowHigh}${zHexLowHigh}`,
+                    _t: "ADXL313",
+                    _o: this.onlineFrom(iterCount, 0, 150)
+                },
                 "0x6f@41": {
-                    "x": "${tsHexHighLow}${but1Val}",
-                    "_t": "QwiicButton"
-                    ${online3Value ? ', "_o": 1' : ', "_o": 0'}
-                }
-            `;
-            const dev4Msg = `
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1),1)}`,
+                    _t: "QwiicButton",
+                    _o: this.onlineFrom(iterCount, 0, 120)
+                },
                 "0x6f@42": {
-                    "x": "${tsHexHighLow}${but2Val}",
-                    "_t": "QwiicButton"
-                    ${online4Value ? ', "_o": 1' : ', "_o": 0'}
-                }
-            `;
-            const dev5Msg = `
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1),1)}`,
+                    _t: "QwiicButton",
+                    _o: this.onlineFrom(iterCount, 0, 90)
+                },
                 "0x23@0": {
-                    "x": "",
-                    "_t": "QwiicLEDStick"
-                    ${online5Value ? ', "_o": 1' : ', "_o": 0'}
+                    x: "",
+                    _t: "QwiicLEDStick",
+                    _o: this.onlineFrom(iterCount, 100, 180)
+                },
+                "0x28@0": {
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,7),2)}${tsHexNextHighLow}${this.toHex(this.randInt(0,7),2)}`,
+                    _t: "CAP1203",
+                    _o: true
                 }
-            `;
-            const msg = `{
-                "I2CA":
-                    {
-                        ${dev1Msg}
-                        ${dev2MsgPresent ? ',' + dev2Msg : ''}
-                        ${dev3MsgPresent ? ',' + dev3Msg : ''}
-                        ${dev4MsgPresent ? ',' + dev4Msg : ''}
-                        ${dev5MsgPresent ? ',' + dev5Msg : ''}
-                    }
-                }`;
+            };
+
+            interface DevMsgsEnabled {
+                [key: string]: boolean;
+            }
+
+            const devMsgsEnabled:DevMsgsEnabled = { "0x28@0":true };
+            const I2CA: DevMsgs = {};
+            for (const key in devMsgs) {
+                if (devMsgsEnabled[key]) {
+                    I2CA[key] = devMsgs[key];
+                }
+            }
+ 
+            const msg = JSON.stringify({I2CA: I2CA});
 
             // Performance testing
             const debugPerfTimerEnd = performance.now();
@@ -136,6 +125,17 @@ class TestDataGen {
 
             // console.log(`iterCount ${iterCount} x ${x} Test message sent: ${JSON.stringify(JSON.parse(msg))}`);
         }, 200);
+    }
+
+    private toHex(val: number, numBytes: number) {
+        return val.toString(16).padStart(numBytes * 2, '0');
+    }
+    private randInt(min: number, max: number) {
+        return Math.floor(Math.random() * (max - min + 1) + min);
+    }
+    private onlineFrom(iterCount: number, start: number, end: number) {
+        const ic = iterCount % 200;
+        return ic >= start && ic <= end;
     }
 }
 

@@ -300,6 +300,59 @@
                 }
             }
         },
+        "CAP1203": {
+            "addresses": "0x28",
+            "deviceType": "CAP1203",
+            "detectionValues": "0xfd=0b01101101",
+            "initValues": "0x0000&0x1f06",
+            "pollingConfigJson": {
+                "c": "0x02=r2&0x0000",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "CAP1203",
+                "desc": "Capacitive Touch x 3",
+                "manu": "Sparkfun",
+                "type": "CAP1203",
+                "attr": {
+                    "x":
+                    [
+                        {
+                            "n": "A",
+                            "t": "@1B",
+                            "r": [0, 1],
+                            "m": "0x01",
+                            "s": 0,
+                            "f": "b"
+                        },
+                        {
+                            "n": "B",
+                            "t": "@1B",
+                            "r": [0, 1],
+                            "m": "0x02",
+                            "s": 1,
+                            "f": "b"
+                        },
+                        {
+                            "n": "C",
+                            "t": "@1B",
+                            "r": [0, 1],
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b"
+                        },
+                        {
+                            "n": "status",
+                            "t": ">H",
+                            "vs": false,
+                            "f": "04x"
+                        }
+                    ]
+                }
+            }
+        },
         "QwiicButton": {
             "addresses": "0x6f",
             "deviceType": "QwiicButton",

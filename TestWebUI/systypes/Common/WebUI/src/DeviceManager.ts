@@ -1,7 +1,7 @@
 import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
-import { AttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding, DeviceTypeAction } from "./DeviceInfo";
+import { getAttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding, DeviceTypeAction } from "./DeviceInfo";
 import struct, { DataType } from 'python-struct';
 import TestDataGen from "./TestDataGen";
 
@@ -498,6 +498,19 @@ export class DeviceManager {
 
     }
 
+    private findAttrTypeIndexAfterAt(s: string): number {
+        // This regular expression looks for '@' followed by digits and captures the first non-digit character that follows
+        const regex = /@(\d+)(\D)/;
+        const match = s.match(regex);
+    
+        if (match && match.index !== undefined) {
+            // Return the index of the captured non-digit character, which is at index 0 of the match plus the length of '@' and the digits
+            return match.index + match[1].length + 1;
+        }
+    
+        return 0;
+    }
+
     private processMsgAttrGroup(msgHexStr: string, msgHexStrIdx: number, deviceKey: string, attrGroup: string): number {
 
         // Check there are enough characters for the timestamp
@@ -518,9 +531,12 @@ export class DeviceManager {
         const origTimestamp = timestamp;
         timestamp += this._devicesState[deviceKey].reportTimestampOffsetMs;
 
+        console.log(`processMsgAttrGroup msg ${msgHexStr} timestamp ${timestamp} origTimestamp ${origTimestamp} deviceKey ${deviceKey} attrGroup ${attrGroup} msgHexStrIdx ${msgHexStrIdx}`)
+
         // Flag indicating any attrs added
         let attrsAdded = false;
         msgHexStrIdx += this.MSG_TIMESTAMP_SIZE_HEX_CHARS;
+        const msgAbsStrStartIdx = msgHexStrIdx;
 
         // Check for the attrGroup name in the device type info
         if (attrGroup in this._devicesState[deviceKey].deviceTypeInfo.attr) {
@@ -530,30 +546,52 @@ export class DeviceManager {
 
             // Iterate over attributes in the group
             const devAttrDefinitions: DeviceTypeAttribute[] = this._devicesState[deviceKey].deviceTypeInfo.attr[attrGroup];
-            let attrIdx = 0;
-            while (msgHexStrIdx < msgHexStr.length) {
-                if (attrIdx >= devAttrDefinitions.length) {
-                    break;
-                }
+            for (let attrIdx = 0; attrIdx < devAttrDefinitions.length; attrIdx++) {
+
+                // Get the attr definition
                 const attr: DeviceTypeAttribute = devAttrDefinitions[attrIdx];
-                if (!("t" in attr && attr.t.split(":")[0] in AttrTypeBits)) {
-                    console.warn(`DeviceManager msg unknown type ${attr.t} attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
-                    break;
+                if (!("t" in attr)) {
+                    console.warn(`DeviceManager msg unknown attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${JSON.stringify(attr)}`);
+                    continue;
                 }
 
-                // Attr type can be of the form AA:NN:MM where:
+                // Current field message string index
+                let curFieldStartIdx = msgHexStrIdx;
+                let attrUsesAbsPos = false;
+
+                // Attr type can be of the form AA or AA:NN or AA:NN:MM (and @X can prefix any of the preceding options), where:
                 //   AA is the python struct type (e.g. >h)
                 //   NN is the number of bits to read from the message (this has to be a multiple of 4)
                 //   MM is for signed (2s compliment) numbers and specifies the position of the sign bit
-                const attrSplit = attr.t.split(":");
-                const attrStructBits = AttrTypeBits[attrSplit[0]];
+                //   @X means start reading from byte X of the message (after the timestamp bytes)
+                // Check if @X is present
+                let attrPos = 0;
+                if (attr.t.startsWith("@")) {
+                    const startByte = parseInt(attr.t.slice(1));
+                    curFieldStartIdx = msgAbsStrStartIdx + startByte * 2;
+
+                    // Move attrPos to the first non-digit of the attribute type
+                    attrPos = this.findAttrTypeIndexAfterAt(attr.t);
+                    attrUsesAbsPos = true;
+                }
+
+                // Check if outside bounds of message
+                if (curFieldStartIdx >= msgHexStr.length) {
+                    console.warn(`DeviceManager msg outside bounds attrGroup ${attrGroup} devkey ${deviceKey} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n}`);
+                    continue;
+                }
+
+                // Extract the attribute type and number of bits to read
+                const attrTypeOnly = attr.t.slice(attrPos)
+                const attrSplit = attrTypeOnly.split(":");
+                const attrStructBits = getAttrTypeBits(attrSplit[0]);
                 const attrReadBits = attrSplit.length > 1 ? parseInt(attrSplit[1]) : attrStructBits;
                 const attrReadHexChars = Math.ceil(attrReadBits / 4);
                 let attrTypeDefForStruct = attrSplit[0];
                 const signExtendableMaskSignPos = attrSplit.length > 2 ? parseInt(attrSplit[2]) : 0;
 
                 // Extract the hex chars for the value
-                let valueHexChars = msgHexStr.slice(msgHexStrIdx, msgHexStrIdx + attrReadHexChars);
+                let valueHexChars = msgHexStr.slice(curFieldStartIdx, curFieldStartIdx + attrReadHexChars);
 
                 // Pad the value to the right length for the conversion
                 const padDigitsReqd = Math.ceil(attrStructBits / 4) - valueHexChars.length;
@@ -616,8 +654,7 @@ export class DeviceManager {
                 }
 
                 // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
-                msgHexStrIdx += attrReadHexChars;
-                attrIdx++;
+                msgHexStrIdx += attrUsesAbsPos ? 0 : attrReadHexChars;
 
                 // Check if attribute already exists in the device state
                 if (attr.n in this._devicesState[deviceKey].deviceAttributes) {
