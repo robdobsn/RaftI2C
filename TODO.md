@@ -11,6 +11,7 @@ Main library
 [] need to clear bus extenders after a burst of scanning - if stuck send many clocks with SDA high or just scan address 0x77 or similar?
 [] plugged into main bus - detected on slots incorrectly - try with Qwiic Button for instance
 [] work out divisor on MSA301 - try out on qtpy hardware as address conflict on pwr management
+[] bus stuck on LEDStick - maybe power - be good to work out if it is fixable
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

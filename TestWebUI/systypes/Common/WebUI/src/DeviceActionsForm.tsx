@@ -26,7 +26,7 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
         setDeviceActions(actions);
         // Initialize input values
         const initialValues: InputValues = actions.reduce((acc, action) => {
-            acc = { ...acc, [action.n]: action.r ? action.r[0] | 0 : 0 };
+            acc = { ...acc, [action.n]: action.d ? action.d : (action.r ? action.r[0] | 0 : 0) };
             return acc;
         }, {});
         setInputValues(initialValues);
@@ -59,7 +59,7 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
     
     const handleSendAction = (action: DeviceTypeAction, value: number) => {
         // Send action to device
-        deviceManager.sendAction(deviceKey, action, value);
+        deviceManager.sendAction(deviceKey, action, [value]);
     };
 
     if (deviceActions.length === 0) {
@@ -86,6 +86,8 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
                                         <DispLEDGrid
                                             rows={action.NY || 1}
                                             cols={action.NX || 1}
+                                            deviceKey={deviceKey}
+                                            deviceAction={action}
                                         />
                                     </td>
                                 </tr>
@@ -95,15 +97,18 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
                                 <tr key={action.n}>
                                     <td>{action.n}</td> 
                                     <td>
-                                        <input type="number" 
-                                            min={action.r[0]} 
-                                            max={action.r[1]} 
-                                            value={inputValues[action.n]} 
-                                            onChange={e => {
-                                                    console.log(`input change ${action.n} ${e.target.value}`)
-                                                    handleInputChange(action.n, parseInt(e.target.value));
-                                                }}
-                                        />
+                                        {action.t ? 
+                                            <input type="number" 
+                                                min={action.r[0]} 
+                                                max={action.r[1]} 
+                                                value={inputValues[action.n]} 
+                                                onChange={e => {
+                                                        console.log(`input change ${action.n} ${e.target.value}`)
+                                                        handleInputChange(action.n, parseInt(e.target.value));
+                                                    }}
+                                            />
+                                            : <></>
+                                        }
                                     </td>
                                     <td>
                                         <button onClick={() => handleSendAction(action, inputValues[action.n])}>Send</button>

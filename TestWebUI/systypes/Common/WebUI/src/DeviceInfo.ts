@@ -111,6 +111,7 @@ export interface DeviceTypeAction {
     NX?: number;                // Number of X in the LED pixel grid
     NY?: number;                // Number of Y in the LED pixel grid
     concat?: boolean;           // Concatenate the all values into a single command
+    d: number;                  // Default value
 }
 
 export interface DeviceTypeActionGroups {

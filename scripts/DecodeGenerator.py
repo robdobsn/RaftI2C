@@ -25,7 +25,8 @@ def get_polling_config_result_len_bytes(polling_config_record):
 
 def decode_generator_len_fn(dev_type_record):
     # Parse the device type record polling config record
-    polling_config_record = dev_type_record["pollingConfigJson"]["c"]
+    # Accessing nested dictionary safely with default empty objects
+    polling_config_record = dev_type_record.get("pollingConfigJson", "").get("c", "")
     rslt_len = get_polling_config_result_len_bytes(polling_config_record)
     # Return a C++ anonymous function that returns the result length
     return "[]() -> uint32_t { return " + str(rslt_len) + "; }"

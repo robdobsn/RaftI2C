@@ -2,7 +2,7 @@ import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
 import { AttrTypeBits, DeviceTypeInfo, DeviceTypeAttribute, DeviceTypeInfoTestJsonFile, isAttrTypeSigned, decodeAttrUnitsEncoding, DeviceTypeAction } from "./DeviceInfo";
-import struct from 'python-struct';
+import struct, { DataType } from 'python-struct';
 import TestDataGen from "./TestDataGen";
 
 let testingDeviceTypeRecsConditionalLoadPromise: Promise<any> | null = null;
@@ -742,11 +742,11 @@ export class DeviceManager {
     // Send action to device
     ////////////////////////////////////////////////////////////////////////////
 
-    public sendAction(deviceKey: string, action: DeviceTypeAction, value: number): void {
+    public sendAction(deviceKey: string, action: DeviceTypeAction, data: DataType[]): void {
         // console.log(`DeviceManager sendAction ${deviceKey} action name ${action.n} value ${value} prefix ${action.w}`);
 
         // Form the write bytes
-        let writeBytes = struct.pack(action.t, value);
+        let writeBytes = action.t ? struct.pack(action.t, data) : Buffer.from([]);
 
         // Convert to hex string
         let writeHexStr = Buffer.from(writeBytes).toString('hex');
@@ -761,7 +761,7 @@ export class DeviceManager {
         // Send the action to the server
         const url = this._serverAddressPrefix + this._urlPrefix + "/devman/cmdraw?bus=" + devBus + "&addr=" + devAddr + "&hexWr=" + writeHexStr;
 
-        console.log(`DeviceManager deviceKey ${deviceKey} action name ${action.n} value ${value} prefix ${action.w} sendAction ${url}`);
+        console.log(`DeviceManager deviceKey ${deviceKey} action name ${action.n} value ${data} prefix ${action.w} sendAction ${url}`);
         fetch(url)
             .then(response => {
                 if (!response.ok) {
@@ -770,6 +770,36 @@ export class DeviceManager {
             })
             .catch(error => {
                 console.error(`DeviceManager sendAction error ${error}`);
-            }); 
+            });
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Send a compound action to the device
+    ////////////////////////////////////////////////////////////////////////////
+
+    public sendCompoundAction(deviceKey: string, action: DeviceTypeAction, data: DataType[][]): void {
+        // console.log(`DeviceManager sendAction ${deviceKey} action name ${action.n} value ${value} prefix ${action.w}`);
+
+        // Check if all data to be sent at once
+        if (action.concat) {
+            // Form a single list by flattening data
+            let dataToWrite: DataType[] = [];
+            for (let dataIdx = 0; dataIdx < data.length; dataIdx++) {
+                dataToWrite = dataToWrite.concat(data[dataIdx]);
+            }
+
+            // Use sendAction to send this
+            this.sendAction(deviceKey, action, dataToWrite);
+        } else {
+            // Iterate over the data
+            for (let dataIdx = 0; dataIdx < data.length; dataIdx++) {
+
+                // Create the data to write by prepending the index to the data for this index
+                let dataToWrite = [dataIdx as DataType].concat(data[dataIdx]);
+
+                // Use sendAction to send this
+                this.sendAction(deviceKey, action, dataToWrite);
+            }
+        }
     }
 }
