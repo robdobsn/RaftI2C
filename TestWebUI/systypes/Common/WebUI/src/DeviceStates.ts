@@ -51,15 +51,19 @@ export interface DeviceAttributes {
     [attributeName: string]: DeviceAttribute;
 }
 
-export interface DeviceState {
-    deviceTypeInfo: DeviceTypeInfo;
-    deviceTimeline: Array<number>;
-    deviceAttributes: DeviceAttributes;
-    deviceRecordNew: boolean;
-    deviceStateChanged: boolean;
-    deviceIsOnline: boolean;
+export interface DeviceTimeline {
+    timestamps: number[];
     lastReportTimestampMs: number;
     reportTimestampOffsetMs: number;
+}
+    
+export interface DeviceState {
+    deviceTypeInfo: DeviceTypeInfo;
+    deviceTimeline: DeviceTimeline;
+    deviceAttributes: DeviceAttributes;
+    deviceIsNew: boolean;
+    stateChanged: boolean;
+    isOnline: boolean;
 }
 
 export class DevicesState {

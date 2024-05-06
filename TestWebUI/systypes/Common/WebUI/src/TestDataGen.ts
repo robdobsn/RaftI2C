@@ -96,6 +96,11 @@ class TestDataGen {
                     x: `${tsHexHighLow}${this.toHex(this.randInt(0,7),2)}${tsHexNextHighLow}${this.toHex(this.randInt(0,7),2)}`,
                     _t: "CAP1203",
                     _o: true
+                },
+                "0x57@0": {
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,7),2)}${this.toHex(0x05,2)}${this.toHex(0x00,2)}${this.toHex(0x08,2)}${this.toHex(0x00,100)}`,
+                    _t: "MAX30101",
+                    _o: true
                 }
             };
 
@@ -103,8 +108,8 @@ class TestDataGen {
                 [key: string]: boolean;
             }
 
-            const devMsgsEnabled:DevMsgsEnabled = { "0x28@0":true };
-            const I2CA: DevMsgs = {};
+            const devMsgsEnabled:DevMsgsEnabled = { "0x57@0":true };
+            const I2CA: DevMsgs = Object.keys(devMsgsEnabled).length === 0 ? devMsgs : {};
             for (const key in devMsgs) {
                 if (devMsgsEnabled[key]) {
                     I2CA[key] = devMsgs[key];

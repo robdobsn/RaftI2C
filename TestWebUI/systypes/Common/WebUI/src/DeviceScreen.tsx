@@ -19,7 +19,7 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
     const data: DeviceState = deviceManager.getDeviceState(deviceKey);
 
     // Gray out the device screen if the device is offline
-    const offlineClass = data.deviceIsOnline ? '' : 'offline';
+    const offlineClass = data.isOnline ? '' : 'offline';
 
     const [timedChartUpdate, setTimedChartUpdate] = useState<number>(0);
 

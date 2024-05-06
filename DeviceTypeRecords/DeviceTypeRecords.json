@@ -6,7 +6,7 @@
             "detectionValues": "0x0c=0b100001100000XXXX",
             "initValues": "0x041007=&0x030e08=&0x000000=",
             "pollingConfigJson": {
-                "c": "0x08=0bXXXXXXXXXXXXXXXX&0x09=0bXXXXXXXXXXXXXXXX&0x0a=0bXXXXXXXXXXXXXXXX",
+                "c": "0x08=r2&0x09=r2&0x0a=r2",
                 "i": 200,
                 "s": 10
             },
@@ -17,38 +17,40 @@
                 "manu": "Vishay",
                 "type": "VCNL4040",
                 "attr": {
-                    "x" :
-                    [
-                        {
-                            "n": "prox",
-                            "t": "<H",
-                            "u": "",
-                            "r": [0,65535],
-                            "d": 0,
-                            "f": "5d"
-                        },
-                        {
-                            "n": "als",
-                            "t": "<H",
-                            "u": "lux",
-                            "r": [0,65535],
-                            "d": 10,
-                            "f": "5.2f"
-                        },
-                        {
-                            "n": "white",
-                            "t": "<H",
-                            "u": "lux",
-                            "r": [0,65535],
-                            "d": 10,
-                            "f": "5.2f"
-                        }
-                    ]
+                    "x" : {
+                        "b": 6,
+                        "a": [
+                            {
+                                "n": "prox",
+                                "t": "<H",
+                                "u": "",
+                                "r": [0,65535],
+                                "d": 0,
+                                "f": "5d"
+                            },
+                            {
+                                "n": "als",
+                                "t": "<H",
+                                "u": "lux",
+                                "r": [0,65535],
+                                "d": 10,
+                                "f": "5.2f"
+                            },
+                            {
+                                "n": "white",
+                                "t": "<H",
+                                "u": "lux",
+                                "r": [0,65535],
+                                "d": 10,
+                                "f": "5.2f"
+                            }
+                        ]
+                    }
                 }
             }
         },
         "VL6180": {
-            "notes": "Interleaved mode ALS & Range (0x2a3=>0x01)\nRange settings defined in https://www.st.com/resource/en/application_note/an4545-vl6180x-basic-ranging-application-note-stmicroelectronics.pdf\nALS integration period 100ms (0x0040=>0x0063)\nALS gain 20 (0x003f=>0x40)\n",
+            "_notes": "Interleaved mode ALS & Range (0x2a3=>0x01)\nRange settings defined in https://www.st.com/resource/en/application_note/an4545-vl6180x-basic-ranging-application-note-stmicroelectronics.pdf\nALS integration period 100ms (0x0040=>0x0063)\nALS gain 20 (0x003f=>0x40)\n",
             "addresses": "0x29",
             "deviceType": "VL6180",
             "detectionValues": "0x0000=0b10110100",
@@ -65,26 +67,73 @@
                 "manu": "ST",
                 "type": "VL6180",
                 "attr": {
-                    "x" :
-                    [
-                        {
-                            "n": "valid",
-                            "t": "B",
-                            "u": "",
-                            "r": [0,1],
-                            "m": "0x04",
-                            "s": 2,
-                            "f": "b",
-                            "vs": false
+                    "x" : {
+                        "b": 2,
+                        "a": [
+                            {
+                                "n": "valid",
+                                "t": "B",
+                                "u": "",
+                                "r": [0,1],
+                                "m": "0x04",
+                                "s": 2,
+                                "f": "b",
+                                "vs": false
+                            },
+                            {
+                                "n": "dist",
+                                "t": "B",
+                                "u": "mm",
+                                "r": [0,255],
+                                "f": "3d"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "MAX30101": {
+            "_notes": "init: 0x0940 (reset), 0x00=r1 (clear INT), 0x0903 (SpO2mode Red+IR), 0x085f (4 sample avg, FIFO rollover, FIFO Int 17), 0x0A27 (100 samples/s, 18bit), 0x0c40&0x0d40 (LEDs 12.6mA), 0x1121 (Slot interleaved)",
+            "addresses": "0x57",
+            "deviceType": "MAX30101",
+            "detectionValues": "0xff=0x15",
+            "initValues": "0x0940&0x00=r1&0x085f&0x0903&0x0a27&0x0c4040&0x11=0x21",
+            "pollingConfigJson": {
+                "c": "0x04=r51",
+                "i": 200,
+                "s": 5
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "MAX30101",
+                "desc": "Prox&ALS",
+                "manu": "Vishay",
+                "type": "MAX30101",
+                "attr": {
+                    "x" : {
+                        "b": 51,
+                        "a": [
+                            {
+                                "n": "Red",
+                                "t": "I",
+                                "u": "",
+                                "r": [0, 16777215],
+                                "f": "6d"
+                            },
+                            {
+                                "n": "IR",
+                                "t": "I",
+                                "u": "",
+                                "r": [0, 16777215],
+                                "f": "6d"
+                            }
+                        ],
+                        "c": {
+                            "n": "max30101_fifo",
+                            "c": "let N=(d[0]+32-d[2])%32;let p=3;for i in 0..N-1{r[0].push((d[p]<<16)|(d[p+1]<<8|d[p+2]));r[1].push((d[p+3]<<16)|(d[p+4]<<8|d[p+5]));p+=6;}"
                         },
-                        {
-                            "n": "dist",
-                            "t": "B",
-                            "u": "mm",
-                            "r": [0,255],
-                            "f": "3d"
-                        }
-                    ]
+                        "us": 40000
+                    }
                 }
             }
         },        
@@ -94,7 +143,7 @@
             "detectionValues": "0x00=0b1010110100011101",
             "initValues": "0x2d0c=;0x310a=",
             "pollingConfigJson": {
-                "c": "0x32=0bXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                "c": "0x32=r6",
                 "i": 100,
                 "s": 10
             },
@@ -105,80 +154,35 @@
                 "manu": "Analog Devices",
                 "type": "ADXL313",
                 "attr": {
-                    "x": 
-                    [
-                        {
-                            "n": "x",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0, 4.0],
-                            "d": 1024,
-                            "f": ".2f"
-                        },
-                        {
-                            "n": "y",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0,4.0],
-                            "d": 1024,
-                            "f": ".2f"
-                        },
-                        {
-                            "n": "z",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0,4.0],
-                            "d": 1024,
-                            "f": ".2f"
-                        }
-                    ]
-                }
-            }
-        },        
-        "MSA301": {
-            "addresses": "0x26",
-            "deviceType": "MSA301",
-            "detectionValues": "0x01=0x13",
-            "initValues": "0x1100&0x1007&0x0f01",
-            "pollingConfigJson": {
-                "c": "0x02=r6",
-                "i": 100,
-                "s": 10
-            },
-            "scanPriority": "high",
-            "devInfoJson": {
-                "name": "MSA301",
-                "desc": "3-DoF",
-                "manu": "",
-                "type": "MSA301",
-                "attr": {
-                    "x": 
-                    [
-                        {
-                            "n": "x",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0, 4.0],
-                            "d": 8000.0,
-                            "f": ".2f"
-                        },
-                        {
-                            "n": "y",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0,4.0],
-                            "d": 8000.0,
-                            "f": ".2f"
-                        },
-                        {
-                            "n": "z",
-                            "t": "<h",
-                            "u": "g",
-                            "r": [-4.0,4.0],
-                            "d": 8000.0,
-                            "f": ".2f"
-                        }
-                    ]
+                    "x": {
+                        "b": 6,
+                        "a": [
+                            {
+                                "n": "x",
+                                "t": "<h",
+                                "u": "g",
+                                "r": [-4.0, 4.0],
+                                "d": 1024,
+                                "f": ".2f"
+                            },
+                            {
+                                "n": "y",
+                                "t": "<h",
+                                "u": "g",
+                                "r": [-4.0,4.0],
+                                "d": 1024,
+                                "f": ".2f"
+                            },
+                            {
+                                "n": "z",
+                                "t": "<h",
+                                "u": "g",
+                                "r": [-4.0,4.0],
+                                "d": 1024,
+                                "f": ".2f"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -199,33 +203,38 @@
                 "manu": "Asair",
                 "type": "AHT20",
                 "attr": {
-                    "x" :
-                    [
-                        {
-                            "n": "status",
-                            "t": "B",
-                            "u": "",
-                            "f": "02x",
-                            "vs": false
-                        },
-                        {
-                            "n": "humidity",
-                            "t": ">I:20:20",
-                            "u": "%",
-                            "r": [0, 100],
-                            "d": 10485.76,
-                            "f": "3.1f"
-                        },
-                        {
-                            "n": "temperature",
-                            "t": ">I:20:20",
-                            "u": "&deg;C",
-                            "r": [-40,80],
-                            "d": 5242.88,
-                            "a": -50,
-                            "f": "3.2f"
-                        }
-                    ]
+                    "x" : {
+                        "b": 6,
+                        "a": [
+                            {
+                                "n": "status",
+                                "t": "B",
+                                "u": "",
+                                "f": "02x",
+                                "vs": false
+                            },
+                            {
+                                "n": "humidity",
+                                "t": ">I",
+                                "u": "%",
+                                "r": [0, 100],
+                                "m": "0xfffff000",
+                                "s": 12,
+                                "d": 10485.76,
+                                "f": "3.1f"
+                            },
+                            {
+                                "n": "temperature",
+                                "t": "@2>I",
+                                "u": "&deg;C",
+                                "r": [-40,80],
+                                "m": "0x000fffff",
+                                "d": 5242.88,
+                                "a": -50,
+                                "f": "3.2f"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -235,7 +244,7 @@
             "detectionValues": "0x06=0b0000000001010100&0x07=0b00000100XXXXXXXX",
             "initValues": "0x010000",
             "pollingConfigJson": {
-                "c": "0x05=0b000XXXXXXXXXXXXX",
+                "c": "0x05=r2",
                 "i": 5000,
                 "s": 2
             },
@@ -246,17 +255,22 @@
                 "manu": "Microchip",
                 "type": "MCP9808",
                 "attr": {
-                    "x" :
-                    [
-                        {
-                            "n": "temperature",
-                            "t": ">h:16:13",
-                            "u": "&deg;C",
-                            "r": [-40,125],
-                            "d": 16,
-                            "f": "3.2f"
-                        }
-                    ]
+                    "x" : {
+                        "b": 2,
+                        "a": [
+                            {
+                                "n": "temperature",
+                                "t": ">H",
+                                "u": "&deg;C",
+                                "r": [-40,125],
+                                "m": "0x1fff",
+                                "d": 16,
+                                "sb": 12,
+                                "ss": 4096,
+                                "f": "3.2f"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -266,7 +280,7 @@
             "detectionValues": "0x0f=0b10111101",
             "initValues": "0x2104=&0x20C0=",
             "pollingConfigJson": {
-                "c": "0xA8=r5",
+                "c": "0xA7=r6",
                 "i": 1000,
                 "s": 2
             },
@@ -277,26 +291,37 @@
                 "manu": "ST",
                 "type": "LPS25",
                 "attr": {
-                    "x" :
-                    [
-                        {
-                            "n": "pressure",
-                            "t": "<I:24:24",
-                            "u": "hPa",
-                            "r": [260,1260],
-                            "d": 4096,
-                            "f": "4.2f"
-                        },
-                        {
-                            "n": "temperature",
-                            "t": "<h",
-                            "u": "&deg;C",
-                            "r": [-30,105],
-                            "d": 480,
-                            "a": 42.5,
-                            "f": "3.2f"
-                        }
-                    ]
+                    "x" : {
+                        "b": 6,
+                        "a": [
+                            {
+                                "n": "status",
+                                "t": "B",
+                                "r": [0,255],
+                                "m": "0xff",
+                                "f": "02x",
+                                "vs": false
+                            },
+                            {
+                                "n": "pressure",
+                                "t": "@0<I",
+                                "u": "hPa",
+                                "r": [260,1260],
+                                "s": 8,
+                                "d": 4096,
+                                "f": "4.2f"
+                            },
+                            {
+                                "n": "temperature",
+                                "t": "@4<h",
+                                "u": "&deg;C",
+                                "r": [-30,105],
+                                "d": 480,
+                                "a": 42.5,
+                                "f": "3.2f"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -317,39 +342,41 @@
                 "manu": "Sparkfun",
                 "type": "CAP1203",
                 "attr": {
-                    "x":
-                    [
-                        {
-                            "n": "A",
-                            "t": "@1B",
-                            "r": [0, 1],
-                            "m": "0x01",
-                            "s": 0,
-                            "f": "b"
-                        },
-                        {
-                            "n": "B",
-                            "t": "@1B",
-                            "r": [0, 1],
-                            "m": "0x02",
-                            "s": 1,
-                            "f": "b"
-                        },
-                        {
-                            "n": "C",
-                            "t": "@1B",
-                            "r": [0, 1],
-                            "m": "0x04",
-                            "s": 2,
-                            "f": "b"
-                        },
-                        {
-                            "n": "status",
-                            "t": ">H",
-                            "vs": false,
-                            "f": "04x"
-                        }
-                    ]
+                    "x": {
+                        "b": 2,
+                        "a": [
+                            {
+                                "n": "A",
+                                "t": "@1B",
+                                "r": [0, 1],
+                                "m": "0x01",
+                                "s": 0,
+                                "f": "b"
+                            },
+                            {
+                                "n": "B",
+                                "t": "@1B",
+                                "r": [0, 1],
+                                "m": "0x02",
+                                "s": 1,
+                                "f": "b"
+                            },
+                            {
+                                "n": "C",
+                                "t": "@1B",
+                                "r": [0, 1],
+                                "m": "0x04",
+                                "s": 2,
+                                "f": "b"
+                            },
+                            {
+                                "n": "status",
+                                "t": ">H",
+                                "vs": false,
+                                "f": "04x"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -370,18 +397,20 @@
                 "manu": "Sparkfun",
                 "type": "QwiicButton",
                 "attr": {
-                    "x":
-                    [
-                        {
-                            "n": "press",
-                            "t": "B",
-                            "u": "",
-                            "r": [0, 1],
-                            "m": "0x04",
-                            "s": 2,
-                            "f": "b"
-                        }
-                    ]
+                    "x": {
+                        "b": 3,
+                        "a": [
+                            {
+                                "n": "press",
+                                "t": "B",
+                                "u": "",
+                                "r": [0, 1],
+                                "m": "0x04",
+                                "s": 2,
+                                "f": "b"
+                            }
+                        ]
+                    }
                 },
                 "actions": {
                     "x": [
