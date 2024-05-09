@@ -135,17 +135,9 @@ export default class AttributeHandler {
         let curFieldBufIdx = msgBufIdx;
         let attrUsesAbsPos = false;
 
-        // Attr type is basically a python struct format definition
-        // However it can be prefixed with @X which means start reading from byte X of the message (after the timestamp bytes)
-
-        // Check if @X is present
-        let attrPos = 0;
-        if (attr.t.startsWith("@")) {
-            const startByte = parseInt(attr.t.slice(1));
-            curFieldBufIdx = msgDataStartIdx + startByte;
-
-            // Move attrPos to the first non-digit of the attribute type
-            attrPos = this.findAttrTypeIndexAfterAt(attr.t);
+        // Check for "at": N which means start reading from byte N of the message (after the timestamp bytes)
+        if (attr.at !== undefined) {
+            curFieldBufIdx = msgDataStartIdx + attr.at;
             attrUsesAbsPos = true;
         }
 
@@ -156,7 +148,7 @@ export default class AttributeHandler {
         }
 
         // Attribute type
-        const attrTypesOnly = attr.t.slice(attrPos);
+        const attrTypesOnly = attr.t;
 
         // Slice into buffer
         const attrBuf = msgBuffer.slice(curFieldBufIdx);
@@ -223,29 +215,13 @@ export default class AttributeHandler {
         }
 
         // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
+        // Move buffer position if using relative positioning
         msgBufIdx += attrUsesAbsPos ? 0 : numBytesConsumed;
 
         // Return the value
         return { values: attrValues, newMsgBufIdx: msgBufIdx };
     }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Find the index of the first non-digit character after the '@' in the attribute type
-    ////////////////////////////////////////////////////////////////////////////
     
-    private findAttrTypeIndexAfterAt(s: string): number {
-        // This regular expression looks for '@' followed by digits and captures the first non-digit character that follows
-        const regex = /@(\d+)(\D)/;
-        const match = s.match(regex);
-    
-        if (match && match.index !== undefined) {
-            // Return the index of the captured non-digit character, which is at index 0 of the match plus the length of '@' and the digits
-            return match.index + match[1].length + 1;
-        }
-    
-        return 0;
-    }
-
     private signExtend(value: number, mask: number): number {
         const signBitMask = (mask + 1) >> 1;
         const signBit = value & signBitMask;

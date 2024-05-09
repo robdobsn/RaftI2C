@@ -28,6 +28,7 @@ export function decodeAttrUnitsEncoding(attr: string): string {
 export interface DeviceTypeAttribute {
     n: string;                  // Attribute name
     t: string;                  // Attribute type using python struct module format (e.g. 'H' for unsigned short, 'h' for signed short, 'f' for float etc.)
+    at: number;                 // Attribute start pos in buffer (after timestamp) if present (otherwise use relative position)
     u?: string;                 // Attribute unit
     r?: number[];               // Attribute range (either min, max or min, max, step or discrete values)
     m?: number | string;        // Bit mask to extract the attribute value from the message

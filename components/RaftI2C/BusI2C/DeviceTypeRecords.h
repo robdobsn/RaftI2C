@@ -19,7 +19,13 @@
 typedef uint32_t (*BusI2CDevTypeRecordLengthFn)();
 
 /// @brief Get decoded data record
-typedef void (*BusI2CDevTypeRecordDecodeFn)(uint8_t* pPollResult, uint32_t pollResultLen, void* pDest);
+/// @param pPollBuf buffer containing data
+/// @param pollBufLen length of buffer
+/// @param pStructOut pointer to structure to fill
+/// @param structOutSize size of structure
+/// @param maxRecCount maximum number of records to decode
+/// @return number of records decoded
+typedef uint32_t (*BusI2CDevTypeRecordDecodeFn)(const uint8_t* pPollBuf, uint32_t pollBufLen, void* pStructOut, uint32_t structOutSize, uint16_t maxRecCount);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class BusI2CDevTypeRecord

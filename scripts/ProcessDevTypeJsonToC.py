@@ -3,7 +3,7 @@ import sys
 import re
 import argparse
 
-from DecodeGenerator import decode_generator_len_fn
+from DecodeGenerator import DecodeGenerator
 
 # ProcessDevTypeJsonToC.py
 # Rob Dobson 2024
@@ -17,7 +17,10 @@ from DecodeGenerator import decode_generator_len_fn
 # - The path to the JSON file with the device types
 # - The path to the header file to generate
 
-def process_dev_types(json_path, header_path, gen_decode):
+def process_dev_types(json_path, header_path, gen_options):
+
+    decodeGenerator = DecodeGenerator()
+
     with open(json_path, 'r') as json_file:
         dev_ident_json = json.load(json_file)
 
@@ -112,7 +115,16 @@ def process_dev_types(json_path, header_path, gen_decode):
 
     # Generate header file
     with open(header_path, 'w') as header_file:
-        header_file.write('#pragma once\n\n')
+        header_file.write('#pragma once\n')
+        header_file.write('#include <stdint.h>\n')
+        header_file.write('using namespace Raft;\n\n')
+
+        # Generate structs for the device type records if enabled
+        if gen_options.get("gen_decode", False):
+            struct_defs = decodeGenerator.get_struct_defs(dev_ident_json['devTypes'])
+            for struct_def in struct_defs:
+                header_file.write(struct_def)
+                header_file.write("\n")
 
         # Generate the BusI2CDevTypeRecord array
         header_file.write('static BusI2CDevTypeRecord baseDevTypeRecords[] =\n')
@@ -130,11 +142,15 @@ def process_dev_types(json_path, header_path, gen_decode):
             header_file.write(f'        R"({dev_type["detectionValues"]})",\n')
             header_file.write(f'        R"({dev_type["initValues"]})",\n')
             header_file.write(f'        R"({polling_config_json_str})",\n')
-            header_file.write(f'        R"({dev_info_json_str})"')
+            if gen_options.get("inc_dev_info_json", False):
+                header_file.write(f'        R"({dev_info_json_str})"')
+            else:
+                header_file.write(f'        nullptr')
 
             # Check if gen_decode is set
-            if gen_decode:
-                header_file.write(f',\n        {decode_generator_len_fn(dev_type)}')
+            if gen_options.get("gen_decode", False):
+                header_file.write(f',\n        {decodeGenerator.len_fn(dev_type)}')
+                header_file.write(f',\n        {decodeGenerator.decode_fn(dev_type)}')
 
             header_file.write('\n    },\n')
             dev_record_index += 1
@@ -217,8 +233,14 @@ if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
     argparse.add_argument("json_path", help="Path to the JSON file with the device types")
     argparse.add_argument("header_path", help="Path to the header file to generate")
-    # Add arg for generation of c++ code to decode poll results
+    # Arg for generation of c++ code to decode poll results
     argparse.add_argument("--gendecode", help="Generate C++ code to decode poll results", action="store_false")
+    # Arg for inclusion of device info JSON in the header file
+    argparse.add_argument("--incdevjson", help="Include device info JSON in the header file", action="store_false")
     args = argparse.parse_args()
-    process_dev_types(args.json_path, args.header_path, args.gendecode)
+    gen_options = {
+        "gen_decode": args.gendecode,
+        "inc_dev_info_json": args.incdevjson
+    }
+    process_dev_types(args.json_path, args.header_path, gen_options)
     sys.exit(0)
