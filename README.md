@@ -27,8 +27,8 @@ raft run -s <systype> -p <serial-port>
 ```
 
 where:
-- <systype> is either tinypico or qtpy
-- <serial-port> is the serial port the ESP32 is connected to.
+- &lt;systype&gt; is either tinypico or qtpy
+- &lt;serial-port&gt; is the serial port the ESP32 is connected to.
 
 If you need to change any settings (such as SCL and SDA pins for the I2C bus), first find the systypes.json file for your particular systype (these are located in the systypes folder, so the file for the qtpy systype is in ./TestWebUI/systypes/qtpy/systypes.json). Open this file in a text editor and change the required settings. E.g. the sdaPin and sclPin fields in the HWDevMan/Buses/buslist entry for "I2CA".
 
