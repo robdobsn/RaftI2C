@@ -1,7 +1,7 @@
 import jest from 'jest';
 import AttributeHandler from "../src/AttributeHandler"
-import { DeviceTypeAttribute, DeviceTypeAttributeGroup, DeviceTypeInfoTestJsonFile } from '../src/DeviceInfo';
-import { DeviceAttributes, DeviceTimeline } from '../src/DeviceStates';
+import { DeviceTypeInfoTestJsonFile, DeviceTypePollRespMetadata } from '../src/DeviceInfo';
+import { DeviceAttributesState, DeviceTimeline } from '../src/DeviceStates';
 import { randomInt } from 'crypto';
 
 function genBuffer(...args: Buffer[]): Buffer {
@@ -160,11 +160,11 @@ const testCases: TestCase [] = [
 
 testCases.forEach(testCase => {
 
-    let deviceTypeRecs: DeviceTypeInfoTestJsonFile | null = null;
+    let deviceTypeRecs: DeviceTypeInfoTestJsonFile;
     let attributeHandler: AttributeHandler;
     let buffer: Buffer;
     let deviceTimeline: DeviceTimeline = { timestamps: [], lastReportTimestampMs: 0, reportTimestampOffsetMs: 0 };
-    let attrGroup: DeviceTypeAttributeGroup;
+    let pollRespMetadata: DeviceTypePollRespMetadata;
 
 
     describe(`Testing ${testCase.devType}`, () => {
@@ -177,14 +177,13 @@ testCases.forEach(testCase => {
         beforeEach(() => {
             attributeHandler = new AttributeHandler();
             buffer = testCase.buffer;
-            let attrGroups = deviceTypeRecs?.devTypes[testCase.devType].devInfoJson.attr;
-            attrGroup = attrGroups?.x!;
+            pollRespMetadata = deviceTypeRecs?.devTypes[testCase.devType].devInfoJson.resp!;
         });
 
-        test('attr extraction', () => {
+        test('poll response extraction', () => {
             // Assuming you know the structure and that attrDefs is properly defined and accessible here
-            let attributeValues: DeviceAttributes = {};
-            let newMsgBufIdx = attributeHandler.processMsgAttrGroup(buffer, 0, deviceTimeline, attrGroup!, attributeValues, 100);
+            let attributeValues: DeviceAttributesState = {};
+            let newMsgBufIdx = attributeHandler.processMsgAttrGroup(buffer, 0, deviceTimeline, pollRespMetadata!, attributeValues, 100);
 
             console.log(`${testCase.devType} testCase.nextIdx: ${testCase.nextIdx} newMsgBufIdx: ${newMsgBufIdx}`);
             console.log(`deviceAttributes: ${JSON.stringify(attributeValues)}`);

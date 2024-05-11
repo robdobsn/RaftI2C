@@ -173,8 +173,13 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
+        // Get device interface
+        BusDeviceIF* pDeviceIF = pBus->getBusDeviceIF();
+        if (!pDeviceIF)
+            return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
+
         // Get device info
-        String devInfo = pBus->getDevTypeInfoJsonByTypeName(devTypeName, false);
+        String devInfo = pDeviceIF->getDevTypeInfoJsonByTypeName(devTypeName, false);
         if (devInfo.length() == 0)
         {
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
@@ -277,7 +282,6 @@ String HWDevMan::getStatusJSON()
         if (!pBus)
             continue;
         // Get device interface
-        // TODO - remove cast
         BusDeviceIF* pDeviceIF = pBus->getBusDeviceIF();
         if (!pDeviceIF)
             continue; 

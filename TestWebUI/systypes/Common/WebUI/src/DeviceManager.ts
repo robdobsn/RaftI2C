@@ -1,7 +1,7 @@
 import { DevicesConfig } from "./DevicesConfig";
-import { DeviceAttribute, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
+import { DeviceAttributeState, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
-import { DeviceTypeInfo, DeviceTypeInfoTestJsonFile, DeviceTypeAction, DeviceTypeInfoRecs, DeviceTypeAttribute, DeviceTypeAttributeGroup } from "./DeviceInfo";
+import { DeviceTypeInfo, DeviceTypeInfoTestJsonFile, DeviceTypeAction, DeviceTypeInfoRecs } from "./DeviceInfo";
 import struct, { DataType } from 'python-struct';
 import TestDataGen from "./TestDataGen";
 import AttributeHandler from "./AttributeHandler";
@@ -42,8 +42,8 @@ export class DeviceManager {
 
     // Device callbacks
     private _callbackNewDevice: ((deviceKey: string, state: DeviceState) => void) | null = null;
-    private _callbackNewDeviceAttribute: ((deviceKey: string, attr: DeviceAttribute) => void) | null = null;
-    private _callbackNewAttributeData: ((deviceKey: string, attr: DeviceAttribute) => void) | null = null;
+    private _callbackNewDeviceAttribute: ((deviceKey: string, attrState: DeviceAttributeState) => void) | null = null;
+    private _callbackNewAttributeData: ((deviceKey: string, attrState: DeviceAttributeState) => void) | null = null;
 
     // Last time we got a state update
     private _lastStateUpdate: number = 0;
@@ -279,11 +279,11 @@ export class DeviceManager {
         // Save the callback
         this._callbackNewDevice = callback;
     }
-    public onNewDeviceAttribute(callback: (deviceKey: string, attr: DeviceAttribute) => void): void {
+    public onNewDeviceAttribute(callback: (deviceKey: string, attrState: DeviceAttributeState) => void): void {
         // Save the callback
         this._callbackNewDeviceAttribute = callback;
     }
-    public onNewAttributeData(callback: (deviceKey: string, attr: DeviceAttribute) => void): void {
+    public onNewAttributeData(callback: (deviceKey: string, attrState: DeviceAttributeState) => void): void {
         // Save the callback
         this._callbackNewAttributeData = callback;
     }
@@ -477,8 +477,8 @@ export class DeviceManager {
                         return;
                     }
 
-                    // Check for the attrGroup name in the device type info
-                    if (!deviceState.deviceTypeInfo.attr || !(attrGroupName in deviceState.deviceTypeInfo.attr)) {
+                    // Check the device type info
+                    if (!deviceState.deviceTypeInfo.resp) {
                         return;
                     }
 
@@ -492,14 +492,14 @@ export class DeviceManager {
                     let msgBufIdx = 0;
 
                     // Iterate over attributes in the group
-                    const attrGroup: DeviceTypeAttributeGroup = deviceState.deviceTypeInfo.attr[attrGroupName];
+                    const pollRespMetadata  = deviceState.deviceTypeInfo.resp!;
 
                     // Loop
                     while (msgBufIdx < msgBytes.length) {
 
                         const curTimelineLen = deviceState.deviceTimeline.timestamps.length;
                         const newMsgBufIdx = this._attributeHandler.processMsgAttrGroup(msgBuffer, msgBufIdx, 
-                                                deviceState.deviceTimeline, attrGroup, 
+                                                deviceState.deviceTimeline, pollRespMetadata, 
                                                 deviceState.deviceAttributes, this.MAX_DATA_POINTS_TO_STORE);
                         if (newMsgBufIdx < 0)
                             break;
@@ -545,24 +545,24 @@ export class DeviceManager {
             }
 
             // Iterate over the attributes
-            Object.entries(deviceState.deviceAttributes).forEach(([attrKey, attr]) => {
-                if (attr.newAttribute) {
+            Object.entries(deviceState.deviceAttributes).forEach(([attrKey, attrState]) => {
+                if (attrState.newAttribute) {
                     if (this._callbackNewDeviceAttribute) {
                         this._callbackNewDeviceAttribute(
                             deviceKey,
-                            attr
+                            attrState
                         );
                     }
-                    attr.newAttribute = false;
+                    attrState.newAttribute = false;
                 }
-                if (attr.newData) {
+                if (attrState.newData) {
                     if (this._callbackNewAttributeData) {
                         this._callbackNewAttributeData(
                             deviceKey,
-                            attr
+                            attrState
                         );
                     }
-                    attr.newData = false;
+                    attrState.newData = false;
                 }
             });
         });
@@ -578,8 +578,7 @@ export class DeviceManager {
             "name": "Unknown",
             "desc": "Unknown",
             "manu": "Unknown",
-            "type": "Unknown",
-            "attr": {}
+            "type": "Unknown"
         };
         // Ensure that this._testDeviceTypeRecs and devTypes[deviceType] are properly initialized
         if (process.env.TEST_DATA) {

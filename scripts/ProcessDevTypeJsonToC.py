@@ -42,7 +42,7 @@ def process_dev_types(json_path, header_path, gen_options):
         "low": 2
     }
 
-    # Iterate records
+    # Iterate device type records
     dev_record_index = 0
     for dev_type in dev_ident_json['devTypes'].values():
         # print(dev_type["addresses"])
@@ -115,6 +115,8 @@ def process_dev_types(json_path, header_path, gen_options):
 
     # Generate header file
     with open(header_path, 'w') as header_file:
+
+        # Write header
         header_file.write('#pragma once\n')
         header_file.write('#include <stdint.h>\n')
         header_file.write('using namespace Raft;\n\n')
@@ -132,9 +134,19 @@ def process_dev_types(json_path, header_path, gen_options):
 
         # Iterate records
         dev_record_index = 0
-        for dev_type in dev_ident_json['devTypes'].values():
+        for dev_type_key, dev_type in dev_ident_json['devTypes'].items():
+
+            # Get the poll data size
+            poll_data_size_bytes = decodeGenerator.poll_data_bytes(dev_type)
+
+            # Check the size matches the JSON value
+            poll_size_value_in_json = dev_type.get("devInfoJson", {}).get("resp", {}).get("b", 0)
+            if poll_data_size_bytes != poll_size_value_in_json:
+                print(f"Poll data size mismatch for {dev_type_key} JSON {poll_size_value_in_json} Calculated {poll_data_size_bytes}")
+                sys.exit(1)
+
             # Convert JSON parts to strings without unnecessary spaces
-            polling_config_json_str = json.dumps(dev_type["pollingConfigJson"], separators=(',', ':'))
+            polling_config_json_str = json.dumps(dev_type["pollInfo"], separators=(',', ':'))
             dev_info_json_str = json.dumps(dev_type["devInfoJson"], separators=(',', ':'))
             header_file.write('    {\n')
             header_file.write(f'        R"({dev_type["deviceType"]})",\n')
@@ -142,6 +154,7 @@ def process_dev_types(json_path, header_path, gen_options):
             header_file.write(f'        R"({dev_type["detectionValues"]})",\n')
             header_file.write(f'        R"({dev_type["initValues"]})",\n')
             header_file.write(f'        R"({polling_config_json_str})",\n')
+            header_file.write(f'        {str(poll_data_size_bytes)},\n')
             if gen_options.get("inc_dev_info_json", False):
                 header_file.write(f'        R"({dev_info_json_str})"')
             else:
@@ -149,7 +162,6 @@ def process_dev_types(json_path, header_path, gen_options):
 
             # Check if gen_decode is set
             if gen_options.get("gen_decode", False):
-                header_file.write(f',\n        {decodeGenerator.len_fn(dev_type)}')
                 header_file.write(f',\n        {decodeGenerator.decode_fn(dev_type)}')
 
             header_file.write('\n    },\n')

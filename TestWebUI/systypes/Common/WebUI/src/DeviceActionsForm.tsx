@@ -22,7 +22,7 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
     useEffect(() => {
         const deviceState = deviceManager.getDeviceState(deviceKey);
         const { deviceTypeInfo } = deviceState;
-        const actions: DeviceTypeAction[] = deviceTypeInfo.actions?.x || [];
+        const actions: DeviceTypeAction[] = deviceTypeInfo.actions || [];
         setDeviceActions(actions);
         // Initialize input values
         const initialValues: InputValues = actions.reduce((acc, action) => {
@@ -99,8 +99,8 @@ const DeviceActionsForm: React.FC<DeviceActionsTableProps> = ({ deviceKey }) => 
                                     <td>
                                         {action.t ? 
                                             <input type="number" 
-                                                min={action.r[0]} 
-                                                max={action.r[1]} 
+                                                min={action.r?.[0] ?? 0} 
+                                                max={action.r?.[1] ?? 100} 
                                                 value={inputValues[action.n]} 
                                                 onChange={e => {
                                                         console.log(`input change ${action.n} ${e.target.value}`)

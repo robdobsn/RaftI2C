@@ -1,15 +1,15 @@
 import { DeviceTypeInfo } from "./DeviceInfo";
 
-export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
+export function deviceAttrGetLatestFormatted(attrState: DeviceAttributeState): string {
 
-    if (attr.values.length === 0) {
+    if (attrState.values.length === 0) {
         return 'N/A';
     }
-    if (attr.format.length === 0) {
-        return attr.values[attr.values.length - 1].toString();
+    if (attrState.format.length === 0) {
+        return attrState.values[attrState.values.length - 1].toString();
     }
-    const value = attr.values[attr.values.length - 1];
-    const format = attr.format;
+    const value = attrState.values[attrState.values.length - 1];
+    const format = attrState.format;
     if (format.endsWith('f')) {
         // Floating point number formatting
         const parts = format.split('.');
@@ -35,7 +35,7 @@ export function deviceAttrGetLatestFormatted(attr: DeviceAttribute): string {
     return value.toString();
 }
 
-export interface DeviceAttribute {
+export interface DeviceAttributeState {
     name: string;
     newAttribute: boolean;
     newData: boolean;
@@ -47,8 +47,8 @@ export interface DeviceAttribute {
     visibleForm: boolean;
 }
 
-export interface DeviceAttributes {
-    [attributeName: string]: DeviceAttribute;
+export interface DeviceAttributesState {
+    [attributeName: string]: DeviceAttributeState;
 }
 
 export interface DeviceTimeline {
@@ -60,7 +60,7 @@ export interface DeviceTimeline {
 export interface DeviceState {
     deviceTypeInfo: DeviceTypeInfo;
     deviceTimeline: DeviceTimeline;
-    deviceAttributes: DeviceAttributes;
+    deviceAttributes: DeviceAttributesState;
     deviceIsNew: boolean;
     stateChanged: boolean;
     isOnline: boolean;

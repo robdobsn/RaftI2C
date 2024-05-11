@@ -79,7 +79,7 @@ class DecodeGenerator:
         return attr_name
 
     def form_attr_def(self, attr_rec) -> str:
-        # Extract attr name
+        # Extract attribute name
         attr_name = attr_rec.get("n", "")
         if attr_name == "":
             return ""
@@ -106,9 +106,11 @@ class DecodeGenerator:
         return "struct poll_" + self.to_valid_c_var_name(dev_type_name)
     
     def gen_struct_elements(self, dev_info_json):
-        # Iterate through attributes in dev_info_json["attr"]["x"] and generate struct elements for each
+        # Iterate through attributes in dev_info_json["resp"] and generate struct elements for each
+        poll_response = dev_info_json.get("resp", {})
+        poll_response_attrs = poll_response.get("a", [])
         el_list = []
-        for el in dev_info_json.get("attr", {}).get("x", {}).get("a", []):
+        for el in poll_response_attrs:
             attr_def = self.form_attr_def(el)
             if attr_def == "":
                 continue
@@ -116,10 +118,11 @@ class DecodeGenerator:
         return "".join(el_list)
 
     def gen_extract_code(self, dev_info_json, line_prefix):
+        poll_response = dev_info_json.get("resp", {})
+        poll_response_attrs = poll_response.get("a", [])
         line_prefix = line_prefix + "    "
         extract_code = []
-        attrs = dev_info_json.get("attr", {}).get("x", {}).get("a", [])
-        if len(attrs) == 0:
+        if len(poll_response_attrs) == 0:
             extract_code.append(f"{line_prefix}return 0;\n")
             return "".join(extract_code)
         # Struct
@@ -128,8 +131,8 @@ class DecodeGenerator:
         extract_code.append(f"{line_prefix}const uint8_t* pBufEnd = pBuf + bufLen;\n")
         extract_code.append(f"{line_prefix}uint32_t numRecs = 0;\n")
         extract_code.append(f"{line_prefix}for (int i = 0; i < maxRecCount; i++){{\n")
-        # Iterate through attributes in devInfoJson["attr"]["x"] and generate extraction code for each
-        for el in attrs:
+        # Iterate through attributes in devInfoJson["resp"] and generate extraction code for each
+        for el in poll_response_attrs:
             attr_name = el.get("n", "")
             if attr_name == "":
                 continue
@@ -148,13 +151,12 @@ class DecodeGenerator:
         extract_code.append(f"{line_prefix}return numRecs;\n")
         return "".join(extract_code)
     
-    def len_fn(self, dev_type_record):
-        # Parse the device type record polling config record
-        # Accessing nested dictionary safely with default empty objects
-        polling_config_record = dev_type_record.get("pollingConfigJson", "").get("c", "")
-        rslt_len = self._get_polling_config_result_len_bytes(polling_config_record)
-        # Return a C++ anonymous function that returns the result length
-        return "[]() -> uint32_t { return " + str(rslt_len) + "; }"
+    def poll_data_bytes(self, dev_type_record):
+        # Parse the device type record polling groups record
+        poll_info = dev_type_record.get("pollInfo", {})
+        poll_config_record = poll_info.get("c", "")
+        poll_rslt_len = self._get_polling_config_result_len_bytes(poll_config_record)
+        return poll_rslt_len
 
     def decode_fn(self, dev_type_record):
         dev_info_json = dev_type_record.get("devInfoJson", {})

@@ -78,12 +78,12 @@ class TestDataGen {
                     _o: this.onlineFrom(iterCount, 0, 150)
                 },
                 "0x6f@41": {
-                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1),1)}`,
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1)*4,1)}`,
                     _t: "QwiicButton",
                     _o: this.onlineFrom(iterCount, 0, 120)
                 },
                 "0x6f@42": {
-                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1),1)}`,
+                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,1)*4,1)}`,
                     _t: "QwiicButton",
                     _o: this.onlineFrom(iterCount, 0, 90)
                 },
@@ -108,7 +108,7 @@ class TestDataGen {
                 [key: string]: boolean;
             }
 
-            const devMsgsEnabled:DevMsgsEnabled = { "0x57@0":true };
+            const devMsgsEnabled:DevMsgsEnabled = { "0x6f@42":true };
             const I2CA: DevMsgs = Object.keys(devMsgsEnabled).length === 0 ? devMsgs : {};
             for (const key in devMsgs) {
                 if (devMsgsEnabled[key]) {

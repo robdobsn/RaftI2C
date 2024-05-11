@@ -1,10 +1,10 @@
-import { DeviceTypeAttribute, DeviceTypeAttributeGroup } from "./DeviceInfo";
+import { DeviceTypePollRespMetadata } from "./DeviceInfo";
 
 export default class CustomAttrHandler {
     
-    public handleAttr(attrGroup: DeviceTypeAttributeGroup, msgBuffer: Buffer, msgBufIdx: number, attrGroupBytes: number): number[][] {
-        if (attrGroup.c!.n === "max30101_fifo") {
-            console.log(`CustomAttrHandler handleAttr ${attrGroup.c!.n} msgBuffer: ${msgBuffer}`);
+    public handleAttr(pollRespMetadata: DeviceTypePollRespMetadata, msgBuffer: Buffer, msgBufIdx: number, attrGroupBytes: number): number[][] {
+        if (pollRespMetadata.c!.n === "max30101_fifo") {
+            console.log(`CustomAttrHandler handleAttr ${pollRespMetadata.c!.n} msgBuffer: ${msgBuffer}`);
             let d = msgBuffer.slice(msgBufIdx);
             if (d.length < attrGroupBytes) {
                 return [];

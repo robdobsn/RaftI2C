@@ -5,7 +5,7 @@
             "deviceType": "VCNL4040",
             "detectionValues": "0x0c=0b100001100000XXXX",
             "initValues": "0x041007=&0x030e08=&0x000000=",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x08=r2&0x09=r2&0x0a=r2",
                 "i": 200,
                 "s": 10
@@ -16,36 +16,34 @@
                 "desc": "Prox&ALS",
                 "manu": "Vishay",
                 "type": "VCNL4040",
-                "attr": {
-                    "x" : {
-                        "b": 6,
-                        "a": [
-                            {
-                                "n": "prox",
-                                "t": "<H",
-                                "u": "",
-                                "r": [0,65535],
-                                "d": 0,
-                                "f": "5d"
-                            },
-                            {
-                                "n": "als",
-                                "t": "<H",
-                                "u": "lux",
-                                "r": [0,65535],
-                                "d": 10,
-                                "f": "5.2f"
-                            },
-                            {
-                                "n": "white",
-                                "t": "<H",
-                                "u": "lux",
-                                "r": [0,65535],
-                                "d": 10,
-                                "f": "5.2f"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 6,
+                    "a": [
+                        {
+                            "n": "prox",
+                            "t": "<H",
+                            "u": "",
+                            "r": [0,65535],
+                            "d": 0,
+                            "f": "5d"
+                        },
+                        {
+                            "n": "als",
+                            "t": "<H",
+                            "u": "lux",
+                            "r": [0,65535],
+                            "d": 10,
+                            "f": "5.2f"
+                        },
+                        {
+                            "n": "white",
+                            "t": "<H",
+                            "u": "lux",
+                            "r": [0,65535],
+                            "d": 10,
+                            "f": "5.2f"
+                        }
+                    ]
                 }
             }
         },
@@ -55,7 +53,7 @@
             "deviceType": "VL6180",
             "detectionValues": "0x0000=0b10110100",
             "initValues": "0x020701&0x020801&0x009600&0x0097fd&0x00e301&0x00e403&0x00e502&0x00e601&0x00e703&0x00f502&0x00d905&0x00dbce&0x00dc03&0x00ddf8&0x009f00&0x00a33c&0x00b700&0x00bb3c&0x00b209&0x00ca09&0x019801&0x01b017&0x01ad00&0x00ff05&0x010005&0x019905&0x01a61b&0x01ac3e&0x01a71f&0x003000&0x001110&0x010a30&0x003f42&0x0031ff&0x004000&0x004163&0x002e01&0x001b09&0x003e31&0x001424&0x003801",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x004f=r1&0x0062=r1&0x001507&0x001801",
                 "i": 200,
                 "s": 10
@@ -66,29 +64,27 @@
                 "desc": "ToF",
                 "manu": "ST",
                 "type": "VL6180",
-                "attr": {
-                    "x" : {
-                        "b": 2,
-                        "a": [
-                            {
-                                "n": "valid",
-                                "t": "B",
-                                "u": "",
-                                "r": [0,1],
-                                "m": "0x04",
-                                "s": 2,
-                                "f": "b",
-                                "vs": false
-                            },
-                            {
-                                "n": "dist",
-                                "t": "B",
-                                "u": "mm",
-                                "r": [0,255],
-                                "f": "3d"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 2,
+                    "a": [
+                        {
+                            "n": "valid",
+                            "t": "B",
+                            "u": "",
+                            "r": [0,1],
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b",
+                            "vs": false
+                        },
+                        {
+                            "n": "dist",
+                            "t": "B",
+                            "u": "mm",
+                            "r": [0,255],
+                            "f": "3d"
+                        }
+                    ]
                 }
             }
         },
@@ -98,7 +94,7 @@
             "deviceType": "MAX30101",
             "detectionValues": "0xff=0x15",
             "initValues": "0x0940&0x00=r1&0x085f&0x0903&0x0a27&0x0c4040&0x11=0x21",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x04=r51",
                 "i": 200,
                 "s": 5
@@ -109,31 +105,29 @@
                 "desc": "Prox&ALS",
                 "manu": "Vishay",
                 "type": "MAX30101",
-                "attr": {
-                    "x" : {
-                        "b": 51,
-                        "a": [
-                            {
-                                "n": "Red",
-                                "t": ">I",
-                                "u": "",
-                                "r": [0, 16777215],
-                                "f": "6d"
-                            },
-                            {
-                                "n": "IR",
-                                "t": ">I",
-                                "u": "",
-                                "r": [0, 16777215],
-                                "f": "6d"
-                            }
-                        ],
-                        "c": {
-                            "n": "max30101_fifo",
-                            "c": "let N=(d[0]+32-d[2])%32;let p=3;for i in 0..N-1{r[0].push((d[p]<<16)|(d[p+1]<<8|d[p+2]));r[1].push((d[p+3]<<16)|(d[p+4]<<8|d[p+5]));p+=6;}"
+                "resp": {
+                    "b": 51,
+                    "a": [
+                        {
+                            "n": "Red",
+                            "t": ">I",
+                            "u": "",
+                            "r": [0, 16777215],
+                            "f": "6d"
                         },
-                        "us": 40000
-                    }
+                        {
+                            "n": "IR",
+                            "t": ">I",
+                            "u": "",
+                            "r": [0, 16777215],
+                            "f": "6d"
+                        }
+                    ],
+                    "c": {
+                        "n": "max30101_fifo",
+                        "c": "let N=(d[0]+32-d[2])%32;let p=3;for i in 0..N-1{r[0].push((d[p]<<16)|(d[p+1]<<8|d[p+2]));r[1].push((d[p+3]<<16)|(d[p+4]<<8|d[p+5]));p+=6;}"
+                    },
+                    "us": 40000
                 }
             }
         },        
@@ -142,7 +136,7 @@
             "deviceType": "ADXL313",
             "detectionValues": "0x00=0b1010110100011101",
             "initValues": "0x2d0c=;0x310a=",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x32=r6",
                 "i": 100,
                 "s": 10
@@ -153,36 +147,34 @@
                 "desc": "3-Axis Accel",
                 "manu": "Analog Devices",
                 "type": "ADXL313",
-                "attr": {
-                    "x": {
-                        "b": 6,
-                        "a": [
-                            {
-                                "n": "x",
-                                "t": "<h",
-                                "u": "g",
-                                "r": [-4.0, 4.0],
-                                "d": 1024,
-                                "f": ".2f"
-                            },
-                            {
-                                "n": "y",
-                                "t": "<h",
-                                "u": "g",
-                                "r": [-4.0,4.0],
-                                "d": 1024,
-                                "f": ".2f"
-                            },
-                            {
-                                "n": "z",
-                                "t": "<h",
-                                "u": "g",
-                                "r": [-4.0,4.0],
-                                "d": 1024,
-                                "f": ".2f"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 6,
+                    "a": [
+                        {
+                            "n": "x",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0, 4.0],
+                            "d": 1024,
+                            "f": ".2f"
+                        },
+                        {
+                            "n": "y",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 1024,
+                            "f": ".2f"
+                        },
+                        {
+                            "n": "z",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 1024,
+                            "f": ".2f"
+                        }
+                    ]
                 }
             }
         },
@@ -191,7 +183,7 @@
             "deviceType": "AHT20",
             "detectionValues": "",
             "initValues": "0xbe0800=",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "=r6&0xac3300=",
                 "i": 5000,
                 "s": 2
@@ -202,40 +194,38 @@
                 "desc": "Temp&Humid",
                 "manu": "Asair",
                 "type": "AHT20",
-                "attr": {
-                    "x" : {
-                        "b": 6,
-                        "a": [
-                            {
-                                "n": "status",
-                                "t": "B",
-                                "u": "",
-                                "f": "02x",
-                                "vs": false
-                            },
-                            {
-                                "n": "humidity",
-                                "t": ">I",
-                                "u": "%",
-                                "r": [0, 100],
-                                "m": "0xfffff000",
-                                "s": 12,
-                                "d": 10485.76,
-                                "f": "3.1f"
-                            },
-                            {
-                                "n": "temperature",
-                                "at": 2,
-                                "t": ">I",
-                                "u": "&deg;C",
-                                "r": [-40,80],
-                                "m": "0x000fffff",
-                                "d": 5242.88,
-                                "a": -50,
-                                "f": "3.2f"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 6,
+                    "a": [
+                        {
+                            "n": "status",
+                            "t": "B",
+                            "u": "",
+                            "f": "02x",
+                            "vs": false
+                        },
+                        {
+                            "n": "humidity",
+                            "t": ">I",
+                            "u": "%",
+                            "r": [0, 100],
+                            "m": "0xfffff000",
+                            "s": 12,
+                            "d": 10485.76,
+                            "f": "3.1f"
+                        },
+                        {
+                            "n": "temperature",
+                            "at": 2,
+                            "t": ">I",
+                            "u": "&deg;C",
+                            "r": [-40,80],
+                            "m": "0x000fffff",
+                            "d": 5242.88,
+                            "a": -50,
+                            "f": "3.2f"
+                        }
+                    ]
                 }
             }
         },
@@ -244,7 +234,7 @@
             "deviceType": "MCP9808",
             "detectionValues": "0x06=0b0000000001010100&0x07=0b00000100XXXXXXXX",
             "initValues": "0x010000",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x05=r2",
                 "i": 5000,
                 "s": 2
@@ -255,23 +245,21 @@
                 "desc": "Temp",
                 "manu": "Microchip",
                 "type": "MCP9808",
-                "attr": {
-                    "x" : {
-                        "b": 2,
-                        "a": [
-                            {
-                                "n": "temperature",
-                                "t": ">H",
-                                "u": "&deg;C",
-                                "r": [-40,125],
-                                "m": "0x1fff",
-                                "d": 16,
-                                "sb": 12,
-                                "ss": 4096,
-                                "f": "3.2f"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 2,
+                    "a": [
+                        {
+                            "n": "temperature",
+                            "t": ">H",
+                            "u": "&deg;C",
+                            "r": [-40,125],
+                            "m": "0x1fff",
+                            "d": 16,
+                            "sb": 12,
+                            "ss": 4096,
+                            "f": "3.2f"
+                        }
+                    ]
                 }
             }
         },
@@ -280,7 +268,7 @@
             "deviceType": "LPS25",
             "detectionValues": "0x0f=0b10111101",
             "initValues": "0x2104=&0x20C0=",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0xA7=r6",
                 "i": 1000,
                 "s": 2
@@ -291,40 +279,38 @@
                 "desc": "Pressure",
                 "manu": "ST",
                 "type": "LPS25",
-                "attr": {
-                    "x" : {
-                        "b": 6,
-                        "a": [
-                            {
-                                "n": "status",
-                                "t": "B",
-                                "r": [0,255],
-                                "m": "0xff",
-                                "f": "02x",
-                                "vs": false
-                            },
-                            {
-                                "n": "pressure",
-                                "at": 0,
-                                "t": "<I",
-                                "u": "hPa",
-                                "r": [260,1260],
-                                "s": 8,
-                                "d": 4096,
-                                "f": "4.2f"
-                            },
-                            {
-                                "n": "temperature",
-                                "at": 4,
-                                "t": "<h",
-                                "u": "&deg;C",
-                                "r": [-30,105],
-                                "d": 480,
-                                "a": 42.5,
-                                "f": "3.2f"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 6,
+                    "a": [
+                        {
+                            "n": "status",
+                            "t": "B",
+                            "r": [0,255],
+                            "m": "0xff",
+                            "f": "02x",
+                            "vs": false
+                        },
+                        {
+                            "n": "pressure",
+                            "at": 0,
+                            "t": "<I",
+                            "u": "hPa",
+                            "r": [260,1260],
+                            "s": 8,
+                            "d": 4096,
+                            "f": "4.2f"
+                        },
+                        {
+                            "n": "temperature",
+                            "at": 4,
+                            "t": "<h",
+                            "u": "&deg;C",
+                            "r": [-30,105],
+                            "d": 480,
+                            "a": 42.5,
+                            "f": "3.2f"
+                        }
+                    ]
                 }
             }
         },
@@ -333,7 +319,7 @@
             "deviceType": "CAP1203",
             "detectionValues": "0xfd=0b01101101",
             "initValues": "0x0000&0x1f06",
-            "pollingConfigJson": {
+            "pollInfo": {
                 "c": "0x02=r2&0x0000",
                 "i": 100,
                 "s": 10
@@ -344,45 +330,43 @@
                 "desc": "Capacitive Touch x 3",
                 "manu": "Sparkfun",
                 "type": "CAP1203",
-                "attr": {
-                    "x": {
-                        "b": 2,
-                        "a": [
-                            {
-                                "n": "A",
-                                "at": 1,
-                                "t": "B",
-                                "r": [0, 1],
-                                "m": "0x01",
-                                "s": 0,
-                                "f": "b"
-                            },
-                            {
-                                "n": "B",
-                                "at": 1,
-                                "t": "B",
-                                "r": [0, 1],
-                                "m": "0x02",
-                                "s": 1,
-                                "f": "b"
-                            },
-                            {
-                                "n": "C",
-                                "at": 1,
-                                "t": "B",
-                                "r": [0, 1],
-                                "m": "0x04",
-                                "s": 2,
-                                "f": "b"
-                            },
-                            {
-                                "n": "status",
-                                "t": ">H",
-                                "vs": false,
-                                "f": "04x"
-                            }
-                        ]
-                    }
+                "resp": {
+                    "b": 2,
+                    "a": [
+                        {
+                            "n": "A",
+                            "at": 1,
+                            "t": "B",
+                            "r": [0, 1],
+                            "m": "0x01",
+                            "s": 0,
+                            "f": "b"
+                        },
+                        {
+                            "n": "B",
+                            "at": 1,
+                            "t": "B",
+                            "r": [0, 1],
+                            "m": "0x02",
+                            "s": 1,
+                            "f": "b"
+                        },
+                        {
+                            "n": "C",
+                            "at": 1,
+                            "t": "B",
+                            "r": [0, 1],
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b"
+                        },
+                        {
+                            "n": "status",
+                            "t": ">H",
+                            "vs": false,
+                            "f": "04x"
+                        }
+                    ]
                 }
             }
         },
@@ -391,8 +375,8 @@
             "deviceType": "QwiicButton",
             "detectionValues": "0x00=0b01011101",
             "initValues": "",
-            "pollingConfigJson": {
-                "c": "0x03=0b00000XXX",
+            "pollInfo": {
+                "c": "0x03=r1",
                 "i": 100,
                 "s": 10
             },
@@ -402,50 +386,46 @@
                 "desc": "Button",
                 "manu": "Sparkfun",
                 "type": "QwiicButton",
-                "attr": {
-                    "x": {
-                        "b": 3,
-                        "a": [
-                            {
-                                "n": "press",
-                                "t": "B",
-                                "u": "",
-                                "r": [0, 1],
-                                "m": "0x04",
-                                "s": 2,
-                                "f": "b"
-                            }
-                        ]
-                    }
-                },
-                "actions": {
-                    "x": [
+                "resp": {
+                    "b": 1,
+                    "a": [
                         {
-                            "n": "brightness",
+                            "n": "press",
                             "t": "B",
-                            "w": "19",
-                            "r": [0,255]
-                        },
-                        {
-                            "n": "granularity",
-                            "t": "B",
-                            "w": "1a",
-                            "r": [1,255]
-                        },
-                        {
-                            "n": "cycle time",
-                            "t": "<H",
-                            "w": "1b",
-                            "r": [0,65535]
-                        },
-                        {
-                            "n": "off time",
-                            "t": "<H",
-                            "w": "1d",
-                            "r": [0,65535]
+                            "u": "",
+                            "r": [0, 1],
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b"
                         }
                     ]
-                }
+                },
+                "actions": [
+                    {
+                        "n": "brightness",
+                        "t": "B",
+                        "w": "19",
+                        "r": [0,255]
+                    },
+                    {
+                        "n": "granularity",
+                        "t": "B",
+                        "w": "1a",
+                        "r": [1,255]
+                    },
+                    {
+                        "n": "cycle time",
+                        "t": "<H",
+                        "w": "1b",
+                        "r": [0,65535]
+                    },
+                    {
+                        "n": "off time",
+                        "t": "<H",
+                        "w": "1d",
+                        "r": [0,65535]
+                    }
+                ]
             }
         },
         "QwiicLEDStick": {
@@ -453,39 +433,36 @@
             "deviceType": "QwiicLEDStick",
             "detectionValues": "",
             "initValues": "",
-            "pollingConfigJson": {},
+            "pollInfo": {},
             "scanPriority": "high",
             "devInfoJson": {
                 "name": "Qwiic LED Stick",
                 "desc": "LEDs",
                 "manu": "Sparkfun",
                 "type": "QwiicLEDStick",
-                "attr": {},
-                "actions": {
-                    "x": [
-                        {
-                            "n": "pixels",
-                            "t": "BBBB",
-                            "w": "71",
-                            "f": "LEDPIX",
-                            "NX": 10,
-                            "NY": 1,
-                            "concat": false,
-                            "r": [0,255]
-                        },
-                        {
-                            "n": "brightness",
-                            "t": "B",
-                            "w": "76",
-                            "r": [0,255],
-                            "d": 50
-                        },
-                        {
-                            "n": "off",
-                            "w": "78"
-                        }
-                    ]
-                }
+                "actions": [
+                    {
+                        "n": "pixels",
+                        "t": "BBBB",
+                        "w": "71",
+                        "f": "LEDPIX",
+                        "NX": 10,
+                        "NY": 1,
+                        "concat": false,
+                        "r": [0,255]
+                    },
+                    {
+                        "n": "brightness",
+                        "t": "B",
+                        "w": "76",
+                        "r": [0,255],
+                        "d": 50
+                    },
+                    {
+                        "n": "off",
+                        "w": "78"
+                    }
+                ]
             }
         }
     }

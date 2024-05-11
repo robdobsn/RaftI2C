@@ -1,6 +1,6 @@
 import CustomAttrHandler from "./CustomAttrHandler";
-import { DeviceTypeAttribute, DeviceTypeAttributeGroup, decodeAttrUnitsEncoding, isAttrTypeSigned } from "./DeviceInfo";
-import { DeviceAttributes, DeviceTimeline } from "./DeviceStates";
+import { DeviceTypeAttribute, DeviceTypePollRespMetadata, decodeAttrUnitsEncoding, isAttrTypeSigned } from "./DeviceInfo";
+import { DeviceAttributesState, DeviceTimeline } from "./DeviceStates";
 import struct, { DataType } from 'python-struct';
 
 export default class AttributeHandler {
@@ -12,8 +12,8 @@ export default class AttributeHandler {
     private MSG_TIMESTAMP_SIZE_BYTES = 2;
     private MSG_TIMESTAMP_WRAP_VALUE = 65536;
     
-    public processMsgAttrGroup(msgBuffer: Buffer, msgBufIdx: number, deviceTimeline: DeviceTimeline, attrGroup: DeviceTypeAttributeGroup, 
-                        devAttrs: DeviceAttributes, maxDataPoints: number): number {
+    public processMsgAttrGroup(msgBuffer: Buffer, msgBufIdx: number, deviceTimeline: DeviceTimeline, pollRespMetadata: DeviceTypePollRespMetadata, 
+                        devAttrsState: DeviceAttributesState, maxDataPoints: number): number {
         
         // Extract timestamp
         let { newBufIdx, timestamp } = this.extractTimestampAndAdvanceIdx(msgBuffer, msgBufIdx, deviceTimeline);
@@ -27,33 +27,33 @@ export default class AttributeHandler {
         const msgDataStartIdx = msgBufIdx;
 
         // Number of bytes in group
-        const attrGroupDataBytes = attrGroup.b;
+        const pollRespSizeBytes = pollRespMetadata.b;
 
         // Check if a custom attribute function is used
         let newAttrValues: number[][] = [];
-        if ("c" in attrGroup) {
+        if ("c" in pollRespMetadata) {
 
-            // Extract attr values using custom handler
-            newAttrValues = this._customAttrHandler.handleAttr(attrGroup, msgBuffer, msgBufIdx, attrGroupDataBytes);
+            // Extract attribute values using custom handler
+            newAttrValues = this._customAttrHandler.handleAttr(pollRespMetadata, msgBuffer, msgBufIdx, pollRespSizeBytes);
 
         } else {  
 
             // Iterate over attributes
-            for (let attrIdx = 0; attrIdx < attrGroup.a.length; attrIdx++) {
+            for (let attrIdx = 0; attrIdx < pollRespMetadata.a.length; attrIdx++) {
 
-                // Get the attr definition
-                const attr: DeviceTypeAttribute = attrGroup.a[attrIdx];
-                if (!("t" in attr)) {
-                    console.warn(`DeviceManager msg unknown msgBuffer ${msgBuffer} ts ${timestamp} attr ${JSON.stringify(attr)}`);
+                // Get the attribute definition
+                const attrDef: DeviceTypeAttribute = pollRespMetadata.a[attrIdx];
+                if (!("t" in attrDef)) {
+                    console.warn(`DeviceManager msg unknown msgBuffer ${msgBuffer} ts ${timestamp} attrDef ${JSON.stringify(attrDef)}`);
                     newAttrValues.push([]);
                     continue;
                 }
 
                 // Process the attribute
-                const { values, newMsgBufIdx } = this.processMsgAttribute(attr, msgBuffer, msgBufIdx, msgDataStartIdx);
+                const { values, newMsgBufIdx } = this.processMsgAttribute(attrDef, msgBuffer, msgBufIdx, msgDataStartIdx);
                 if (newMsgBufIdx < 0) {
                     newAttrValues.push([]);
-                    continue;                    
+                    continue;
                 }
                 msgBufIdx = newMsgBufIdx;
                 newAttrValues.push(values);
@@ -62,40 +62,40 @@ export default class AttributeHandler {
 
         // Check if any attributes were added
         if (newAttrValues.length === 0) {
-            console.warn(`DeviceManager msg attrGroup ${attrGroup} newAttrValues ${newAttrValues} is empty`);
-            return msgDataStartIdx+attrGroupDataBytes;
+            console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} newAttrValues ${newAttrValues} is empty`);
+            return msgDataStartIdx+pollRespSizeBytes;
         }
 
         // All attributes must have the same number of new values
         let numNewValues = newAttrValues[0].length;
         for (let i = 1; i < newAttrValues.length; i++) {
             if (newAttrValues[i].length !== numNewValues) {
-                console.warn(`DeviceManager msg attrGroup ${attrGroup} attr ${attrGroup.a[i].n} newAttrValues ${newAttrValues} do not have the same length`);
-                return msgDataStartIdx+attrGroupDataBytes;
+                console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} attrName ${pollRespMetadata.a[i].n} newAttrValues ${newAttrValues} do not have the same length`);
+                return msgDataStartIdx+pollRespSizeBytes;
             }
         }
 
         // All attributes in the schema should have values
-        if (newAttrValues.length !== attrGroup.a.length) {
-            console.warn(`DeviceManager msg attrGroup ${attrGroup} newAttrValues ${newAttrValues} length does not match attrGroup.a length`);
-            return msgDataStartIdx+attrGroupDataBytes;
+        if (newAttrValues.length !== pollRespMetadata.a.length) {
+            console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} newAttrValues ${newAttrValues} length does not match attrGroup.a length`);
+            return msgDataStartIdx+pollRespSizeBytes;
         }
 
         // Add the new attribute values to the device state
-        for (let attrIdx = 0; attrIdx < attrGroup.a.length; attrIdx++) {
+        for (let attrIdx = 0; attrIdx < pollRespMetadata.a.length; attrIdx++) {
             // Check if attribute already exists in the device state
-            const attr: DeviceTypeAttribute = attrGroup.a[attrIdx];
-            if (!(attr.n in devAttrs)) {
-                devAttrs[attr.n] = {
-                    name: attr.n,
+            const attrDef: DeviceTypeAttribute = pollRespMetadata.a[attrIdx];
+            if (!(attrDef.n in devAttrsState)) {
+                devAttrsState[attrDef.n] = {
+                    name: attrDef.n,
                     newAttribute: true,
                     newData: true,
                     values: [],
-                    units: decodeAttrUnitsEncoding(attr.u || ""),
-                    range: attr.r || [0, 0],
-                    format: ("f" in attr && typeof attr.f == "string") ? attr.f : "",
-                    visibleSeries: "v" in attr ? attr.v === 0 || attr.v === false : ("vs" in attr ? (attr.vs === 0 || attr.vs === false ? false : !!attr.vs) : true),
-                    visibleForm: "v" in attr ? attr.v === 0 || attr.v === false : ("vf" in attr ? (attr.vf === 0 || attr.vf === false ? false : !!attr.vf) : true),
+                    units: decodeAttrUnitsEncoding(attrDef.u || ""),
+                    range: attrDef.r || [0, 0],
+                    format: ("f" in attrDef && typeof attrDef.f == "string") ? attrDef.f : "",
+                    visibleSeries: "v" in attrDef ? attrDef.v === 0 || attrDef.v === false : ("vs" in attrDef ? (attrDef.vs === 0 || attrDef.vs === false ? false : !!attrDef.vs) : true),
+                    visibleForm: "v" in attrDef ? attrDef.v === 0 || attrDef.v === false : ("vf" in attrDef ? (attrDef.vf === 0 || attrDef.vf === false ? false : !!attrDef.vf) : true),
                 };
             }
 
@@ -103,16 +103,16 @@ export default class AttributeHandler {
             const values = newAttrValues[attrIdx];
             for (let valueIdx = 0; valueIdx < values.length; valueIdx++) {
                 // Limit to MAX_DATA_POINTS_TO_STORE
-                if (devAttrs[attr.n].values.length >= maxDataPoints) {
-                    devAttrs[attr.n].values.shift();
+                if (devAttrsState[attrDef.n].values.length >= maxDataPoints) {
+                    devAttrsState[attrDef.n].values.shift();
                 }
-                devAttrs[attr.n].values.push(values[valueIdx]);
-                devAttrs[attr.n].newData = true;
+                devAttrsState[attrDef.n].values.push(values[valueIdx]);
+                devAttrsState[attrDef.n].newData = true;
             }
         }
 
         // Check if a time increment is specified
-        const timeIncUs: number = attrGroup.us ? attrGroup.us : 1000;
+        const timeIncUs: number = pollRespMetadata.us ? pollRespMetadata.us : 1000;
 
         // Add to the timeline
         for (let i = 0; i < numNewValues; i++) {
@@ -126,35 +126,35 @@ export default class AttributeHandler {
             timestamp += timeIncUs / 1000;
         }
 
-        return msgDataStartIdx+attrGroupDataBytes;
+        return msgDataStartIdx+pollRespSizeBytes;
     }
 
-    private processMsgAttribute(attr: DeviceTypeAttribute, msgBuffer: Buffer, msgBufIdx: number, msgDataStartIdx: number): { values: number[], newMsgBufIdx: number} {
+    private processMsgAttribute(attrDef: DeviceTypeAttribute, msgBuffer: Buffer, msgBufIdx: number, msgDataStartIdx: number): { values: number[], newMsgBufIdx: number} {
 
         // Current field message string index
         let curFieldBufIdx = msgBufIdx;
         let attrUsesAbsPos = false;
 
         // Check for "at": N which means start reading from byte N of the message (after the timestamp bytes)
-        if (attr.at !== undefined) {
-            curFieldBufIdx = msgDataStartIdx + attr.at;
+        if (attrDef.at !== undefined) {
+            curFieldBufIdx = msgDataStartIdx + attrDef.at;
             attrUsesAbsPos = true;
         }
 
         // Check if outside bounds of message
         if (curFieldBufIdx >= msgBuffer.length) {
-            console.warn(`DeviceManager msg outside bounds msgBuffer ${msgBuffer} attr ${attr.n}`);
+            console.warn(`DeviceManager msg outside bounds msgBuffer ${msgBuffer} attrName ${attrDef.n}`);
             return { values: [], newMsgBufIdx: -1 };
         }
 
         // Attribute type
-        const attrTypesOnly = attr.t;
+        const attrTypesOnly = attrDef.t;
 
         // Slice into buffer
         const attrBuf = msgBuffer.slice(curFieldBufIdx);
  
         // Check if a mask is used and the value is signed
-        const maskOnSignedValue = "m" in attr && isAttrTypeSigned(attrTypesOnly);
+        const maskOnSignedValue = "m" in attrDef && isAttrTypeSigned(attrTypesOnly);
 
         // Extract the value using python-struct
         let unpackValues = struct.unpack(maskOnSignedValue ? attrTypesOnly.toUpperCase() : attrTypesOnly, attrBuf);
@@ -175,17 +175,17 @@ export default class AttributeHandler {
         // }
 
         // Check for mask
-        if ("m" in attr) {
-            const mask = typeof attr.m === "string" ? parseInt(attr.m, 16) : attr.m as number;
+        if ("m" in attrDef) {
+            const mask = typeof attrDef.m === "string" ? parseInt(attrDef.m, 16) : attrDef.m as number;
             attrValues = attrValues.map((value) => (maskOnSignedValue ? this.signExtend(value, mask) : value & mask));
         }
 
         // Check for a sign-bit
-        if ("sb" in attr) {
-            const signBitPos = attr.sb as number;
+        if ("sb" in attrDef) {
+            const signBitPos = attrDef.sb as number;
             const signBitMask = 1 << signBitPos;
-            if ("ss" in attr) {
-                const signBitSubtract = attr.ss as number;
+            if ("ss" in attrDef) {
+                const signBitSubtract = attrDef.ss as number;
                 attrValues = attrValues.map((value) => (value & signBitMask) ? signBitSubtract - value : value);
             } else {
                 attrValues = attrValues.map((value) => (value & signBitMask) ? value - (signBitMask << 1) : value);
@@ -193,8 +193,8 @@ export default class AttributeHandler {
         }
 
         // Check for bit shift required
-        if ("s" in attr && attr.s) {
-            const bitshift = attr.s as number;
+        if ("s" in attrDef && attrDef.s) {
+            const bitshift = attrDef.s as number;
             if (bitshift > 0) {
                 attrValues = attrValues.map((value) => (value) >> bitshift);
             } else if (bitshift < 0) {
@@ -203,18 +203,18 @@ export default class AttributeHandler {
         }
 
         // Check for divisor
-        if ("d" in attr && attr.d) {
-            const divisor = attr.d as number;
+        if ("d" in attrDef && attrDef.d) {
+            const divisor = attrDef.d as number;
             attrValues = attrValues.map((value) => (value) / divisor);
         }
 
         // Check for value to add
-        if ("a" in attr && attr.a !== undefined) {
-            const addValue = attr.a as number;
+        if ("a" in attrDef && attrDef.a !== undefined) {
+            const addValue = attrDef.a as number;
             attrValues = attrValues.map((value) => (value) + addValue);
         }
 
-        // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attr ${attr.n} type ${attr.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attr ${attr}`);
+        // console.log(`DeviceManager msg attrGroup ${attrGroup} devkey ${deviceKey} valueHexChars ${valueHexChars} msgHexStr ${msgHexStr} ts ${timestamp} attrName ${attrDef.n} type ${attrDef.t} value ${value} signExtendableMaskSignPos ${signExtendableMaskSignPos} attrTypeDefForStruct ${attrTypeDefForStruct} attrDef ${attrDef}`);
         // Move buffer position if using relative positioning
         msgBufIdx += attrUsesAbsPos ? 0 : numBytesConsumed;
 

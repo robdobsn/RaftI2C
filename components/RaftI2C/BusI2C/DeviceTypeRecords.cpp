@@ -107,7 +107,7 @@ void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CD
         return;
 
     // Form JSON from string
-    RaftJson pollInfo(pDevTypeRec->pollingConfigJson);
+    RaftJson pollInfo(pDevTypeRec->pollInfo);
 
     // Get polling request records
     String pollRequest = pollInfo.getString("c", "");

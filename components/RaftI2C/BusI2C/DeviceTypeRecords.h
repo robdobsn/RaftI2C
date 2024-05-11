@@ -13,11 +13,6 @@
 #include "DevicePollingInfo.h"
 #include "RaftJson.h"
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Callback function definitions
-/// @brief Get length of a data record
-typedef uint32_t (*BusI2CDevTypeRecordLengthFn)();
-
 /// @brief Get decoded data record
 /// @param pPollBuf buffer containing data
 /// @param pollBufLen length of buffer
@@ -37,9 +32,9 @@ public:
     const char* addresses = nullptr;
     const char* detectionValues = nullptr;
     const char* initValues = nullptr;
-    const char* pollingConfigJson = nullptr;
+    const char* pollInfo = nullptr;
+    uint16_t pollDataSizeBytes = 0;
     const char* devInfoJson = nullptr;
-    BusI2CDevTypeRecordLengthFn pollResultLenFn = nullptr;
     BusI2CDevTypeRecordDecodeFn pollResultDecodeFn = nullptr;
 
     String getJson(bool includePlugAndPlayInfo) const
@@ -56,7 +51,8 @@ public:
         devTypeInfo += "\"addr\":\"" + String(addresses) + "\",";
         devTypeInfo += "\"det\":\"" + String(detectionValues) + "\",";
         devTypeInfo += "\"init\":\"" + String(initValues) + "\",";
-        devTypeInfo += "\"poll\":\"" + String(pollingConfigJson) + "\",";
+        devTypeInfo += "\"poll\":\"" + String(pollInfo) + "\",";
+        devTypeInfo += "\"pollSize\":" + String(pollDataSizeBytes) + ",";
         devTypeInfo += "\"info\":" + String(devInfoJson);
         devTypeInfo += "}";
         return devTypeInfo;
@@ -89,6 +85,7 @@ public:
     /// @return pointer to info record if device type found, nullptr if not
     const BusI2CDevTypeRecord* getDeviceInfo(const String& deviceType) const;
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device polling info
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
