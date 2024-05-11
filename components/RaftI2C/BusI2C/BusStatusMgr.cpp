@@ -671,35 +671,3 @@ uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline,
     xSemaphoreGive(_busElemStatusMutex);
     return numResponses;
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get bus poll responses json
-/// @param deviceIdentMgr device identity manager
-/// @return bus poll responses json
-String BusStatusMgr::getBusPollResponsesJson(const DeviceIdentMgr& deviceIdentMgr)
-{
-    // Return string
-    String jsonStr;
-
-    // Get list of all bus element addresses
-    std::vector<uint32_t> addresses;
-    getBusElemAddresses(addresses, false);
-    for (uint32_t address : addresses)
-    {
-        // Get bus status for each address
-        bool isOnline = false;
-        uint16_t deviceTypeIndex = 0;
-        std::vector<uint8_t> devicePollResponseData;
-        uint32_t responseSize = 0;
-        getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
-
-        // Use device identity manager to convert to JSON
-        String jsonData = deviceIdentMgr.deviceStatusToJson(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address), 
-                        isOnline, deviceTypeIndex, devicePollResponseData, responseSize);
-        if (jsonData.length() > 0)
-        {
-            jsonStr += (jsonStr.length() == 0 ? "{" : ",") + jsonData;
-        }
-    }
-    return jsonStr.length() == 0 ? "{}" : jsonStr + "}";
-}

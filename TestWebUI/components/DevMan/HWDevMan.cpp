@@ -274,14 +274,17 @@ String HWDevMan::getStatusJSON()
     String jsonStr;
     for (BusBase* pBus : _busList)
     {
-        if (pBus)
+        if (!pBus)
+            continue;
+        // Get device interface
+        // TODO - remove cast
+        BusDeviceIF* pDeviceIF = pBus->getBusDeviceIF();
+        if (!pDeviceIF)
+            continue; 
+        String jsonRespStr = pDeviceIF->getPollResponsesJson();
+        if (jsonRespStr.length() > 0)
         {
-            // String jsonRespStr = ((BusI2C*)pBus)->getBusStatusJson();
-            String jsonRespStr = pBus->getBusPollResponsesJson();
-            if (jsonRespStr.length() > 0)
-            {
-                jsonStr += (jsonStr.length() == 0 ? "{\"" : ",\"") + pBus->getBusName() + "\":" + jsonRespStr;
-            }
+            jsonStr += (jsonStr.length() == 0 ? "{\"" : ",\"") + pBus->getBusName() + "\":" + jsonRespStr;
         }
     }
 

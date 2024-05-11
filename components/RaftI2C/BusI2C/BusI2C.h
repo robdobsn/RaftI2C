@@ -63,6 +63,14 @@ public:
     virtual void service() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus device interface
+    // TODO - make virtual
+    BusDeviceIF* getBusDeviceIF()
+    {
+        return &_deviceIdentMgr;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief clear response queue (and optionally clear polling data)
     /// @param incPolling - clear polling data
     virtual void clear(bool incPolling) override final;
@@ -138,20 +146,6 @@ public:
     /// @param requestFastScan - true to request a fast scan
     virtual void requestScan(bool enableSlowScan, bool requestFastScan) override final;
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device type information by address
-    /// @param address - address of device to get information for
-    /// @param includePlugAndPlayInfo - true to include plug and play information
-    /// @return JSON string
-    virtual String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const override final;
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device type information by device type name
-    /// @param deviceType - device type name
-    /// @param includePlugAndPlayInfo - true to include plug and play information
-    /// @return JSON string
-    virtual String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const override final;
-
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Return addresses of devices attached to the bus
     /// @param addresses - vector to store the addresses of devices
@@ -184,14 +178,6 @@ public:
     virtual uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const override final
     {
         return _busStatusMgr.getLastStatusUpdateMs(includeElemOnlineStatusChanges, includePollDataUpdates);
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus poll JSON for all detected bus elements
-    /// @return JSON string
-    virtual String getBusPollResponsesJson() override final
-    {
-        return _busStatusMgr.getBusPollResponsesJson(_deviceIdentMgr);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

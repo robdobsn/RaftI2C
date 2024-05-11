@@ -52,7 +52,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busExtenderMgr(_busPowerController, _busStuckHandler, _busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _deviceIdentMgr(_busExtenderMgr,
+        _deviceIdentMgr(_busStatusMgr, _busExtenderMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _busScanner(_busStatusMgr, _busExtenderMgr, _deviceIdentMgr,
@@ -606,29 +606,3 @@ void BusI2C::hiatus(uint32_t forPeriodMs)
     LOG_I("BusI2C", "hiatus req for %dms", forPeriodMs);
 #endif
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get JSON for device type info
-/// @param address Address of element
-/// @return JSON string
-String BusI2C::getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const
-{
-    // Get device type index
-    uint16_t deviceTypeIdx = _busStatusMgr.getDeviceTypeIndexByAddr(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
-    if (deviceTypeIdx == DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
-        return "{}";
-
-    // Get device type info
-    return _deviceIdentMgr.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get JSON for device type info
-/// @param deviceType Device type
-/// @return JSON string
-String BusI2C::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const
-{
-    // Get device type info
-    return _deviceIdentMgr.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
-}
-

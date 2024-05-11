@@ -19,8 +19,6 @@
 #include "BusI2CAddrStatus.h"
 #include <list>
 
-class DeviceIdentMgr;
-
 class BusStatusMgr {
 
 public:
@@ -92,12 +90,6 @@ public:
     uint32_t getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus poll responses json
-    /// @param deviceIdentMgr device identity manager
-    /// @return JSON string
-    String getBusPollResponsesJson(const DeviceIdentMgr& deviceIdentMgr);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Is address found on main bus
