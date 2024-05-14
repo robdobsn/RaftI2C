@@ -305,91 +305,23 @@ String DeviceIdentMgr::getPollResponsesJson() const
 /// @param pPollBuf buffer containing poll responses
 /// @param pollBufLen length of poll response buffer
 /// @param pStructOut pointer to structure (or array of structures) to receive decoded data
-/// @param structOutSize size of structure (in bytes) to receive decoded data
+/// @param structOutSize size of structure (in bytes) to receive decoded data (includes timestamp)
 /// @param maxRecCount maximum number of records to decode
 /// @return number of records decoded
-uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex, const uint8_t* pPollBuf, uint32_t pollBufLen, void* pStructOut, uint32_t structOutSize, uint16_t maxRecCount)
+uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex, 
+            const uint8_t* pPollBuf, uint32_t pollBufLen, 
+            void* pStructOut, uint32_t structOutSize, 
+            uint16_t maxRecCount, BusDeviceDecodeState& decodeState)
 {
-    // TODO - check if there is a statically generated function to do the decoding
-
     // Get device type info
     const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
         return 0;
 
-    // Check the device info JSON is present
-    if (!pDevTypeRec->devInfoJson)
+    // Check the decode method is present
+    if (!pDevTypeRec->pollResultDecodeFn)
         return 0;
 
-
-// // Function to decode attributes from buffer based on the attribute definitions
-// int decodeAttributes(const uint8_t* buffer, int startIndex, const Attribute& attr, std::vector<int>& values) {
-//     int index = startIndex;
-//     int value = 0;
-
-//     if (attr.type == 'B') { // Byte
-//         value = buffer[index];
-//         if (attr.mask != 0) {
-//             value &= attr.mask;
-//         }
-//         if (attr.shift != 0) {
-//             value >>= attr.shift;
-//         }
-//         values.push_back(value);
-//         index += 1; // Move index by the size of the type
-//     }
-
-//     // Add additional type handling as needed
-//     return index;
-// }
-
-    uint32_t recordsDecoded = 0;
-    // const uint8_t* pInBuf = pPollBuf;
-    // const uint8_t* pOutBuf = static_cast<const uint8_t*>(pStructOut);
-    // const uint8_t* pStructOutEnd = pOutBuf + structOutSize;
-
-    // // Assuming pStructOut is an array of structures that match the expected output
-    // while ((recordsDecoded < maxRecCount) && (pOutBuf < pStructOutEnd))
-    // {
-    //     // Decode the attributes
-    //     int bufferIndex = 0;
-    //     for (const auto& agPair : pDevTypeRec->attributeGroups) 
-    //     {
-    //         const AttributeGroup& group = agPair.second;
-    //         std::vector<int> decodedValues;
-
-    //         for (const Attribute& attr : group.attributes) 
-    //         {
-    //             bufferIndex = decodeAttributes(pInBuf, bufferIndex, attr, decodedValues);
-    //             if (bufferIndex == -1) {
-    //                 std::cout << "Error decoding attributes\n";
-    //                 return recordsDecoded;
-    //             }
-    //         }
-
-    //         // Populate the structure with decoded values as needed
-    //     }
-    //     ++recordsDecoded;
-    // }
-    // {
-    //     for (const auto& agPair : pDevTypeRec->attributeGroups) 
-    //     {
-    //         const AttributeGroup& group = agPair.second;
-    //         std::vector<int> decodedValues;
-
-    //         for (const Attribute& attr : group.attributes) 
-    //         {
-    //             bufferIndex = decodeAttributes(pPollBuf, bufferIndex, attr, decodedValues);
-    //             if (bufferIndex == -1) {
-    //                 std::cout << "Error decoding attributes\n";
-    //                 return recordsDecoded;
-    //             }
-    //         }
-
-    //         // Populate the structure with decoded values as needed
-    //     }
-    //     ++recordsDecoded;
-    // }
-
-    return recordsDecoded;
+    // Decode the poll response
+    return pDevTypeRec->pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
 }

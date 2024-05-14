@@ -77,7 +77,7 @@ const testCases: TestCase [] = [
     {
         devType: "VCNL4040",  
         buffer: genBuffer(genTs(1234), genUInt16LE(5678), genUInt16LE(9013), genUInt16LE(19726)),
-        timestamps: [1234],
+        timestamps: [1234000],
         attrs: {
             "prox": {       v: [5678]           },
             "als": {        v: [901.3]          },
@@ -88,7 +88,7 @@ const testCases: TestCase [] = [
     {
         devType: "VL6180",
         buffer: genBuffer(genTs(38171), genB(0x56), genB(175)),
-        timestamps: [38171],
+        timestamps: [38171000],
         attrs: {
             "valid": {      v: [1]              },
             "dist":  {      v: [175]            }
@@ -107,7 +107,7 @@ const testCases: TestCase [] = [
                     genUInt24BE(123456), genUInt24BE(123456), 
                     genUInt24BE(123456), genUInt24BE(123456),
                     genUInt24BE(123456), genUInt24BE(123456)),
-        timestamps: [1234, 1274, 1314, 1354, 1394, 1434, 1474, 1514],
+        timestamps: [1234000, 1234040, 1234080, 1234120, 1234160, 1234200, 1234240, 1234280],
         attrs: {
             "Red": {        v: [123456,123456,123456,123456,123456,123456,123456,123456]              },
             "IR": {         v: [123456,123456,123456,123456,123456,123456,123456,123456]              }
@@ -117,7 +117,7 @@ const testCases: TestCase [] = [
     {
         devType: "ADXL313",
         buffer: genBuffer(genTs(1234), genInt16LE(Math.floor(3.5*1024)), genInt16LE(Math.floor(-1.6*1024)), genInt16LE(Math.floor(1.8*1024))),
-        timestamps: [1234],
+        timestamps: [1234000],
         attrs: {
             "x": {          v: [Math.floor(3.5*1024)/1024]          },
             "y": {          v: [Math.floor(-1.6*1024)/1024]         },
@@ -128,7 +128,7 @@ const testCases: TestCase [] = [
     {
         devType: "AHT20",
         buffer: genBuffer(genTs(1234), genB(0x56), genUInt2x20BE(98274, 87295)),
-        timestamps: [1234],
+        timestamps: [1234000],
         attrs: {
             "status": {       v: [0x56]           },
             "humidity": {        v: [100*98274/(2**20)]          },
@@ -139,7 +139,7 @@ const testCases: TestCase [] = [
     {
         devType: "MCP9808",
         buffer: genBuffer(genTs(9824), genUInt16BE(0xf603)),
-        timestamps: [9824],
+        timestamps: [9824000],
         attrs: {
             "temperature": {       v: [(0xf603 & 0x1000) != 0 ? 256-(0xf603 & 0x1fff)/16 : (0xf603 & 0x0fff)/16]           }
         },
@@ -148,7 +148,7 @@ const testCases: TestCase [] = [
     {
         devType: "LPS25",
         buffer: genBuffer(genTs(9824), genB(0x12), genUInt24LE(123*4096), genUInt16LE((100.4-42.5)*480)),
-        timestamps: [9824],
+        timestamps: [9824000],
         attrs: {
             "status":   {        v: [0x12]           },
             "pressure": {        v: [123]          },
@@ -163,7 +163,7 @@ testCases.forEach(testCase => {
     let deviceTypeRecs: DeviceTypeInfoTestJsonFile;
     let attributeHandler: AttributeHandler;
     let buffer: Buffer;
-    let deviceTimeline: DeviceTimeline = { timestamps: [], lastReportTimestampMs: 0, reportTimestampOffsetMs: 0 };
+    let deviceTimeline: DeviceTimeline = { timestampsUs: [], lastReportTimestampUs: 0, reportTimestampOffsetUs: 0 };
     let pollRespMetadata: DeviceTypePollRespMetadata;
 
 
@@ -196,7 +196,7 @@ testCases.forEach(testCase => {
             });
 
             // Check timeline values
-            expect(deviceTimeline.timestamps).toEqual(testCase.timestamps);
+            expect(deviceTimeline.timestampsUs).toEqual(testCase.timestamps);
 
             // Check next index
             expect(newMsgBufIdx).toEqual(testCase.nextIdx);

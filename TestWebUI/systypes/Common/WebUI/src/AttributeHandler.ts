@@ -9,14 +9,15 @@ export default class AttributeHandler {
     private _customAttrHandler = new CustomAttrHandler();
 
     // Message timestamp size
-    private MSG_TIMESTAMP_SIZE_BYTES = 2;
-    private MSG_TIMESTAMP_WRAP_VALUE = 65536;
+    private POLL_RESULT_TIMESTAMP_SIZE = 2;
+    private POLL_RESULT_WRAP_VALUE = this.POLL_RESULT_TIMESTAMP_SIZE === 2 ? 65536 : 4294967296;
+    private POLL_RESULT_RESOLUTION_US = 1000;
     
     public processMsgAttrGroup(msgBuffer: Buffer, msgBufIdx: number, deviceTimeline: DeviceTimeline, pollRespMetadata: DeviceTypePollRespMetadata, 
                         devAttrsState: DeviceAttributesState, maxDataPoints: number): number {
         
         // Extract timestamp
-        let { newBufIdx, timestamp } = this.extractTimestampAndAdvanceIdx(msgBuffer, msgBufIdx, deviceTimeline);
+        let { newBufIdx, timestampUs } = this.extractTimestampAndAdvanceIdx(msgBuffer, msgBufIdx, deviceTimeline);
         if (newBufIdx < 0)
             return -1;
         msgBufIdx = newBufIdx;
@@ -36,7 +37,7 @@ export default class AttributeHandler {
             // Extract attribute values using custom handler
             newAttrValues = this._customAttrHandler.handleAttr(pollRespMetadata, msgBuffer, msgBufIdx, pollRespSizeBytes);
 
-        } else {  
+        } else {
 
             // Iterate over attributes
             for (let attrIdx = 0; attrIdx < pollRespMetadata.a.length; attrIdx++) {
@@ -44,7 +45,7 @@ export default class AttributeHandler {
                 // Get the attribute definition
                 const attrDef: DeviceTypeAttribute = pollRespMetadata.a[attrIdx];
                 if (!("t" in attrDef)) {
-                    console.warn(`DeviceManager msg unknown msgBuffer ${msgBuffer} ts ${timestamp} attrDef ${JSON.stringify(attrDef)}`);
+                    console.warn(`DeviceManager msg unknown msgBuffer ${msgBuffer} tsUs ${timestampUs} attrDef ${JSON.stringify(attrDef)}`);
                     newAttrValues.push([]);
                     continue;
                 }
@@ -117,13 +118,13 @@ export default class AttributeHandler {
         // Add to the timeline
         for (let i = 0; i < numNewValues; i++) {
             // Limit to MAX_DATA_POINTS_TO_STORE
-            if (deviceTimeline.timestamps.length >= maxDataPoints) {
-                deviceTimeline.timestamps.shift();
+            if (deviceTimeline.timestampsUs.length >= maxDataPoints) {
+                deviceTimeline.timestampsUs.shift();
             }
-            deviceTimeline.timestamps.push(timestamp);
+            deviceTimeline.timestampsUs.push(timestampUs);
 
             // Increment the timestamp
-            timestamp += timeIncUs / 1000;
+            timestampUs += timeIncUs / 1000;
         }
 
         return msgDataStartIdx+pollRespSizeBytes;
@@ -235,32 +236,36 @@ export default class AttributeHandler {
     }
 
     private extractTimestampAndAdvanceIdx(msgBuffer: Buffer, msgBufIdx: number, timestampWrapHandler: DeviceTimeline): 
-                    { newBufIdx: number, timestamp: number } {
+                    { newBufIdx: number, timestampUs: number } {
 
         // Check there are enough characters for the timestamp
-        if (msgBufIdx + this.MSG_TIMESTAMP_SIZE_BYTES > msgBuffer.length) {
-            return { newBufIdx: -1, timestamp: 0 };
+        if (msgBufIdx + this.POLL_RESULT_TIMESTAMP_SIZE > msgBuffer.length) {
+            return { newBufIdx: -1, timestampUs: 0 };
         }
 
         // Use struct to extract the timestamp
-        const tsBuffer = msgBuffer.slice(msgBufIdx, msgBufIdx + this.MSG_TIMESTAMP_SIZE_BYTES);
-        let timestamp = struct.unpack(">H", tsBuffer)[0] as number;
+        const tsBuffer = msgBuffer.slice(msgBufIdx, msgBufIdx + this.POLL_RESULT_TIMESTAMP_SIZE);
+        let timestampUs: number;
+        if (this.POLL_RESULT_TIMESTAMP_SIZE === 2) { 
+            timestampUs = struct.unpack(">H", tsBuffer)[0] as number * this.POLL_RESULT_RESOLUTION_US;
+        } else {
+            timestampUs = struct.unpack(">I", tsBuffer)[0] as number * this.POLL_RESULT_RESOLUTION_US;
+        }
 
         // Check if time is before lastReportTimeMs - in which case a wrap around occurred to add on the max value
-        if (timestamp < timestampWrapHandler.lastReportTimestampMs) {
-            timestampWrapHandler.reportTimestampOffsetMs += this.MSG_TIMESTAMP_WRAP_VALUE;
+        if (timestampUs < timestampWrapHandler.lastReportTimestampUs) {
+            timestampWrapHandler.reportTimestampOffsetUs += this.POLL_RESULT_WRAP_VALUE * this.POLL_RESULT_RESOLUTION_US;
         }
-        timestampWrapHandler.lastReportTimestampMs = timestamp;
+        timestampWrapHandler.lastReportTimestampUs = timestampUs;
 
         // Offset timestamp
-        const origTimestamp = timestamp;
-        timestamp += timestampWrapHandler.reportTimestampOffsetMs;
+        timestampUs += timestampWrapHandler.reportTimestampOffsetUs;
 
         // Advance the index
-        msgBufIdx += this.MSG_TIMESTAMP_SIZE_BYTES;
+        msgBufIdx += this.POLL_RESULT_TIMESTAMP_SIZE;
 
         // Return the timestamp
-        return { newBufIdx: msgBufIdx, timestamp: timestamp };
+        return { newBufIdx: msgBufIdx, timestampUs: timestampUs };
     }
 
 

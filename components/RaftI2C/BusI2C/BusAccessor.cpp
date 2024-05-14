@@ -9,6 +9,7 @@
 #include "BusAccessor.h"
 #include "Logger.h"
 #include "RaftUtils.h"
+#include "RaftJsonIF.h"
 
 // Warnings
 #define WARN_ON_REQUEST_BUFFER_FULL

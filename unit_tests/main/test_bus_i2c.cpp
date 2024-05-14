@@ -162,9 +162,9 @@ BusBase busBase(busElemStatusCB, busOperationStatusCB);
 // BusStatusMgr
 BusStatusMgr busStatusMgr(busBase);
 BusPowerController busPowerController(busReqSyncFn);
-BusStuckHandler busStuckHandler;
+BusStuckHandler busStuckHandler(busReqSyncFn);
 BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
-DeviceIdentMgr deviceIdentMgr(busExtenderMgr, busReqSyncFn);
+DeviceIdentMgr deviceIdentMgr(busStatusMgr, busExtenderMgr, busReqSyncFn);
 BusScanner busScanner(busStatusMgr, busExtenderMgr, deviceIdentMgr, busReqSyncFn);
 
 void helper_reset_status_changes_list()

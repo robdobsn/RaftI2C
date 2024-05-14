@@ -64,8 +64,7 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get bus device interface
-    // TODO - make virtual
-    BusDeviceIF* getBusDeviceIF()
+    virtual BusDeviceIF* getBusDeviceIF() override final
     {
         return &_deviceIdentMgr;
     }

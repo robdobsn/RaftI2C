@@ -10,54 +10,9 @@
 
 #include "RaftUtils.h"
 #include "BusI2CConsts.h"
+#include "BusI2CDevTypeRecord.h"
 #include "DevicePollingInfo.h"
 #include "RaftJson.h"
-
-/// @brief Get decoded data record
-/// @param pPollBuf buffer containing data
-/// @param pollBufLen length of buffer
-/// @param pStructOut pointer to structure to fill
-/// @param structOutSize size of structure
-/// @param maxRecCount maximum number of records to decode
-/// @return number of records decoded
-typedef uint32_t (*BusI2CDevTypeRecordDecodeFn)(const uint8_t* pPollBuf, uint32_t pollBufLen, void* pStructOut, uint32_t structOutSize, uint16_t maxRecCount);
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @class BusI2CDevTypeRecord
-/// @brief Device Type Record
-class BusI2CDevTypeRecord
-{
-public:
-    const char* deviceType = nullptr;
-    const char* addresses = nullptr;
-    const char* detectionValues = nullptr;
-    const char* initValues = nullptr;
-    const char* pollInfo = nullptr;
-    uint16_t pollDataSizeBytes = 0;
-    const char* devInfoJson = nullptr;
-    BusI2CDevTypeRecordDecodeFn pollResultDecodeFn = nullptr;
-
-    String getJson(bool includePlugAndPlayInfo) const
-    {
-        // Check if plug and play info required
-        if (!includePlugAndPlayInfo)
-        {
-            return devInfoJson;
-        }
-
-        // Form JSON string
-        String devTypeInfo = "{";
-        devTypeInfo += "\"type\":\"" + String(deviceType) + "\",";
-        devTypeInfo += "\"addr\":\"" + String(addresses) + "\",";
-        devTypeInfo += "\"det\":\"" + String(detectionValues) + "\",";
-        devTypeInfo += "\"init\":\"" + String(initValues) + "\",";
-        devTypeInfo += "\"poll\":\"" + String(pollInfo) + "\",";
-        devTypeInfo += "\"pollSize\":" + String(pollDataSizeBytes) + ",";
-        devTypeInfo += "\"info\":" + String(devInfoJson);
-        devTypeInfo += "}";
-        return devTypeInfo;
-    }
-};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class DeviceTypeRecords

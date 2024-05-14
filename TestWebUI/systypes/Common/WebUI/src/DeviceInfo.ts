@@ -26,16 +26,19 @@ export function decodeAttrUnitsEncoding(unitsEncoding: string): string {
 }
 
 export interface DeviceTypeAttribute {
-    n: string;                      // Attribute name
-    t: string;                      // Attribute type using python struct module format (e.g. 'H' for unsigned short, 'h' for signed short, 'f' for float etc.)
-    at?: number;                    // Attribute start pos in buffer (after timestamp) if present (otherwise use relative position)
-    u?: string;                     // Attribute unit
-    r?: number[];                   // Attribute range (either min, max or min, max, step or discrete values)
+    n: string;                      // Name
+    t: string;                      // Type in python struct module format (e.g. 'H' uint16, 'h' int16, 'f' float etc.)
+    at?: number;                    // Start pos in buffer (after timestamp) if present (otherwise use relative position)
+    u?: string;                     // Units (e.g. mm)
+    r?: number[];                   // Range (either min, max or min, max, step or discrete values)
     m?: number | string;            // Bit mask to extract the attribute value from the message
     s?: number;                     // Shift value to shift the attribute value to the right (or left if negative)
+    sb?: number;                    // Sign-bit position (0-based)
+    ss?: number;                    // Sign-bit subtraction value
     d?: number;                     // Divisor to convert the raw attribute value (after operations above) to the actual value
     a?: number;                     // Value to add after division
     f?: string;                     // Format string similar to C printf format string (e.g. %d, %x, %f, %04d, %08x, %08.2f etc.), %b = boolean (0 iff 0, else 1)
+    o?: string;                     // Type of output value (e.g. 'bool', 'uint8', 'float')
     v?: boolean | number;           // Visibility of the attribute in all locations (mainly used to hide attributes that are not useful to the user)
     vs?: boolean | number;          // Display attribute value in time-series graphs
     vf?: boolean | number;          // Display attribute value in the device info panel
@@ -48,7 +51,7 @@ export interface CustomFunctionDefinition {
 
 export interface DeviceTypePollRespMetadata {
     b: number;                      // Size of polled response data block in bytes (excluding timestamp)
-    a: DeviceTypeAttribute[];       // Attributes in the group
+    a: DeviceTypeAttribute[];       // Attributes in the polled response
     c?: CustomFunctionDefinition;   // Custom function definition
     us?: number;                    // Time between consecutive samples in microseconds 
 }

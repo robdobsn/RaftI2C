@@ -52,9 +52,9 @@ export interface DeviceAttributesState {
 }
 
 export interface DeviceTimeline {
-    timestamps: number[];
-    lastReportTimestampMs: number;
-    reportTimestampOffsetMs: number;
+    timestampsUs: number[];
+    lastReportTimestampUs: number;
+    reportTimestampOffsetUs: number;
 }
     
 export interface DeviceState {

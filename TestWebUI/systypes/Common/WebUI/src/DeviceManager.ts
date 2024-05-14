@@ -450,9 +450,9 @@ export class DeviceManager {
                     this._devicesState[deviceKey] = {
                         deviceTypeInfo: await this.getDeviceTypeInfo(busName, devAddr, deviceTypeName),
                         deviceTimeline: {
-                            timestamps: [],
-                            lastReportTimestampMs: 0,
-                            reportTimestampOffsetMs: 0
+                            timestampsUs: [],
+                            lastReportTimestampUs: 0,
+                            reportTimestampOffsetUs: 0
                         },
                         deviceAttributes: {},
                         deviceIsNew: true,
@@ -497,14 +497,14 @@ export class DeviceManager {
                     // Loop
                     while (msgBufIdx < msgBytes.length) {
 
-                        const curTimelineLen = deviceState.deviceTimeline.timestamps.length;
+                        const curTimelineLen = deviceState.deviceTimeline.timestampsUs.length;
                         const newMsgBufIdx = this._attributeHandler.processMsgAttrGroup(msgBuffer, msgBufIdx, 
                                                 deviceState.deviceTimeline, pollRespMetadata, 
                                                 deviceState.deviceAttributes, this.MAX_DATA_POINTS_TO_STORE);
                         if (newMsgBufIdx < 0)
                             break;
                         msgBufIdx = newMsgBufIdx;
-                        if (deviceState.deviceTimeline.timestamps.length !== curTimelineLen) {
+                        if (deviceState.deviceTimeline.timestampsUs.length !== curTimelineLen) {
                             deviceState.stateChanged = true;
                         }
                     }

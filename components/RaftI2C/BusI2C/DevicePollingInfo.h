@@ -47,4 +47,6 @@ public:
 
     // Poll result timestamp size
     static const uint32_t POLL_RESULT_TIMESTAMP_SIZE = 2;
+    static const uint32_t POLL_RESULT_WRAP_VALUE = 2^(POLL_RESULT_TIMESTAMP_SIZE*8);
+    static const uint32_t POLL_RESULT_RESOLUTION_US = 1000;
 };

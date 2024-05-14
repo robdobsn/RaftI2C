@@ -63,8 +63,10 @@ public:
     /// @param structOutSize size of structure (in bytes) to receive decoded data
     /// @param maxRecCount maximum number of records to decode
     /// @return number of records decoded
-    // TODO make virtual
-    uint32_t decodePollResponses(uint16_t deviceTypeIndex, const uint8_t* pPollBuf, uint32_t pollBufLen, void* pStructOut, uint32_t structOutSize, uint16_t maxRecCount);
+    virtual uint32_t decodePollResponses(uint16_t deviceTypeIndex, 
+                    const uint8_t* pPollBuf, uint32_t pollBufLen, 
+                    void* pStructOut, uint32_t structOutSize, 
+                    uint16_t maxRecCount, BusDeviceDecodeState& decodeState) override final;
 
 private:
     // Device indentification enabled

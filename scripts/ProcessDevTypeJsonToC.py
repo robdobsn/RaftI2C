@@ -19,7 +19,7 @@ from DecodeGenerator import DecodeGenerator
 
 def process_dev_types(json_path, header_path, gen_options):
 
-    decodeGenerator = DecodeGenerator()
+    decodeGenerator = DecodeGenerator(gen_options)
 
     with open(json_path, 'r') as json_file:
         dev_ident_json = json.load(json_file)
@@ -249,10 +249,25 @@ if __name__ == "__main__":
     argparse.add_argument("--gendecode", help="Generate C++ code to decode poll results", action="store_false")
     # Arg for inclusion of device info JSON in the header file
     argparse.add_argument("--incdevjson", help="Include device info JSON in the header file", action="store_false")
+    # Arg for size of timestamp info in poll data
+    argparse.add_argument("--pollresptsbytes", help="Poll response timestamp size (bytes)", type=int, default=2)
+    # Arg for poll data timestamp resolution in us
+    argparse.add_argument("--pollresptsresus", help="Poll response timestamp resolution in us", type=int, default=1000)
+    # Arg for decoded timestamp C data type in extracted data struct
+    argparse.add_argument("--decodestructtsctype", help="Decoded struct timestamp C data type", default="uint32_t") 
+    # Arg for decoded timestamp C resolution in us
+    argparse.add_argument("--decodestructtsresus", help="Decoded struct timestamp resolution in us", type=int, default=1000)
+    # Arg for decoded timestamp variable name
+    argparse.add_argument("--decodestructtsvar", help="Decoded struct timestamp variable name", default="")
     args = argparse.parse_args()
     gen_options = {
         "gen_decode": args.gendecode,
-        "inc_dev_info_json": args.incdevjson
+        "inc_dev_info_json": args.incdevjson,
+        "POLL_RESULT_TIMESTAMP_SIZE": args.pollresptsbytes,
+        "POLL_RESULT_RESOLUTION_US": args.pollresptsresus,
+        "DECODE_STRUCT_TIMESTAMP_C_TYPE": args.decodestructtsctype,
+        "DECODE_STRUCT_TIMESTAMP_RESOLUTION_US": args.decodestructtsresus,
+        "struct_time_var_name": args.decodestructtsvar
     }
     process_dev_types(args.json_path, args.header_path, gen_options)
     sys.exit(0)

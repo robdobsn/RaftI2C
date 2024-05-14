@@ -33,11 +33,11 @@ public:
         _pPollDataResult = _pollDataResult.data();
         
         // Store the current time in ms in the poll data result
-        uint32_t timeNowMs = timeNowUs / 1000;
+        uint32_t timeNowPollUnits = timeNowUs / DevicePollingInfo::POLL_RESULT_RESOLUTION_US;
         if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 2)
-            Raft::setBEUint16(_pPollDataResult, 0, timeNowMs & 0xffff);
+            Raft::setBEUint16(_pPollDataResult, 0, timeNowPollUnits & 0xffff);
         else if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 4)
-            Raft::setBEUint32(_pPollDataResult, 0, timeNowMs);
+            Raft::setBEUint32(_pPollDataResult, 0, timeNowPollUnits);
 
         // Move the pointer to the start of the data
         _pPollDataResult += DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
