@@ -108,7 +108,8 @@ class TestDataGen {
                 [key: string]: boolean;
             }
 
-            const devMsgsEnabled:DevMsgsEnabled = { "0x6f@42":true };
+            // const devMsgsEnabled:DevMsgsEnabled = { "0x6f@42":true };
+            const devMsgsEnabled:DevMsgsEnabled = {};
             const I2CA: DevMsgs = Object.keys(devMsgsEnabled).length === 0 ? devMsgs : {};
             for (const key in devMsgs) {
                 if (devMsgsEnabled[key]) {

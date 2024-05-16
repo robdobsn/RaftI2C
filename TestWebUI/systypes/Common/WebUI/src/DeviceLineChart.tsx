@@ -29,6 +29,7 @@ interface ChartJSData {
         fill: boolean;
         borderColor: string;
         backgroundColor: string;
+        yAxisID: string;
     }[];
 }
 
@@ -48,6 +49,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         animation: {
             duration: 1, // default is 1000ms
         },
+        scales: {}
     };
 
     const colourMapRef = useRef<{ [key: string]: string }>({
@@ -66,9 +68,10 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         const labels = deviceTimeline.timestampsUs.slice(-MAX_DATA_POINTS).map(time => {
             const seconds = time / 1e6; // Convert microseconds to seconds
             const secondsStr = seconds.toFixed(3); // Format decimal places
-            // console.log(`useEffect linechart incoming time ${time} secondsStr: ${secondsStr}`);
             return secondsStr;
         });
+
+        const uniqueAxes = new Map<string, { range: [number, number], units: string }>();
         const datasets = Object.entries(deviceAttributes)
             .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)
             .map(([attributeName, attributeDetails]) => {
@@ -78,20 +81,46 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
                     colour = `hsl(${Math.random() * 360}, 70%, 60%)`;
                     colourMapRef.current[attributeName] = colour;
                 }
+                const axisKey = `${attributeDetails.range}-${attributeDetails.units}`;
+                if (!uniqueAxes.has(axisKey)) {
+                    uniqueAxes.set(axisKey, { range: attributeDetails.range, units: attributeDetails.units });
+                }
                 return {
                     label: attributeName,
                     data: data,
                     fill: false,
                     borderColor: colour,
-                    backgroundColor: colour
+                    backgroundColor: colour,
+                    yAxisID: axisKey
                 };
-        });
+            });
+
+        const scales: { [key: string]: any } = {};
+        uniqueAxes.forEach((axis, key) => {
+            scales[key] = {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                scaleLabel: {
+                    display: true,
+                    labelString: axis.units
+                },
+                ticks: {
+                    min: axis.range[0],
+                    max: axis.range[1]
+                }
+            };
+        }
+        );
+        options.scales = scales;
         setChartData({ labels, datasets });
-    }, [lastUpdated]);
+    }
+        , [lastUpdated]);
 
     if (Object.keys(deviceAttributes).length === 0) {
         return <></>;
     }
+
     return (
         <div className="device-line-chart">
             <Line data={chartData} options={options} />
