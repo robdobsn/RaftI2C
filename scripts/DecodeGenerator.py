@@ -323,7 +323,12 @@ class DecodeGenerator:
             # Generate code to extract the attribute from the buffer
             extract_code.append(f"{line_prefix}        {intermediate_type} __{attr_name} = {attr_get_and_inc_fn}({var_pPos}, pBufEnd);\n")
 
-            # Generate mask code
+            # Check for XOR mask
+            if "x" in el:
+                mask = int(el["x"], 0)
+                extract_code.append(f"{line_prefix}        __{attr_name} ^= 0x{mask:x};\n")
+                
+            # Generate AND mask code
             if "m" in el:
                 mask = int(el["m"], 0)
                 if self.is_attr_type_signed(pystruct_type):

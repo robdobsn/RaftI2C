@@ -177,7 +177,13 @@ export default class AttributeHandler {
         //     }
         // }
 
-        // Check for mask
+        // Check for XOR mask
+        if ("x" in attrDef) {
+            const mask = typeof attrDef.x === "string" ? parseInt(attrDef.x, 16) : attrDef.x as number;
+            attrValues = attrValues.map((value) => value ^ mask);
+        }
+        
+        // Check for AND mask
         if ("m" in attrDef) {
             const mask = typeof attrDef.m === "string" ? parseInt(attrDef.m, 16) : attrDef.m as number;
             attrValues = attrValues.map((value) => (maskOnSignedValue ? this.signExtend(value, mask) : value & mask));

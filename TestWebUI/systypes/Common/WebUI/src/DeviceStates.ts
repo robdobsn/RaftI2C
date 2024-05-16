@@ -9,7 +9,10 @@ export function deviceAttrGetLatestFormatted(attrState: DeviceAttributeState): s
         return attrState.values[attrState.values.length - 1].toString();
     }
     const value = attrState.values[attrState.values.length - 1];
-    const format = attrState.format;
+    let format = attrState.format;
+    if (format.startsWith("%")) {
+        format = format.slice(1);
+    }
     if (format.endsWith('f')) {
         // Floating point number formatting
         const parts = format.split('.');

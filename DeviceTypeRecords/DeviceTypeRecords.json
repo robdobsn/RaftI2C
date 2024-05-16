@@ -451,6 +451,60 @@
                 ]
             }
         },
+        "M5Encoder": {
+            "addresses": "0x40",
+            "deviceType": "M5Encoder",
+            "detectionValues": "0x20=0b0000000X11111111",
+            "initValues": "",
+            "pollInfo": {
+                "c": "0x10=r2&0x20=r2",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "M5 Encoder",
+                "desc": "Rotary encoder",
+                "manu": "M5Stack",
+                "type": "M5Encoder",
+                "resp": {
+                    "b": 4,
+                    "a": [
+                        {
+                            "n": "rotation",
+                            "t": "<H",
+                            "u": "steps",
+                            "r": [0, 65535],
+                            "f": "04x",
+                            "o": "uint16"
+                        },
+                        {
+                            "n": "press",
+                            "t": "<H",
+                            "u": "",
+                            "r": [0, 1],
+                            "x": "0x01",
+                            "m": "0x01",
+                            "f": "b",
+                            "o": "bool"
+                        }
+
+                    ]
+                },
+                "actions": [
+                    {
+                        "n": "pixels",
+                        "t": "BBBB",
+                        "w": "30",
+                        "f": "LEDPIX",
+                        "NX": 2,
+                        "NY": 1,
+                        "concat": false,
+                        "r": [0,255]
+                    }
+                ]
+            }
+        },
         "QwiicLEDStick": {
             "addresses": "0x23",
             "deviceType": "QwiicLEDStick",
