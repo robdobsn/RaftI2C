@@ -22,7 +22,7 @@ export default class CustomAttrHandler {
         // Custom code for each device type
         if (pollRespMetadata.c!.n === "max30101_fifo") {
             // Hex dump msgBuffer
-            console.log(`CustomAttrHandler handleAttr ${pollRespMetadata.c!.n} msgBuffer: ${msgBuffer.toString('hex')}`); 
+            // console.log(`CustomAttrHandler handleAttr ${pollRespMetadata.c!.n} msgBuffer: ${msgBuffer.toString('hex')}`); 
             let buf = msgBuffer.slice(msgBufIdx);
             if (buf.length < numMsgBytes) {
                 return [];
