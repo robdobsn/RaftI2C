@@ -217,7 +217,8 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
     // Initialise the device
     for (auto& initBusRequest : initBusRequests)
     {
-        _busI2CReqSyncFn(&initBusRequest, nullptr);
+        std::vector<uint8_t> readData;
+        _busI2CReqSyncFn(&initBusRequest, &readData);
     }
 
     return true;

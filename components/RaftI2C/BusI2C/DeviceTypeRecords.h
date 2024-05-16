@@ -102,4 +102,5 @@ private:
     static bool extractBufferDataFromHexStr(const String& writeStr, std::vector<uint8_t>& writeData);
     static bool extractMaskAndDataFromHexStr(const String& readStr, std::vector<uint8_t>& readDataMask, 
                 std::vector<uint8_t>& readDataCheck, bool maskToZeros);
+    static uint32_t extractReadDataSize(const String& readStr);                
 };

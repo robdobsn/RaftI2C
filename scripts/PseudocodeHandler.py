@@ -151,6 +151,50 @@ class PseudocodeHandler:
                 code += token_value
             i += 1
         return code.strip()
+    
+    def generate_typescript_code(self, tokens, substitutions={}):
+        code = ""
+        indent_level = 0
+
+        # Helper function to manage indentation
+        def add_indentation(level):
+            return "    " * level
+        
+        i = 0
+        while i < len(tokens):
+            token_type, token_value = tokens[i]
+            if token_type == "LBRACE":
+                # Add opening brace and increase indentation level
+                code += " {\n"
+                indent_level += 1
+                code += add_indentation(indent_level)
+            elif token_type == "RBRACE":
+                # Decrease indentation level and add closing brace
+                if indent_level > 0:
+                    indent_level -= 1
+                code += add_indentation(indent_level) + "}\n"
+                if (i + 1) < len(tokens) and tokens[i + 1][0] != "RBRACE":
+                    code += add_indentation(indent_level)
+            elif token_type == "SEMI":
+                # Add semicolon
+                code += ";\n"
+                if (i + 1) < len(tokens) and tokens[i + 1][0] != "RBRACE":
+                    code += add_indentation(indent_level)
+            elif token_type in ["WHILE", "RETURN"]:
+                # Ensure keywords start on a new line with a space following them
+                code += token_value + " "
+            else:
+                # Apply substitutions to IDs
+                token_value = str(token_value)
+                for subs in substitutions:
+                    # Use regex to replace the ID with the value
+                    # old_token_value = token_value
+                    token_value = re.sub(subs, substitutions[subs], token_value)
+                    # print(f"old_token_value {old_token_value} token_value {token_value} subs {subs} substitutions[subs] {substitutions[subs]}")
+                # Append other tokens directly
+                code += token_value
+            i += 1
+        return code
 
 if __name__ == "__main__":
 
@@ -188,12 +232,31 @@ if __name__ == "__main__":
         for sub in args.subs.split(","):
             id, value = sub.split("=")
             substitutions[id] = value
+    else:
+        if args.lang == "cpp":
+            loop_end_lines = [
+                "if (++pOut >= pStruct + maxRecCount) break;",
+                "pOut->timeMs = timestampUs / 1000;"
+            ]
+            # Add default substitutions for C++ code
+            substitutions["^out."] = "pOut->",
+            substitutions["next"] = "\n    ".join(loop_end_lines)
+        elif args.lang == "typescript":
+            loop_end_lines = [
+                "if (++pOut >= pStruct + maxRecCount) break;",
+            ]
+            substitutions["int"] = "let "
+            substitutions["float"] = "let "
+            substitutions["out\.(.*)"] = "attrValues['\\1'].push(0); attrValues['\\1'][attrValues['\\1'].length-1] "
+            substitutions["next"] = ""
 
     # Generate the output code based on the specified language
     if args.lang == "cpp":
         print(pseudocode_handler.generate_cpp_code(tokens, substitutions))
     elif args.lang == "python":
         print(pseudocode_handler.generate_python_code(tokens, substitutions))
+    elif args.lang == "typescript":
+        print(pseudocode_handler.generate_typescript_code(tokens, substitutions))
     else:
         print("Invalid language specified. Please use 'cpp' or 'python'")
         exit(1)

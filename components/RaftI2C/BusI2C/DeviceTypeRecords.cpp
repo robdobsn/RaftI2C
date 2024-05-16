@@ -12,6 +12,7 @@
 // #define DEBUG_DEVICE_INFO_RECORDS
 // #define DEBUG_POLL_REQUEST_REQS
 // #define DEBUG_DEVICE_INFO_PERFORMANCE
+// #define DEBUG_DEVICE_INIT_REQS
 
 #if defined(DEBUG_DEVICE_INFO_RECORDS) || defined(DEBUG_DEVICE_INFO_PERFORMANCE) 
 static const char* MODULE_PREFIX = "DeviceTypeRecords";
@@ -203,6 +204,7 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
         std::vector<uint8_t> writeData;
         if (!extractBufferDataFromHexStr(initNameValue.name, writeData))
             continue;
+        uint32_t numReadDataBytes = extractReadDataSize(initNameValue.value);
 
         // Create a bus request to write the initialisation value
         BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
@@ -210,11 +212,20 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
                     0, 
                     writeData.size(), 
                     writeData.data(),
-                    0,
+                    numReadDataBytes,
                     0, 
                     nullptr, 
                     this);
         initRequests.push_back(reqRec);
+
+        // Debug
+#ifdef DEBUG_DEVICE_INIT_REQS
+        String writeDataStr;
+        Raft::getHexStrFromBytes(writeData.data(), writeData.size(), writeDataStr);
+        LOG_I(MODULE_PREFIX, "getInitBusRequests addr@slot+1 %s devType %s writeData %s readDataSize %d", 
+                    addrAndSlot.toString().c_str(), pDevTypeRec->deviceType, 
+                    writeDataStr.c_str(), numReadDataBytes);
+#endif
     }
 }
 
@@ -267,8 +278,25 @@ bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std:
         }
         return true;
     }
+
+    // Check if readStr starts with 0x
+    else if (readStrLC.startsWith("0x"))
+    {
+        // Compute length
+        uint32_t lenBytes = (readStrLC.length() - 2 + 1) / 2;
+        // Extract the read data
+        readDataMask.resize(lenBytes);
+        readDataCheck.resize(lenBytes);
+        Raft::getBytesFromHexStr(readStrLC.c_str() + 2, readDataCheck.data(), readDataCheck.size());
+        for (int i = 0; i < readDataMask.size(); i++)
+        {
+            readDataMask[i] = maskToZeros ? 0xff : 0;
+        }
+        return true;
+    }
+
     // Check if readStr starts with 0b 
-    if (readStrLC.startsWith("0b"))
+    else if (readStrLC.startsWith("0b"))
     {
         // Compute length
         uint32_t lenBits = readStrLC.length() - 2;
@@ -306,6 +334,27 @@ bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std:
         return true;
     }
     return readStr.length() == 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Extract read data size
+/// @param readStr hex string
+/// @return number of bytes to read
+uint32_t DeviceTypeRecords::extractReadDataSize(const String& readStr)
+{
+    String readStrLC = readStr;
+    readStrLC.toLowerCase();
+    // Check for readStr starts with rNNNN (for read NNNN bytes)
+    if (readStrLC.startsWith("r"))
+    {
+        return strtol(readStrLC.c_str() + 1, NULL, 10);
+    }
+    // Check if readStr starts with 0b 
+    if (readStrLC.startsWith("0b"))
+    {
+        return (readStrLC.length() - 2 + 7) / 8;
+    }
+    return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

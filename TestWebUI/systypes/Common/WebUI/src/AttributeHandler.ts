@@ -16,26 +16,23 @@ export default class AttributeHandler {
     public processMsgAttrGroup(msgBuffer: Buffer, msgBufIdx: number, deviceTimeline: DeviceTimeline, pollRespMetadata: DeviceTypePollRespMetadata, 
                         devAttrsState: DeviceAttributesState, maxDataPoints: number): number {
         
-        // Extract timestamp
+        // console.log(`processMsgAttrGroup msg ${msgHexStr} timestamp ${timestamp} origTimestamp ${origTimestamp} msgBufIdx ${msgBufIdx}`)
+
+        // Extract msg timestamp
         let { newBufIdx, timestampUs } = this.extractTimestampAndAdvanceIdx(msgBuffer, msgBufIdx, deviceTimeline);
         if (newBufIdx < 0)
             return -1;
         msgBufIdx = newBufIdx;
-
-        // console.log(`processMsgAttrGroup msg ${msgHexStr} timestamp ${timestamp} origTimestamp ${origTimestamp} msgBufIdx ${msgBufIdx}`)
-
+        
         // Start of message data
         const msgDataStartIdx = msgBufIdx;
 
-        // Number of bytes in group
-        const pollRespSizeBytes = pollRespMetadata.b;
-
-        // Check if a custom attribute function is used
+        // New attribute values (in order as they appear in the attributes JSON)
         let newAttrValues: number[][] = [];
         if ("c" in pollRespMetadata) {
 
             // Extract attribute values using custom handler
-            newAttrValues = this._customAttrHandler.handleAttr(pollRespMetadata, msgBuffer, msgBufIdx, pollRespSizeBytes);
+            newAttrValues = this._customAttrHandler.handleAttr(pollRespMetadata, msgBuffer, msgBufIdx);
 
         } else {
 
@@ -59,18 +56,22 @@ export default class AttributeHandler {
                 msgBufIdx = newMsgBufIdx;
                 newAttrValues.push(values);
             }
-        }
 
-        // Check if any attributes were added
+        }
+        
+        // Number of bytes in group
+        const pollRespSizeBytes = pollRespMetadata.b;
+
+        // Check if any attributes were added (in addition to timestamp)
         if (newAttrValues.length === 0) {
             console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} newAttrValues ${newAttrValues} is empty`);
             return msgDataStartIdx+pollRespSizeBytes;
         }
 
         // All attributes must have the same number of new values
-        let numNewValues = newAttrValues[0].length;
+        let numNewDataPoints = newAttrValues[0].length;
         for (let i = 1; i < newAttrValues.length; i++) {
-            if (newAttrValues[i].length !== numNewValues) {
+            if (newAttrValues[i].length !== numNewDataPoints) {
                 console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} attrName ${pollRespMetadata.a[i].n} newAttrValues ${newAttrValues} do not have the same length`);
                 return msgDataStartIdx+pollRespSizeBytes;
             }
@@ -100,33 +101,34 @@ export default class AttributeHandler {
                 };
             }
 
-            // Iterate through added values for this attribute
-            const values = newAttrValues[attrIdx];
-            for (let valueIdx = 0; valueIdx < values.length; valueIdx++) {
-                // Limit to MAX_DATA_POINTS_TO_STORE
-                if (devAttrsState[attrDef.n].values.length >= maxDataPoints) {
-                    devAttrsState[attrDef.n].values.shift();
-                }
-                devAttrsState[attrDef.n].values.push(values[valueIdx]);
-                devAttrsState[attrDef.n].newData = true;
+            // Check if any data points need to be discarded
+            const discardCount = Math.max(0, devAttrsState[attrDef.n].values.length + newAttrValues[attrIdx].length - maxDataPoints);
+            if (discardCount > 0) {
+                devAttrsState[attrDef.n].values.splice(0, discardCount);
             }
+
+            // Add the new values
+            devAttrsState[attrDef.n].values.push(...newAttrValues[attrIdx]);
+            devAttrsState[attrDef.n].newData = newAttrValues[attrIdx].length > 0;
         }
 
-        // Check if a time increment is specified
+        // Handle the timestamps with increments if specified
         const timeIncUs: number = pollRespMetadata.us ? pollRespMetadata.us : 1000;
-
-        // Add to the timeline
-        for (let i = 0; i < numNewValues; i++) {
-            // Limit to MAX_DATA_POINTS_TO_STORE
-            if (deviceTimeline.timestampsUs.length >= maxDataPoints) {
-                deviceTimeline.timestampsUs.shift();
-            }
-            deviceTimeline.timestampsUs.push(timestampUs);
-
-            // Increment the timestamp
-            timestampUs += timeIncUs / 1000;
+        let timestampsUs = Array(numNewDataPoints).fill(0);
+        for (let i = 1; i < numNewDataPoints; i++) {
+            timestampsUs[i] =  timestampUs + i * timeIncUs;
+        }
+        
+        // Check if timeline points need to be discarded
+        const discardCount = Math.max(0, deviceTimeline.timestampsUs.length + timestampsUs.length - maxDataPoints);
+        if (discardCount > 0) {
+            deviceTimeline.timestampsUs.splice(0, discardCount);
         }
 
+        // Add the new timestamps
+        deviceTimeline.timestampsUs.push(...timestampsUs);
+
+        // Return the next message buffer index
         return msgDataStartIdx+pollRespSizeBytes;
     }
 

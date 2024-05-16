@@ -64,10 +64,10 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
 
     useEffect(() => {
         const labels = deviceTimeline.timestampsUs.slice(-MAX_DATA_POINTS).map(time => {
-            const date = new Date(time);
-            const timeStr = date.toISOString().slice(11, 19);
-            console.log(`useEffect linechart incoming time ${time} timeStr: ${timeStr}`);
-            return timeStr;
+            const seconds = time / 1e6; // Convert microseconds to seconds
+            const secondsStr = seconds.toFixed(3); // Format decimal places
+            // console.log(`useEffect linechart incoming time ${time} secondsStr: ${secondsStr}`);
+            return secondsStr;
         });
         const datasets = Object.entries(deviceAttributes)
             .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)
