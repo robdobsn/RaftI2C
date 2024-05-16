@@ -7,7 +7,7 @@
 // }
 
 export interface DeviceMsgJsonElem {
-    [attrGroupName: string]: string | number; // Attribute group name and value
+    [attrGroupName: string]: string | number | boolean; // Attribute group name and value
 }
 
 export interface DeviceMsgJsonBus {

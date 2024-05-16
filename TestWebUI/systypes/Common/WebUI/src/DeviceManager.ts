@@ -466,7 +466,7 @@ export class DeviceManager {
                 
                 // Check for online/offline state information
                 if (attrGroups && typeof attrGroups === "object" && "_o" in attrGroups) {
-                    deviceState.isOnline = ((attrGroups._o === "1") || (attrGroups._o === 1));
+                    deviceState.isOnline = ((attrGroups._o === true) || (attrGroups._o === "1") || (attrGroups._o === 1));
                 }
 
                 // Iterate attribute groups

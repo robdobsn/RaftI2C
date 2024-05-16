@@ -98,7 +98,7 @@ class TestDataGen {
                     _o: true
                 },
                 "0x57@0": {
-                    x: `${tsHexHighLow}${this.toHex(this.randInt(0,7),2)}${this.toHex(0x05,2)}${this.toHex(0x00,2)}${this.toHex(0x08,2)}${this.toHex(0x00,100)}`,
+                    x: `${tsHexHighLow}${this.toHex(5,1)}${this.toHex(0x00,1)}${this.toHex(0x04,1)}${this.toHex(Math.floor(10000*Math.sin(iterCount/10.0))+100000,3)}${this.toHex(Math.floor(10000*Math.cos(iterCount/10.0))+100000,3)}${this.toHex(0,42)}`,
                     _t: "MAX30101",
                     _o: true
                 }

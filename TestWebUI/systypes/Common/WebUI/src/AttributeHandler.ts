@@ -64,7 +64,7 @@ export default class AttributeHandler {
 
         // Check if any attributes were added (in addition to timestamp)
         if (newAttrValues.length === 0) {
-            console.warn(`DeviceManager msg attrGroup ${pollRespMetadata} newAttrValues ${newAttrValues} is empty`);
+            console.warn(`DeviceManager msg attrGroup ${JSON.stringify(pollRespMetadata)} newAttrValues ${newAttrValues} is empty`);
             return msgDataStartIdx+pollRespSizeBytes;
         }
 
