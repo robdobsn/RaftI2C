@@ -205,6 +205,7 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
         if (!extractBufferDataFromHexStr(initNameValue.name, writeData))
             continue;
         uint32_t numReadDataBytes = extractReadDataSize(initNameValue.value);
+        uint32_t barAccessForMs = extractBarAccessMs(initNameValue.value);
 
         // Create a bus request to write the initialisation value
         BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
@@ -213,7 +214,7 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
                     writeData.size(), 
                     writeData.data(),
                     numReadDataBytes,
-                    0, 
+                    barAccessForMs, 
                     nullptr, 
                     this);
         initRequests.push_back(reqRec);
@@ -355,6 +356,23 @@ uint32_t DeviceTypeRecords::extractReadDataSize(const String& readStr)
         return (readStrLC.length() - 2 + 7) / 8;
     }
     return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Extract bar access time
+/// @param readStr hex string
+/// @return bar access time in ms
+uint32_t DeviceTypeRecords::extractBarAccessMs(const String& readStr)
+{
+    String readStrLC = readStr;
+    readStrLC.toLowerCase();
+    // Check for readStr having pNN in it
+    int pauseIdx = readStrLC.indexOf("p");
+    if (pauseIdx < 0)
+    {
+        return 0;
+    }
+    return strtol(readStrLC.c_str() + pauseIdx + 1, NULL, 10);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

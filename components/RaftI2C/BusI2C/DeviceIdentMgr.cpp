@@ -219,6 +219,10 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
     {
         std::vector<uint8_t> readData;
         _busI2CReqSyncFn(&initBusRequest, &readData);
+
+        // Check for bar-access time after each request
+        if (initBusRequest.getBarAccessForMsAfterSend() > 0)
+            delay(initBusRequest.getBarAccessForMsAfterSend());
     }
 
     return true;

@@ -505,6 +505,111 @@
                 ]
             }
         },
+        "AdafruitGamepad": {
+            "addresses": "0x50",
+            "deviceType": "AdafruitGamepad",
+            "detectionValues": "0x0001=0b10000111",
+            "initValues": "0x007fff=p20&0x010300010067=p1&0x010b00010067=p1&0x010500010067=p1",
+            "pollInfo": {
+                "c": "0x0915=r2&0x0916=r2&0x0104=r4",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "Gamepad",
+                "desc": "Adafruit Gamepad",
+                "manu": "Adafruit",
+                "type": "Gamepad",
+                "resp": {
+                    "b": 8,
+                    "a": [
+                        {
+                            "n": "x",
+                            "t": ">H",
+                            "r": [0, 65535],
+                            "d": -1,
+                            "a": 1023,
+                            "f": "d",
+                            "o": "uint16"
+                        },
+                        {
+                            "n": "y",
+                            "t": ">H",
+                            "r": [0, 65535],
+                            "d": -1,
+                            "a": 1023,
+                            "f": "d",
+                            "o": "uint16"
+                        },
+                        {
+                            "n": "SELECT",
+                            "at": 7,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x01",
+                            "m": "0x01",
+                            "f": "b",
+                            "o": "bool"
+                        },
+                        {
+                            "n": "B",
+                            "at": 7,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x02",
+                            "m": "0x02",
+                            "s": 1,
+                            "f": "b",
+                            "o": "bool"
+                        },
+                        {
+                            "n": "Y",
+                            "at": 7,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x04",
+                            "m": "0x04",
+                            "s": 2,
+                            "f": "b",
+                            "o": "bool"
+                        },
+                        {
+                            "n": "A",
+                            "at": 7,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x20",
+                            "m": "0x20",
+                            "s": 5,
+                            "f": "b",
+                            "o": "bool"
+                        },
+                        {
+                            "n": "X",
+                            "at": 7,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x40",
+                            "m": "0x40",
+                            "s": 6,
+                            "f": "b",
+                            "o": "bool"
+                        },
+                        {
+                            "n": "START",
+                            "at": 5,
+                            "t": "B",
+                            "r": [0, 1],
+                            "x": "0x01",
+                            "m": "0x01",
+                            "f": "b",
+                            "o": "bool"
+                        }
+                    ]
+                }
+            }
+        },
         "QwiicLEDStick": {
             "addresses": "0x23",
             "deviceType": "QwiicLEDStick",

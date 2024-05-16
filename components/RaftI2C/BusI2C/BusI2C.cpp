@@ -453,10 +453,10 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
                     pReqRec->getReadReqLen(), pReqRec->getReqType());
 #endif
 
-    // Check address is within valid range and not barred
+    // Check address is within valid range
     BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
     RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    if (rslt == RaftI2CCentralIF::ACCESS_RESULT_INVALID)
         return rslt;
 
     // Buffer for read
@@ -468,7 +468,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
         pReadData->resize(readReqLen);
     }
     uint32_t writeReqLen = pReqRec->getWriteDataLen();
-    uint32_t barAccessAfterSendMs = pReqRec->getBarAccessForMsAfterSend();
 
     // Access the bus
     uint32_t numBytesRead = 0;
@@ -477,10 +476,6 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
         return rsltCode;
     rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
             pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
-
-    // Bar access to element if requested
-    if (barAccessAfterSendMs > 0)
-        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
 
     // Record time of comms
     _lastI2CCommsUs = micros();
