@@ -5,8 +5,10 @@ import DeviceLineChart from './DeviceLineChart';
 import './styles.css';
 import { DeviceManager } from './DeviceManager';
 import DeviceCmdsForm from './DeviceActionsForm';
+import SettingsManager from './SettingsManager';
 
 const deviceManager = DeviceManager.getInstance();
+const settingsManager = SettingsManager.getInstance();
 
 export interface DeviceScreenProps {
     deviceKey: string;
@@ -45,36 +47,30 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
     }, []);
 
     const handleCopyToClipboard = () => {
-      const headers = ["Time (s)"];
-      const rows: string[][] = [];
+        const headers = ["Time (s)"];
+        const rows: string[][] = [];
 
-      const timestampsUs = data.deviceTimeline.timestampsUs;
-      const attributes = data.deviceAttributes;
+        const timestampsUs = data.deviceTimeline.timestampsUs;
+        const attributes = data.deviceAttributes;
 
-      // Collect headers and initialize rows with timestamps
-      Object.keys(attributes).forEach(attrName => {
-          headers.push(attrName);
-      });
+        // Collect headers and initialize rows with timestamps
+        Object.keys(attributes).forEach(attrName => {
+            headers.push(attrName);
+        });
 
-      timestampsUs.forEach((timestampUs, index) => {
-          const row: string[] = [(timestampUs/1000000.0).toString()];
-          Object.keys(attributes).forEach(attrName => {
-              const values = attributes[attrName].values;
-              row.push(values[index]?.toString() || "");
-          });
-          rows.push(row);
-      });
+        timestampsUs.forEach((timestampUs, index) => {
+            const row: string[] = [(timestampUs/1000000.0).toString()];
+            Object.keys(attributes).forEach(attrName => {
+                const values = attributes[attrName].values;
+                row.push(values[index]?.toString() || "");
+            });
+            rows.push(row);
+        });
 
-      // Create a tab-separated string
-      const csvContent = [headers.join("\t"), ...rows.map(row => row.join("\t"))].join("\n");
+        // Create a tab-separated string
+        const csvContent = [headers.join("\t"), ...rows.map(row => row.join("\t"))].join("\n");
 
-      navigator.clipboard.writeText(csvContent);
-      // alert("Device values copied to clipboard!");
-      setMenuOpen(false);
-  };
-
-    const handleSettings = () => {
-        alert("Settings clicked!");
+        navigator.clipboard.writeText(csvContent);
         setMenuOpen(false);
     };
 
@@ -86,7 +82,6 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
                 {menuOpen && (
                     <div className="dropdown-menu" ref={menuRef}>
                         <div className="menu-item always-enabled" onClick={handleCopyToClipboard}>Copy Values to Clipboard</div>
-                        <div className="menu-item always-enabled" onClick={handleSettings}>Settings</div>
                     </div>
                 )}
             </div>

@@ -78,6 +78,10 @@ export interface DeviceTypeInfo {
     actions?: DeviceTypeAction[];
 }
 
+export interface DeviceTypeInfoRecs {
+    [devType: string]: DeviceTypeInfo;
+}
+
 export interface DeviceTypeInfoTestJsonRec {
     addresses?: string;
     devInfoJson: DeviceTypeInfo;
@@ -89,8 +93,4 @@ export interface DeviceTypeInfoTestJsonElem {
 
 export interface DeviceTypeInfoTestJsonFile {
     devTypes: DeviceTypeInfoTestJsonElem;
-}
-
-export interface DeviceTypeInfoRecs {
-    [devType: string]: DeviceTypeInfo;
 }

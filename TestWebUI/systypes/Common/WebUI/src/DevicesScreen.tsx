@@ -1,18 +1,15 @@
 // Component which uses the DeviceList component to display the list of devices
 
 import React, { useEffect, useState } from 'react';
-import { DeviceAttribute, DevicesState, DeviceState } from './DeviceStates';
+import { DeviceAttributeState, DevicesState, DeviceState } from './DeviceStates';
 import { DeviceManager } from './DeviceManager';
 import DeviceScreen from './DeviceScreen';
-import { DevicesConfig } from './DevicesConfig';
 import './styles.css';
 
 const deviceManager = DeviceManager.getInstance();
 
 export class DevicesScreenProps {
     constructor(
-        public isEditingMode: boolean,
-        public config: DevicesConfig
     ) { }
 }
 
@@ -26,13 +23,13 @@ export default function DevicesScreen(props: DevicesScreenProps) {
 
         deviceManager.onNewDevice(onNewDevice);
 
-        const onNewAttribute = (deviceKey: string, attribute: DeviceAttribute) => {
+        const onNewAttribute = (deviceKey: string, attribute: DeviceAttributeState) => {
             setLastUpdated(Date.now());
         }
 
         deviceManager.onNewDeviceAttribute(onNewAttribute);
 
-        const onNewAttributeData = (deviceKey: string, attribute: DeviceAttribute) => {
+        const onNewAttributeData = (deviceKey: string, attribute: DeviceAttributeState) => {
             setLastUpdated(Date.now());
         }
 

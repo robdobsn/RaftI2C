@@ -1,10 +1,10 @@
-import { DevicesConfig } from "./DevicesConfig";
 import { DeviceAttributeState, DevicesState, DeviceState, getDeviceKey } from "./DeviceStates";
 import { DeviceMsgJson } from "./DeviceMsg";
 import { DeviceTypeInfo, DeviceTypeInfoTestJsonFile, DeviceTypeAction, DeviceTypeInfoRecs } from "./DeviceInfo";
 import struct, { DataType } from 'python-struct';
 import TestDataGen from "./TestDataGen";
 import AttributeHandler from "./AttributeHandler";
+import SettingsManager from "./SettingsManager";
 
 let testingDeviceTypeRecsConditionalLoadPromise: Promise<any> | null = null;
 if (process.env.TEST_DATA) {
@@ -16,26 +16,17 @@ export class DeviceManager {
     // Singleton
     private static _instance: DeviceManager;
 
+    // Settings manager
+    private _settingsManager = SettingsManager.getInstance();
+
     // Attribute handler
     private _attributeHandler = new AttributeHandler();
-
-    // Test server path
-    private _testServerPath = "";
 
     // Server address
     private _serverAddressPrefix = "";
 
     // URL prefix
     private _urlPrefix: string = "/api";
-
-    // Device configuration
-    private _devicesConfig = new DevicesConfig();
-
-    // Modified configuration
-    private _mutableConfig = new DevicesConfig();
-
-    // Config change callbacks
-    private _configChangeCallbacks: Array<(config: DevicesConfig) => void> = [];
 
     // Devices state
     private _devicesState = new DevicesState();
@@ -48,9 +39,6 @@ export class DeviceManager {
     // Last time we got a state update
     private _lastStateUpdate: number = 0;
     private MAX_TIME_BETWEEN_STATE_UPDATES_MS: number = 60000;
-
-    // Device data series max values to store
-    private MAX_DATA_POINTS_TO_STORE = 100;
 
     // Websocket
     private _websocket: WebSocket | null = null;
@@ -118,7 +106,7 @@ export class DeviceManager {
         console.log(`DeviceManager init - first time`)
 
         // Get the configuration from the main server
-        await this.getAppSettingsAndCheck();
+        await this._settingsManager.getAppSettingsAndCheck();
 
         // Open websocket
         const rslt = await this.connectWebSocket();
@@ -148,27 +136,6 @@ export class DeviceManager {
         }, 5000);
 
         return rslt;
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Get the configuration from the main server
-    ////////////////////////////////////////////////////////////////////////////
-
-    private async getAppSettingsAndCheck(): Promise<boolean> {
-
-        // Get the configuration from the main server
-        const appSettingsResult = await this.getAppSettings("");
-        if (!appSettingsResult) {
-            
-            // See if test-server is available
-            const appSettingAlt = await this.getAppSettings(this._testServerPath);
-            if (!appSettingAlt) {
-                console.warn("DeviceManager init unable to get app settings");
-                return false;
-            }
-            this._serverAddressPrefix = this._testServerPath;
-        }
-        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -234,45 +201,8 @@ export class DeviceManager {
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // Config handling
+    // Callbacks
     ////////////////////////////////////////////////////////////////////////////
-
-    // Get the config
-    public getConfig(): DevicesConfig {
-        return this._devicesConfig;
-    }
-
-    // Get mutable config
-    public getMutableConfig(): DevicesConfig {
-        return this._mutableConfig;
-    }
-
-    // Revert configuration
-    public revertConfig(): void {
-        this._mutableConfig = JSON.parse(JSON.stringify(this._devicesConfig));
-        this._configChangeCallbacks.forEach(callback => {
-            callback(this._devicesConfig);
-        });
-    }
-
-    // Persist configuration
-    public async persistConfig(): Promise<void> {
-
-        // TODO - change config that needs to be changed
-        this._devicesConfig = JSON.parse(JSON.stringify(this._mutableConfig));
-        await this.postAppSettings();
-    }
-
-    // Check if config changed
-    public isConfigChanged(): boolean {
-        return JSON.stringify(this._devicesConfig) !== JSON.stringify(this._mutableConfig);
-    }
-
-    // Register a config change callback
-    public onConfigChange(callback: (config:DevicesConfig) => void): void {
-        // Add the callback
-        this._configChangeCallbacks.push(callback);
-    }
 
     // Register state change callbacks
     public onNewDevice(callback: (deviceKey: string, state: DeviceState) => void): void {
@@ -286,101 +216,6 @@ export class DeviceManager {
     public onNewAttributeData(callback: (deviceKey: string, attrState: DeviceAttributeState) => void): void {
         // Save the callback
         this._callbackNewAttributeData = callback;
-    }
-    
-    ////////////////////////////////////////////////////////////////////////////
-    // Get the app settings from the server
-    ////////////////////////////////////////////////////////////////////////////
-
-    async getAppSettings(serverAddr:string) : Promise<boolean> {
-        // Get the app settings
-        console.log(`DeviceManager getting app settings`);
-        let getSettingsResponse = null;
-        try {
-            getSettingsResponse = await fetch(serverAddr + this._urlPrefix + "/getsettings/nv");
-            if (getSettingsResponse && getSettingsResponse.ok) {
-                const settings = await getSettingsResponse.json();
-
-                console.log(`DeviceManager getAppSettings ${JSON.stringify(settings)}`)
-
-                if ("nv" in settings) {
-
-                    // Start with a base config
-                    const configBase = new DevicesConfig();
-
-                    console.log(`DeviceManager getAppSettings empty config ${JSON.stringify(configBase)}`);
-
-                    // Add in the non-volatile settings
-                    this.addNonVolatileSettings(configBase, settings.nv);
-
-                    console.log(`DeviceManager getAppSettings config with nv ${JSON.stringify(configBase)}`);
-
-                    // Extract non-volatile settings
-                    this._devicesConfig = configBase;
-                    this._mutableConfig = JSON.parse(JSON.stringify(configBase));
-
-                    // Inform screens of config change
-                    this._configChangeCallbacks.forEach(callback => {
-                        callback(this._devicesConfig);
-                    });
-                } else {
-                    alert("DeviceManager getAppSettings settings missing nv section");
-                }
-                return true;
-            } else {
-                alert("DeviceManager getAppSettings response not ok");
-            }
-        } catch (error) {
-            console.log(`DeviceManager getAppSettings ${error}`);
-            return false;
-        }
-        return false;
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Post applicaton settings
-    ////////////////////////////////////////////////////////////////////////////
-
-    async postAppSettings(): Promise<boolean> {
-        try {
-            const postSettingsURI = this._serverAddressPrefix + this._urlPrefix + "/postsettings/reboot";
-            const postSettingsResponse = await fetch(postSettingsURI, 
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(this._devicesConfig).replace("\n", "\\n")
-                }
-            );
-
-            console.log(`DeviceManager postAppSettings posted ${JSON.stringify(this._devicesConfig)}`)
-
-            if (!postSettingsResponse.ok) {
-                console.error(`DeviceManager postAppSettings response not ok ${postSettingsResponse.status}`);
-            }
-            return postSettingsResponse.ok;
-        } catch (error) {
-            console.error(`DeviceManager postAppSettings error ${error}`);
-            return false;
-        }
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Add non-volatile settings to the config
-    ////////////////////////////////////////////////////////////////////////////
-
-    private addNonVolatileSettings(config:DevicesConfig, nv:DevicesConfig) {
-        // Iterate over keys in nv
-        let key: keyof DevicesConfig;
-        for (key in nv) {
-            // Check if key exists in config
-            if (!(key in config)) {
-                console.log(`DeviceManager addNonVolatileSettings key ${key} not in config`);
-                continue;
-            }
-            Object.assign(config[key], nv[key])
-        }
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -500,7 +335,7 @@ export class DeviceManager {
                         const curTimelineLen = deviceState.deviceTimeline.timestampsUs.length;
                         const newMsgBufIdx = this._attributeHandler.processMsgAttrGroup(msgBuffer, msgBufIdx, 
                                                 deviceState.deviceTimeline, pollRespMetadata, 
-                                                deviceState.deviceAttributes, this.MAX_DATA_POINTS_TO_STORE);
+                                                deviceState.deviceAttributes, this._settingsManager.getMaxDatapointsToStore());
                         if (newMsgBufIdx < 0)
                             break;
                         msgBufIdx = newMsgBufIdx;
@@ -527,6 +362,10 @@ export class DeviceManager {
         this.processStateCallback();
 
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Process state change callback
+    ////////////////////////////////////////////////////////////////////////////
 
     private processStateCallback() {
 

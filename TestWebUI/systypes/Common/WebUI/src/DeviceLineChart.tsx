@@ -3,8 +3,10 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line } from "react-chartjs-2";
 import { DeviceState } from "./DeviceStates";
 import { DeviceManager } from "./DeviceManager";
+import SettingsManager from "./SettingsManager";
 
 const deviceManager = DeviceManager.getInstance();
+const settingsManager = SettingsManager.getInstance();
 
 ChartJS.register(
     CategoryScale,
@@ -37,7 +39,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
 
     const deviceState: DeviceState = deviceManager.getDeviceState(deviceKey);
     const { deviceAttributes, deviceTimeline } = deviceState;
-    const MAX_DATA_POINTS = 100;
+    let maxChartDataPoints = settingsManager.getMaxChartPoints();
     const [chartData, setChartData] = useState<ChartJSData>({
         labels: [],
         datasets: []
@@ -65,7 +67,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
     });
 
     useEffect(() => {
-        const labels = deviceTimeline.timestampsUs.slice(-MAX_DATA_POINTS).map(time => {
+        const labels = deviceTimeline.timestampsUs.slice(-maxChartDataPoints).map(time => {
             const seconds = time / 1e6; // Convert microseconds to seconds
             const secondsStr = seconds.toFixed(3); // Format decimal places
             return secondsStr;
@@ -75,7 +77,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         const datasets = Object.entries(deviceAttributes)
             .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)
             .map(([attributeName, attributeDetails]) => {
-                const data = attributeDetails.values.slice(-MAX_DATA_POINTS);
+                const data = attributeDetails.values.slice(-maxChartDataPoints);
                 let colour = colourMapRef.current[attributeName];
                 if (!colour) {
                     colour = `hsl(${Math.random() * 360}, 70%, 60%)`;
