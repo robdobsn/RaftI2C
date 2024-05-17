@@ -45,10 +45,10 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
     }, []);
 
     const handleCopyToClipboard = () => {
-      const headers = ["Timestamp (us)"];
+      const headers = ["Time (s)"];
       const rows: string[][] = [];
 
-      const timestamps = data.deviceTimeline.timestampsUs;
+      const timestampsUs = data.deviceTimeline.timestampsUs;
       const attributes = data.deviceAttributes;
 
       // Collect headers and initialize rows with timestamps
@@ -56,8 +56,8 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
           headers.push(attrName);
       });
 
-      timestamps.forEach((timestamp, index) => {
-          const row: string[] = [timestamp.toString()];
+      timestampsUs.forEach((timestampUs, index) => {
+          const row: string[] = [(timestampUs/1000000.0).toString()];
           Object.keys(attributes).forEach(attrName => {
               const values = attributes[attrName].values;
               row.push(values[index]?.toString() || "");

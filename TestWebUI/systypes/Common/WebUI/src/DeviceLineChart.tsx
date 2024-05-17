@@ -81,9 +81,10 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
                     colour = `hsl(${Math.random() * 360}, 70%, 60%)`;
                     colourMapRef.current[attributeName] = colour;
                 }
-                const axisKey = `${attributeDetails.range}-${attributeDetails.units}`;
+                let rangeEnds: [number,number] = [Math.min(...attributeDetails.range), Math.max(...attributeDetails.range)];
+                const axisKey = `${rangeEnds[0]}-${rangeEnds[1]}-${attributeDetails.units}`;
                 if (!uniqueAxes.has(axisKey)) {
-                    uniqueAxes.set(axisKey, { range: attributeDetails.range, units: attributeDetails.units });
+                    uniqueAxes.set(axisKey, { range: rangeEnds, units: attributeDetails.units });
                 }
                 return {
                     label: attributeName,
