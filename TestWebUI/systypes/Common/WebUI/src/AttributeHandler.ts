@@ -115,7 +115,7 @@ export default class AttributeHandler {
         // Handle the timestamps with increments if specified
         const timeIncUs: number = pollRespMetadata.us ? pollRespMetadata.us : 1000;
         let timestampsUs = Array(numNewDataPoints).fill(0);
-        for (let i = 1; i < numNewDataPoints; i++) {
+        for (let i = 0; i < numNewDataPoints; i++) {
             timestampsUs[i] =  timestampUs + i * timeIncUs;
         }
         
