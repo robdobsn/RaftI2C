@@ -39,7 +39,6 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
 
     const deviceState: DeviceState = deviceManager.getDeviceState(deviceKey);
     const { deviceAttributes, deviceTimeline } = deviceState;
-    let maxChartDataPoints = settingsManager.getMaxChartPoints();
     const [chartData, setChartData] = useState<ChartJSData>({
         labels: [],
         datasets: []
@@ -67,7 +66,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
     });
 
     useEffect(() => {
-        const labels = deviceTimeline.timestampsUs.slice(-maxChartDataPoints).map(time => {
+        const labels = deviceTimeline.timestampsUs.slice(-settingsManager.getMaxChartPoints()).map(time => {
             const seconds = time / 1e6; // Convert microseconds to seconds
             const secondsStr = seconds.toFixed(3); // Format decimal places
             return secondsStr;
@@ -77,7 +76,7 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         const datasets = Object.entries(deviceAttributes)
             .filter(([attributeName, attributeDetails]) => attributeDetails.visibleSeries !== false)
             .map(([attributeName, attributeDetails]) => {
-                const data = attributeDetails.values.slice(-maxChartDataPoints);
+                const data = attributeDetails.values.slice(-settingsManager.getMaxChartPoints());
                 let colour = colourMapRef.current[attributeName];
                 if (!colour) {
                     colour = `hsl(${Math.random() * 360}, 70%, 60%)`;

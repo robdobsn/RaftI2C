@@ -31,11 +31,11 @@ class SettingsManager {
     private constructor() {}
 
     public getMaxDatapointsToStore(): number {
-        return 1000;
+        return this._mutableConfig.maxStoredPoints || this.defaultSettings.maxStoredPoints || 1000;
     }
 
     public getMaxChartPoints(): number {
-        return 100;
+        return this._mutableConfig.maxChartPoints || this.defaultSettings.maxChartPoints || 100;
     }
 
     public static getInstance(): SettingsManager {

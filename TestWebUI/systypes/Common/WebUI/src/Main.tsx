@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
 import { DeviceManager } from './DeviceManager';
 import SettingsManager from './SettingsManager';
 import DevicesScreen from './DevicesScreen';
@@ -14,7 +13,6 @@ export default function Main() {
 
     useEffect(() => {
         const initDeviceManager = async () => {
-            // console.log('initDeviceManager');
             await DeviceManager.getInstance().init();
         };
 
@@ -69,5 +67,3 @@ export default function Main() {
         </>
     );
 }
-
-ReactDOM.render(<Main />, document.getElementById('root'));
