@@ -1,25 +1,51 @@
-/* styles.css */
+/* Main.css */
 
 /* General styling for the dark theme */
-body, .device-screen, .device-block-heading, .device-attrs-and-actions, .device-attrs-form, .device-actions-form, .device-line-chart {
-    background-color: #333; /* Dark background for all components */
-    color: #fff; /* Light text for better readability */
+body,
+.device-screen,
+.device-block-heading,
+.device-attrs-and-actions,
+.device-attrs-form,
+.device-actions-form,
+.device-line-chart {
+    /* Dark background for all components */
+    color: #fff;
+    /* Light text for better readability */
+    font-family: 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #282c34;
+    color: #ffffff;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+        monospace;
+}
+
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 10px;
+    border: 1px solid #666;
+    /* Adjusting border color for dark theme */
+    border-radius: 8px;
+    margin-bottom: 10px;
 }
 
 h1 {
-    margin-left: 20px;
-    padding: 10px;
-    border: 1px solid #666; /* Adjusting border color for dark theme */
-    border-radius: 8px;
-    margin-bottom: -10px;
+    margin: 0;
 }
 
 /* Style for the overall container that holds all devices */
 .devices-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;  /* Adds space between each DeviceScreen */
-    padding: 20px;
+    gap: 10px;  /* Adds space between each DeviceScreen */
 }
 
 /* Style for each individual device screen */
@@ -112,6 +138,14 @@ h1 {
     color: #fff;
 }
 
+.header-menu-icon {
+    cursor: pointer;
+    font-size: 1.5rem;
+    margin-left: auto;
+    margin-right: 20px;
+    color: #fff;
+}
+
 .dropdown-menu {
     position: absolute;
     right: 70px;
@@ -174,20 +208,25 @@ h1 {
 /* Adjust height for portrait orientation */
 @media (orientation: portrait) {
     .device-line-chart {
-        height: 16.67vh; /* Chart is approximately 1/6 of the viewport height in portrait */
+        height: 16.67vh;
+        /* Chart is approximately 1/6 of the viewport height in portrait */
     }
 }
 
 /* Responsive adjustments for smaller screens */
 @media (max-width: 600px) {
-    .device-line-chart, .device-attrs-form {
-        height: 25vh; /* Adjust height to a suitable value on small screens */
+
+    .device-line-chart,
+    .device-attrs-form {
+        height: 25vh;
+        /* Adjust height to a suitable value on small screens */
     }
 }
 
 /* Considerations for very large screens or high aspect ratios */
 @media (min-width: 1200px) {
     .device-line-chart {
-        height: 20vh; /* Slightly reduce the height for very wide screens */
+        height: 20vh;
+        /* Slightly reduce the height for very wide screens */
     }
 }

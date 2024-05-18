@@ -69,7 +69,8 @@ export class DeviceManager {
     // Constructor
     private constructor() {
         // Check if test mode
-        if (window.location.hostname === "localhost") {
+        // if (window.location.hostname === "localhost") {
+        if (process.env.TEST_DATA) {            
             this._testDataGen.start((msg: string) => {
                 this.handleClientMsgJson(msg);
             });
@@ -103,13 +104,10 @@ export class DeviceManager {
             console.warn(`DeviceManager init already initialized`)
             return true;
         }
-        console.log(`DeviceManager init - first time`)
+        // console.log(`DeviceManager init - first time`)
 
         // Get the configuration from the main server
         await this._settingsManager.getAppSettingsAndCheck();
-
-        // Open websocket
-        const rslt = await this.connectWebSocket();
 
         // Conditionally load the device type records
         if (testingDeviceTypeRecsConditionalLoadPromise) {
@@ -118,24 +116,32 @@ export class DeviceManager {
             });
         }
 
-        // Start timer to check for websocket reconnection
-        setInterval(async () => {
-            if (!this._websocket) {
-                console.log(`DeviceManager init - reconnecting websocket`);
-                await this.connectWebSocket();
-            }
-            else if ((Date.now() - this._lastStateUpdate) > this.MAX_TIME_BETWEEN_STATE_UPDATES_MS) {
-                const inactiveTimeSecs = ((Date.now() - this._lastStateUpdate) / 1000).toFixed(1);
-                if (this._websocket) {
-                    console.log(`DeviceManager init - closing websocket due to ${inactiveTimeSecs}s inactivity`);
-                    this._websocket.close();
-                    this._websocket = null;
-                }
-            }
-            console.log(`websocket state ${this._websocket?.readyState}`);
-        }, 5000);
+        // Websocket if not in test mode
+        if (!process.env.TEST_DATA) {
+            // Open websocket
+            const rslt = await this.connectWebSocket();
 
-        return rslt;
+            // Start timer to check for websocket reconnection
+            setInterval(async () => {
+                if (!this._websocket) {
+                    console.log(`DeviceManager init - reconnecting websocket`);
+                    await this.connectWebSocket();
+                }
+                else if ((Date.now() - this._lastStateUpdate) > this.MAX_TIME_BETWEEN_STATE_UPDATES_MS) {
+                    const inactiveTimeSecs = ((Date.now() - this._lastStateUpdate) / 1000).toFixed(1);
+                    if (this._websocket) {
+                        console.log(`DeviceManager init - closing websocket due to ${inactiveTimeSecs}s inactivity`);
+                        this._websocket.close();
+                        this._websocket = null;
+                    }
+                }
+                console.log(`websocket state ${this._websocket?.readyState}`);
+            }, 5000);
+            return rslt;
+        }
+
+        // Test mode
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////

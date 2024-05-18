@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import './Main.css';
 import { DeviceManager } from './DeviceManager';
 import SettingsManager from './SettingsManager';
 import DevicesScreen from './DevicesScreen';
@@ -9,15 +8,13 @@ import './styles.css';
 const settingsManager = SettingsManager.getInstance();
 
 export default function Main() {
-
-    const [menuOpen, setMenuOpen] = useState<boolean>(false);
     const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
     const [settings, setSettings] = useState(settingsManager.getSettings(true));
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const initDeviceManager = async () => {
-            console.log(`initDeviceManager`);
+            // console.log('initDeviceManager');
             await DeviceManager.getInstance().init();
         };
 
@@ -28,7 +25,6 @@ export default function Main() {
 
     const handleSettings = () => {
         setSettingsOpen(true);
-        setMenuOpen(false);
     };
 
     const handleSaveSettings = () => {
@@ -38,14 +34,9 @@ export default function Main() {
 
     return (
         <>
-            <div>
+            <div className="header">
                 <h1>Raft I2C Auto-identification and Polling Pub-Sub</h1>
-                <div className="menu-icon always-enabled" onClick={() => setMenuOpen(!menuOpen)}>☰</div>
-                {menuOpen && (
-                    <div className="dropdown-menu" ref={menuRef}>
-                        <div className="menu-item always-enabled" onClick={handleSettings}>Settings</div>
-                    </div>
-                )}
+                <div className="header-menu-icon always-enabled" onClick={() => handleSettings()}>☰</div>
             </div>
             <div className="h-full">
                 <DevicesScreen />

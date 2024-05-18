@@ -7,9 +7,8 @@ export interface NVSettingsRecord {
 }
 
 class SettingsManager {
+    // Singleton
     private static instance: SettingsManager;
-    private settings: { [key: string]: { maxChartPoints: number; maxStoredPoints: number } } = {};
-    private defaultSettings: NVSettingsRecord = { maxChartPoints: 100, maxStoredPoints: 1000 };
 
     // Test server path
     private _testServerPath = "";
@@ -22,6 +21,9 @@ class SettingsManager {
 
     // Modified configuration
     private _mutableConfig: NVSettingsRecord = {};
+
+    // Defaults
+    private defaultSettings: NVSettingsRecord = { maxChartPoints: 100, maxStoredPoints: 1000 };
 
     // Config change callbacks
     private _configChangeCallbacks: Array<(config: NVSettingsRecord) => void> = [];
@@ -44,6 +46,8 @@ class SettingsManager {
     }
 
     public getSettings(withDefaults: boolean): NVSettingsRecord {
+
+        // Get settings
         let settings = JSON.parse(JSON.stringify(this._mutableConfig));
 
         // Settings that don't exist in the mutable config are set to default values
@@ -56,7 +60,24 @@ class SettingsManager {
     }
 
     public setSettings(newSettings: NVSettingsRecord) {
+        // Check for changes
+        const changesDetected = JSON.stringify(this._mutableConfig) !== JSON.stringify(newSettings);
+
+        // Update the mutable config
         this._mutableConfig = newSettings;
+
+        // Handle changes
+        if (changesDetected) {
+            // Inform listeners of config change
+            this._configChangeCallbacks.forEach(callback => {
+                callback(this._mutableConfig);
+            });
+
+            // Post settings to server
+            this.postAppSettings();
+        }
+
+        console.log(`SettingsManager changes=${changesDetected} setSettings ${JSON.stringify(newSettings)}`);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -126,6 +147,16 @@ class SettingsManager {
     ////////////////////////////////////////////////////////////////////////////
 
     async getAppSettings(serverAddr:string) : Promise<boolean> {
+
+        // Check for test-mode
+        if (process.env.TEST_DATA) {
+            this._mutableConfig = {};
+            // Uncomment the following line to test with default settings instead of empty settings
+            // this._mutableConfig = JSON.parse(JSON.stringify(this.defaultSettings));
+            console.log(`SettingsManager getAppSettings test mode ${JSON.stringify(this._mutableConfig)}`);
+            return true;
+        }
+
         // Get the app settings
         console.log(`SettingsManager getAppSettings getting app settings`);
         let getSettingsResponse = null;
@@ -174,6 +205,13 @@ class SettingsManager {
     ////////////////////////////////////////////////////////////////////////////
 
     async postAppSettings(): Promise<boolean> {
+
+        if (process.env.TEST_DATA) {
+            console.log(`SettingsManager postAppSettings test mode ${JSON.stringify(this._mutableConfig)}`);
+            return true;
+        }
+
+        // Post to the API
         try {
             const postSettingsURI = this._serverAddressPrefix + this._urlPrefix + "/postsettings/reboot";
             const postSettingsResponse = await fetch(postSettingsURI, 
