@@ -63,6 +63,10 @@ const DeviceLineChart: React.FC<DeviceLineChartProps> = memo(({ deviceKey, lastU
         dist: "hsl(60, 70%, 60%)",
         temperature: "hsl(360, 70%, 60%)",
         humidity: "hsl(200, 70%, 60%)",
+        Red: "hsl(0, 70%, 60%)",
+        Green: "hsl(120, 70%, 60%)",
+        Blue: "hsl(240, 70%, 60%)",
+        IR: "hsl(300, 70%, 60%)",
     });
 
     useEffect(() => {

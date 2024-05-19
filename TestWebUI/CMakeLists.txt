@@ -5,7 +5,7 @@ include(FetchContent)
 # Fetch the RaftCore library
 FetchContent_Declare(
     raftcore
-    SOURCE_DIR RaftCore    
+    SOURCE_DIR RaftCore
     GIT_REPOSITORY https://github.com/robdobsn/RaftCore.git
     GIT_TAG        main
 )

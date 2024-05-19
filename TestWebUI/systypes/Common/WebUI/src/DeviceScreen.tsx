@@ -49,29 +49,63 @@ const DeviceScreen = ({ deviceKey, lastUpdated }: DeviceScreenProps) => {
     const handleCopyToClipboard = () => {
         const headers = ["Time (s)"];
         const rows: string[][] = [];
-
+    
         const timestampsUs = data.deviceTimeline.timestampsUs;
         const attributes = data.deviceAttributes;
-
+    
         // Collect headers and initialize rows with timestamps
         Object.keys(attributes).forEach(attrName => {
             headers.push(attrName);
         });
-
+    
         timestampsUs.forEach((timestampUs, index) => {
-            const row: string[] = [(timestampUs/1000000.0).toString()];
+            const row: string[] = [(timestampUs / 1000000.0).toString()];
             Object.keys(attributes).forEach(attrName => {
                 const values = attributes[attrName].values;
                 row.push(values[index]?.toString() || "");
             });
             rows.push(row);
         });
-
+    
         // Create a tab-separated string
         const csvContent = [headers.join("\t"), ...rows.map(row => row.join("\t"))].join("\n");
-
-        navigator.clipboard.writeText(csvContent);
+    
+        // Try using navigator.clipboard.writeText, with a fallback to document.execCommand
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(csvContent).then(() => {
+                console.log("Device values copied to clipboard");
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                fallbackCopyTextToClipboard(csvContent);
+            });
+        } else {
+            fallbackCopyTextToClipboard(csvContent);
+        }
         setMenuOpen(false);
+    };
+    
+    const fallbackCopyTextToClipboard = (text: string) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+    
+        // Avoid scrolling to bottom
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+    
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+    
+        try {
+            document.execCommand("copy");
+            // alert("Device values copied to clipboard!");
+        } catch (err) {
+            console.error('Fallback: Oops, unable to copy', err);
+            alert("Failed to copy device values to clipboard");
+        }
+    
+        document.body.removeChild(textArea);
     };
 
     return (
