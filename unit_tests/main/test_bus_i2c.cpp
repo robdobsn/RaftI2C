@@ -200,7 +200,7 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
     // Service the status for some time
     for (int i = 0; i < serviceLoops; i++)
     {
-        busStatusMgr.service(true);
+        busStatusMgr.loop(true);
         if (serviceScanner)
             busScanner.taskService(micros(), 10000, 2000);
         if ((i % 1000) == 0)

@@ -24,7 +24,7 @@ public:
     void setup(const RaftJsonIF& config);
 
     // Service
-    void service();
+    void loop();
 
     // Check bus stuck
     bool isStuck();

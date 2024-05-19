@@ -26,9 +26,9 @@ public:
     BusStatusMgr(BusBase& busBase);
     ~BusStatusMgr();
 
-    // Setup & service
+    // Setup & loop
     void setup(const RaftJsonIF& config);
-    void service(bool hwIsOperatingOk);
+    void loop(bool hwIsOperatingOk);
 
     // Get bus operation status
     BusOperationStatus isOperatingOk() const

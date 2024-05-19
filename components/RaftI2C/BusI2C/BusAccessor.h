@@ -25,9 +25,9 @@ public:
     BusAccessor(BusBase& busBase, BusI2CReqAsyncFn busI2CReqAsyncFn);
     ~BusAccessor();
 
-    // Setup and service
+    // Setup and loop
     void setup(const RaftJsonIF& config);
-    void service();
+    void loop();
 
     // Pause and clear
     void pause(bool pause);

@@ -26,7 +26,7 @@ public:
                 DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
-    void service();
+    void loop();
     void requestScan(bool enableSlowScan, bool requestFastScan);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -66,7 +66,7 @@ void BusAccessor::setup(const RaftJsonIF& config)
 // Service
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusAccessor::service()
+void BusAccessor::loop()
 {
     // Stats
     _busBase.getBusStats().respQueueCount(_responseQueue.count());
@@ -86,7 +86,7 @@ void BusAccessor::service()
         {
             callback(reqResult.getCallbackParam(), reqResult);
 #ifdef DEBUG_SERVICE_RESPONSE_CALLBACK
-            LOG_I(MODULE_PREFIX, "service response retval %d addr 0x%02x readLen %d", 
+            LOG_I(MODULE_PREFIX, "loop response retval %d addr 0x%02x readLen %d", 
                     reqResult.isResultOk(), reqResult.getAddress(), reqResult.getReadDataLen());
 #endif
         }
@@ -276,7 +276,7 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
         if (callback)
         {
             callback(reqResult.getCallbackParam(), reqResult);
-            // LOG_D(MODULE_PREFIX, "service retval %d", reqResult.isResultOk());
+            // LOG_D(MODULE_PREFIX, "loop retval %d", reqResult.isResultOk());
         }
     }
     else

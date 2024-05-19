@@ -59,8 +59,8 @@ public:
     virtual void close() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief service (should be called frequently to service the bus)
-    virtual void service() override final;
+    /// @brief loop (should be called frequently to service the bus)
+    virtual void loop() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get bus device interface

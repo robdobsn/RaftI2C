@@ -27,7 +27,7 @@ public:
     void setup(const RaftJsonIF& config);
 
     // Service
-    void service();
+    void loop();
 
     // Service called from I2C task
     void taskService();

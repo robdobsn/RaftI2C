@@ -88,7 +88,7 @@ void BusPowerController::setup(const RaftJsonIF& config)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service
-void BusPowerController::service()
+void BusPowerController::loop()
 {
 }
 
@@ -163,7 +163,7 @@ void BusPowerController::powerCycleSlot(uint32_t slotPlus1)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Task service (called from I2C task)
+/// @brief Task loop (called from I2C task)
 void BusPowerController::taskService(uint64_t timeNowUs)
 {
     // Service state machine for each slot

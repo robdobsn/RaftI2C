@@ -73,7 +73,7 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
 // Service
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusStatusMgr::service(bool hwIsOperatingOk)
+void BusStatusMgr::loop(bool hwIsOperatingOk)
 {
     // Check for any changes detected
     if (!_busElemStatusChangeDetected)
@@ -153,7 +153,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
     for (auto& statusChange : statusChanges)
     {
-        LOG_I(MODULE_PREFIX, "service addr@slot+1 %s status change to %s", 
+        LOG_I(MODULE_PREFIX, "loop addr@slot+1 %s status change to %s", 
                     statusChange.addrAndSlot.toString().c_str(),
                     statusChange.isChangeToOnline ? "online" : "offline");
     }
@@ -163,7 +163,7 @@ void BusStatusMgr::service(bool hwIsOperatingOk)
     if (_busOperationStatus != newBusOperationStatus)
     {
 #ifdef DEBUG_BUS_OPERATION_STATUS
-        LOG_I(MODULE_PREFIX, "service newOpStatus %s (was %s)", 
+        LOG_I(MODULE_PREFIX, "loop newOpStatus %s (was %s)", 
                     newBusOperationStatus ? "online" : "offline",
                     _busOperationStatus ? "online" : "offline");
 #endif

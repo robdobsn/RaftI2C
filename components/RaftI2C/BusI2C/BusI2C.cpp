@@ -231,30 +231,30 @@ void BusI2C::close()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service (called frequently from main loop)
-void BusI2C::service()
+void BusI2C::loop()
 {
     // Check ok
     if (!_initOk)
         return;
 
     // Service bus scanner
-    _busScanner.service();
+    _busScanner.loop();
 
     // Service bus status change detection
     bool busIsStuck = _busStuckHandler.isStuck();
-    _busStatusMgr.service(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
+    _busStatusMgr.loop(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
 
     // Service bus extender
-    _busExtenderMgr.service();
+    _busExtenderMgr.loop();
 
-    // Bus power controller service
-    _busPowerController.service();
+    // Bus power controller loop
+    _busPowerController.loop();
 
     // Service bus stuck handler
-    _busStuckHandler.service();
+    _busStuckHandler.loop();
 
     // Service bus accessor
-    _busAccessor.service();
+    _busAccessor.loop();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -381,7 +381,7 @@ void BusI2C::i2cWorkerTask()
         delayMicroseconds(1);
 #endif
 
-        // Bus extender service
+        // Bus extender loop
         _busExtenderMgr.taskService();
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
@@ -391,7 +391,7 @@ void BusI2C::i2cWorkerTask()
         delayMicroseconds(1);
 #endif
 
-        // Bus power controller service
+        // Bus power controller loop
         _busPowerController.taskService(micros());
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM

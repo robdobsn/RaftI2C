@@ -119,7 +119,7 @@ void HWDevMan::loop()
     {
         if (pBus)
         {
-            SUPERVISE_LOOP_CALL(_supervisorStats, _supervisorBusFirstIdx+busIdx, DEBUG_GLOB_HWDEVMAN, pBus->service())
+            SUPERVISE_LOOP_CALL(_supervisorStats, _supervisorBusFirstIdx+busIdx, DEBUG_GLOB_HWDEVMAN, pBus->loop())
         }
         busIdx++;
     }
