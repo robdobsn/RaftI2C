@@ -274,7 +274,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 // Get JSON status
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-String HWDevMan::getStatusJSON()
+String HWDevMan::getStatusJSON() const
 {
     String jsonStr;
     for (BusBase* pBus : _busList)

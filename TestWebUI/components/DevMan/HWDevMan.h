@@ -45,7 +45,7 @@ protected:
     virtual void addRestAPIEndpoints(RestAPIEndpointManager& pEndpoints) override final;
 
     // Status
-    virtual String getStatusJSON() override final;
+    virtual String getStatusJSON() const override final;
     
 private:
 
