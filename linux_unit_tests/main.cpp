@@ -3,7 +3,8 @@
 #include "RaftUtils.h"
 #include "BusI2CDevTypeRecord.h"
 #include "DevicePollingInfo.h"
-#include "TestDevTypes_generated.h"
+#include "DeviceTypeRecords_generated.h"
+#include "DevicePollRecords_generated.h"
 
 #define TEST_ASSERT(cond, msg) if (!(cond)) { printf("TEST_ASSERT failed %s\n", msg); failCount++; }
 

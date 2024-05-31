@@ -35,16 +35,17 @@ find_package(Python3 REQUIRED)
 
 # Device type record paths
 set(JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/DeviceTypeRecords/DeviceTypeRecords.json")
-set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/DeviceTypeRecords_generated.h")
+set(DEV_TYPE_RECS_HEADER "${CMAKE_BINARY_DIR}/DeviceTypeRecords_generated.h")
+set(DEV_POLL_RECS_HEADER "${CMAKE_BINARY_DIR}/DevicePollRecords_generated.h")
 
 # Custom command to generate device type records header file from JSON
 add_custom_command(
-    OUTPUT ${GENERATED_HEADER}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ProcessDevTypeJsonToC.py" "${JSON_FILE}" "${GENERATED_HEADER}"
+    OUTPUT ${DEV_TYPE_RECS_HEADER} ${DEV_POLL_RECS_HEADER}
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ProcessDevTypeJsonToC.py" "${JSON_FILE}" "${DEV_TYPE_RECS_HEADER}" "${DEV_POLL_RECS_HEADER}"
     DEPENDS ${JSON_FILE}
-    COMMENT "---------------------- Generating Device Type Records header from JSON ---------------------------"
+    COMMENT "---------------------- Generating Device Record headers from JSON ---------------------------"
 )
 
-add_custom_target(generate_dev_ident_header DEPENDS ${GENERATED_HEADER})
+add_custom_target(generate_dev_ident_header DEPENDS ${DEV_TYPE_RECS_HEADER} ${DEV_POLL_RECS_HEADER})
 
 add_dependencies(${COMPONENT_LIB} generate_dev_ident_header)
