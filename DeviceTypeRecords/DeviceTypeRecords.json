@@ -188,6 +188,84 @@
                     ]
                 }
             }
+        },        
+        "LSM6DS3": {
+            "_notes": "0x0a00 (FIFO disable), 0x1048 (Accel ODR 104Hz, FS 4g), 0x114c (Gyro ODR 104Hz, FS 2000dps), 0x22=r12 (read samples)", 
+            "addresses": "0x6a",
+            "deviceType": "LSM6DS3",
+            "detectionValues": "0x0f=0b01101x0x",
+            "initValues": "0x0a00&0x1048&0x114c&0x1640",
+            "pollInfo": {
+                "c": "0x22=r12",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "LSM6DS3",
+                "desc": "6-Axis IMU",
+                "manu": "ST",
+                "type": "LSM6DS3",
+                "resp": {
+                    "b": 12,
+                    "a": [
+                        {
+                            "n": "gx",
+                            "t": "<h",
+                            "u": "dps",
+                            "r": [-2000, 2000],
+                            "d": 16.384,
+                            "f": ".2f",
+                            "o": "float"
+                        },
+                        {
+                            "n": "gy",
+                            "t": "<h",
+                            "u": "dps",
+                            "r": [-2000, 2000],
+                            "d": 16.384,
+                            "f": ".2f",
+                            "o": "float"
+                        },
+                        {
+                            "n": "gz",
+                            "t": "<h",
+                            "u": "dps",
+                            "r": [-2000, 2000],
+                            "d": 16.384,
+                            "f": ".2f",
+                            "o": "float"
+                        },
+                        {
+                            "n": "ax",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0, 4.0],
+                            "d": 8192,
+                            "f": ".2f",
+                            "o": "float"
+                        },
+                        {
+                            "n": "ay",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 8192,
+                            "f": ".2f",
+                            "o": "float"
+                        },
+                        {
+                            "n": "az",
+                            "t": "<h",
+                            "u": "g",
+                            "r": [-4.0,4.0],
+                            "d": 8192,
+                            "f": ".2f",
+                            "o": "float"
+                        }
+                    ]
+                }
+            }
         },
         "AHT20": {
             "addresses": "0x38",
