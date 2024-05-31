@@ -40,12 +40,21 @@ void DeviceIdentMgr::setup(const RaftJsonIF& config)
     LOG_I(MODULE_PREFIX, "DeviceIdentMgr setup %s", _isEnabled ? "enabled" : "disabled");
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Attempt device identification
-// Note that this is called from within the scanning code so the device should already be
-// selected if it is on a bus extender, etc.
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get list of device addresses attached to the bus
+/// @param pAddrList pointer to array to receive addresses
+/// @param onlyAddressesWithIdentPollResponses true to only return addresses with ident poll responses    
+void DeviceIdentMgr::getDeviceAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const
+{
+    // Get list of all bus element addresses
+    _busStatusMgr.getBusElemAddresses(addresses, onlyAddressesWithIdentPollResponses);
+}
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identify device
+/// @param addrAndSlot address and slot
+/// @param deviceStatus (out) device status
+/// @note This is called from within the scanning code so the device should already be selected if it is on a bus extender, etc.
 void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus)
 {
     // Clear device status

@@ -53,10 +53,10 @@ void HWDevMan::setup()
     LOG_I(MODULE_PREFIX, "setup enabled");
 
     // Register BusI2C
-    _busManager.registerBus("I2C", BusI2C::createFn);
+    _raftBusSystem.registerBus("I2C", BusI2C::createFn);
 
     // Setup buses
-    _busManager.setup("Buses", modConfig(),
+    _raftBusSystem.setup("Buses", modConfig(),
             std::bind(&HWDevMan::busElemStatusCB, this, std::placeholders::_1, std::placeholders::_2),
             std::bind(&HWDevMan::busOperationStatusCB, this, std::placeholders::_1, std::placeholders::_2)
     );
@@ -108,7 +108,7 @@ void HWDevMan::loop()
     }
 
     // Service the buses
-    _busManager.loop();
+    _raftBusSystem.loop();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -155,17 +155,17 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeMissing");
 
         // Find the bus
-        BusBase* pBus = _busManager.getBusByName(busName);
+        RaftBus* pBus = _raftBusSystem.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
-        // Get device interface
-        BusDeviceIF* pDeviceIF = pBus->getBusDeviceIF();
-        if (!pDeviceIF)
+        // Get devices interface
+        RaftBusDevicesIF* pDevicesIF = pBus->getBusDevicesIF();
+        if (!pDevicesIF)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
 
         // Get device info
-        String devInfo = pDeviceIF->getDevTypeInfoJsonByTypeName(devTypeName, false);
+        String devInfo = pDevicesIF->getDevTypeInfoJsonByTypeName(devTypeName, false);
         if (devInfo.length() == 0)
         {
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeNotFound");
@@ -194,7 +194,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failMissingAddr");
 
         // Find the bus
-        BusBase* pBus = _busManager.getBusByName(busName);
+        RaftBus* pBus = _raftBusSystem.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
@@ -263,15 +263,15 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 String HWDevMan::getStatusJSON() const
 {
     String jsonStr;
-    for (BusBase* pBus : _busManager.getBusList())
+    for (RaftBus* pBus : _raftBusSystem.getBusList())
     {
         if (!pBus)
             continue;
         // Get device interface
-        BusDeviceIF* pDeviceIF = pBus->getBusDeviceIF();
-        if (!pDeviceIF)
+        RaftBusDevicesIF* pDevicesIF = pBus->getBusDevicesIF();
+        if (!pDevicesIF)
             continue; 
-        String jsonRespStr = pDeviceIF->getPollResponsesJson();
+        String jsonRespStr = pDevicesIF->getPollResponsesJson();
         if (jsonRespStr.length() > 0)
         {
             jsonStr += (jsonStr.length() == 0 ? "{\"" : ",\"") + pBus->getBusName() + "\":" + jsonRespStr;
@@ -317,7 +317,7 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
     stateHash.clear();
 
     // Check all buses for data
-    for (BusBase* pBus : _busManager.getBusList())
+    for (RaftBus* pBus : _raftBusSystem.getBusList())
     {
         // Check bus
         if (pBus)
@@ -356,7 +356,7 @@ void HWDevMan::saveMutableData()
 void HWDevMan::deinit()
 {
     // Deinit buses
-    _busManager.deinit();
+    _raftBusSystem.deinit();
 
     // Deinit done
     _isInitialised = false;
@@ -375,18 +375,18 @@ void HWDevMan::debugShowCurrentState()
 // Bus operation status callback
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void HWDevMan::busOperationStatusCB(BusBase& bus, BusOperationStatus busOperationStatus)
+void HWDevMan::busOperationStatusCB(RaftBus& bus, BusOperationStatus busOperationStatus)
 {
     // Debug
     LOG_I(MODULE_PREFIX, "busOperationStatusInfo %s %s", bus.getBusName().c_str(), 
-        BusBase::busOperationStatusToString(busOperationStatus));
+        RaftBus::busOperationStatusToString(busOperationStatus));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Bus element status callback
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void HWDevMan::busElemStatusCB(BusBase& bus, const std::vector<BusElemAddrAndStatus>& statusChanges)
+void HWDevMan::busElemStatusCB(RaftBus& bus, const std::vector<BusElemAddrAndStatus>& statusChanges)
 {
     // Debug
     for (const auto& el : statusChanges)

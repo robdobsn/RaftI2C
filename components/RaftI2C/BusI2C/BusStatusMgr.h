@@ -12,7 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "BusBase.h"
+#include "RaftBus.h"
 #include "BusI2CConsts.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
@@ -23,7 +23,7 @@ class BusStatusMgr {
 
 public:
     // Constructor and destructor
-    BusStatusMgr(BusBase& busBase);
+    BusStatusMgr(RaftBus& raftBus);
     ~BusStatusMgr();
 
     // Setup & loop
@@ -133,7 +133,7 @@ private:
     SemaphoreHandle_t _busElemStatusMutex = nullptr;
 
     // Bus base
-    BusBase& _busBase;
+    RaftBus& _raftBus;
 
     // I2C address status
     std::vector<BusI2CAddrStatus> _i2cAddrStatus;

@@ -30,8 +30,8 @@ static const char* MODULE_PREFIX = "BusAccessor";
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusAccessor::BusAccessor(BusBase& busBase, BusI2CReqAsyncFn busI2CReqAsyncFn) :
-        _busBase(busBase),
+BusAccessor::BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn) :
+        _raftBus(raftBus),
         _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
     // Create the mutex for the polling list
@@ -69,8 +69,8 @@ void BusAccessor::setup(const RaftJsonIF& config)
 void BusAccessor::loop()
 {
     // Stats
-    _busBase.getBusStats().respQueueCount(_responseQueue.count());
-    _busBase.getBusStats().reqQueueCount(_requestQueue.count());
+    _raftBus.getBusStats().respQueueCount(_responseQueue.count());
+    _raftBus.getBusStats().reqQueueCount(_requestQueue.count());
 
     // See if there are any results awaiting callback
     for (uint32_t i = 0; i < RESPONSE_FIFO_SLOTS; i++)
@@ -243,7 +243,7 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
     if (pReqRec->getReadReqLen() != numBytesRead)
     {
         // Stats
-        _busBase.getBusStats().respLengthError();
+        _raftBus.getBusStats().respLengthError();
 
 #ifdef DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_A_PIN
         digitalWrite(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, 1);
@@ -269,7 +269,7 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
     if (pReqRec->isPolling())
     {
         // Poll complete stats
-        _busBase.getBusStats().pollComplete();
+        _raftBus.getBusStats().pollComplete();
 
         // Check if callback is required
         BusRequestCallbackType callback = reqResult.getCallback();
@@ -284,7 +284,7 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
         // Add to the response queue
         if (_responseQueue.put(reqResult, ADD_RESP_TO_QUEUE_MAX_MS))
         {
-            _busBase.getBusStats().cmdComplete();
+            _raftBus.getBusStats().cmdComplete();
         }
         else
         {
@@ -294,14 +294,14 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
             {
                 int msgsWaiting = _responseQueue.count();
                 LOG_W(MODULE_PREFIX, "sendHelper %s resp buffer full - waiting %d",
-                        _busBase.getBusName().c_str(), msgsWaiting
+                        _raftBus.getBusName().c_str(), msgsWaiting
                     );
                 _respBufferFullLastWarnMs = millis();
             }
 #endif
 
             // Stats
-            _busBase.getBusStats().respBufferFull();
+            _raftBus.getBusStats().respBufferFull();
         }
     }
 }
@@ -407,14 +407,14 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
     // Msg buffer full
     if (retc != pdTRUE)
     {
-        _busBase.getBusStats().reqBufferFull();
+        _raftBus.getBusStats().reqBufferFull();
 
 #ifdef WARN_ON_REQUEST_BUFFER_FULL
         if (Raft::isTimeout(millis(), _reqBufferFullLastWarnMs, BETWEEN_BUF_FULL_WARNINGS_MIN_MS))
         {
             int msgsWaiting = _requestQueue.count();
             LOG_W(MODULE_PREFIX, "addToQueuedReqFIFO %s req buffer full - waiting %d", 
-                    _busBase.getBusName().c_str(), msgsWaiting
+                    _raftBus.getBusName().c_str(), msgsWaiting
                 );
             _reqBufferFullLastWarnMs = millis();
         }

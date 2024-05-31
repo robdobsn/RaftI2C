@@ -17,6 +17,10 @@ Main library
 [] put polling and attributes into groups so there can be multiple polls for each device
 [] consider whether custom functions for detection, initialisation and polling would be helpful - e.g. for responses of variable length in polls
 [] check w value in actions in JSON dev types - should it have 0x prefix?
+[] implement facility to add new device types - need to check them before the ones in DeviceTypeRecords.json and override settings for devices with same type
+[] maybe implement ability to define multiple variants of the same device? probably not - just have to chose a more generic name
+[] implement ability to match more than one value in identification match - currently only can do masking which isn't enough sometimes - want to match 0x6c or 0x69 with LSM6DS3
+[] implement filters in the script which processes DeviceTypeRecords.json to: (a) limit the embedded records to a smaller number of devices, (b) enable or disable code generation, (c) enable or disable storing of verbose JSON for the schema
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

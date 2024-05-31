@@ -41,7 +41,7 @@ static const char* MODULE_PREFIX = "BusI2C";
 /// @brief Constructor
 BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
                 RaftI2CCentralIF* pI2CCentralIF)
-    : BusBase(busElemStatusCB, busOperationStatusCB),
+    : RaftBus(busElemStatusCB, busOperationStatusCB),
         _busStatusMgr(*this),
         _busPowerController(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)

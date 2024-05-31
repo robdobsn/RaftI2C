@@ -11,8 +11,8 @@
 #include "RaftUtils.h"
 #include "RaftJsonNVS.h"
 #include "RaftSysMod.h"
-#include "BusBase.h"
-#include "BusManager.h"
+#include "RaftBus.h"
+#include "RaftBusSystem.h"
 #include "BusRequestResult.h"
 
 class APISourceInfo;
@@ -54,8 +54,8 @@ private:
     uint32_t _mutableDataChangeLastMs = 0;
     bool _mutableDataDirty = false;
 
-    // Bus manager
-    BusManager _busManager;
+    // Bus system
+    RaftBusSystem _raftBusSystem;
 
     // Helper functions
     void deinit();
@@ -66,8 +66,8 @@ private:
     void cmdResultReportCallback(BusRequestResult& reqResult);
  
     // Bus operation and status functions
-    void busElemStatusCB(BusBase& bus, const std::vector<BusElemAddrAndStatus>& statusChanges);
-    void busOperationStatusCB(BusBase& bus, BusOperationStatus busOperationStatus);
+    void busElemStatusCB(RaftBus& bus, const std::vector<BusElemAddrAndStatus>& statusChanges);
+    void busOperationStatusCB(RaftBus& bus, BusOperationStatus busOperationStatus);
 
     // Pulse count
     RaftJsonNVS _devicesNVConfig;

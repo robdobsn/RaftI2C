@@ -12,7 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "BusBase.h"
+#include "RaftBus.h"
 #include "BusI2CScheduler.h"
 #include "ThreadSafeQueue.h"
 #include "BusRequestResult.h"
@@ -22,7 +22,7 @@
 class BusAccessor {
 public:
     // Constructor and destructor
-    BusAccessor(BusBase& busBase, BusI2CReqAsyncFn busI2CReqAsyncFn);
+    BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn);
     ~BusAccessor();
 
     // Setup and loop
@@ -44,7 +44,7 @@ public:
 
 private:
     // Bus base
-    BusBase& _busBase;
+    RaftBus& _raftBus;
 
     // Polling vector item
     class PollingVectorItem

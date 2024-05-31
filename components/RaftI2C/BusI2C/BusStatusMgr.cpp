@@ -27,8 +27,8 @@ static const char* MODULE_PREFIX = "BusStatusMgr";
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusStatusMgr::BusStatusMgr(BusBase& busBase) :
-    _busBase(busBase)
+BusStatusMgr::BusStatusMgr(RaftBus& raftBus) :
+    _raftBus(raftBus)
 {
     // Bus element status change detection
     _busElemStatusMutex = xSemaphoreCreateMutex();
@@ -147,7 +147,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 
     // Perform elem statuc change callback if required
     if ((statusChanges.size() > 0))
-        _busBase.callBusElemStatusCB(statusChanges);
+        _raftBus.callBusElemStatusCB(statusChanges);
 
     // Debug
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
@@ -168,7 +168,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                     _busOperationStatus ? "online" : "offline");
 #endif
         _busOperationStatus = newBusOperationStatus;
-        _busBase.callBusOperationStatusCB(_busOperationStatus);
+        _raftBus.callBusOperationStatusCB(_busOperationStatus);
     }
 }
 

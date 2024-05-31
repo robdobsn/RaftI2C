@@ -36,15 +36,15 @@ std::vector<BusI2CAddrAndSlot> testConfigOnlineAddrList;
 uint32_t busExtenderStatusChanMask[I2C_BUS_EXTENDERS_MAX] = {0};
 
 // Callback for bus operating
-BusOperationStatusCB busOperationStatusCB = [](BusBase& bus, BusOperationStatus busOperationStatus) {
+BusOperationStatusCB busOperationStatusCB = [](RaftBus& bus, BusOperationStatus busOperationStatus) {
 #ifdef DEBUG_BUS_OPERATION_CB
-    LOG_I(MODULE_PREFIX, "busOperationStatusCB %s", BusBase::busOperationStatusToString(busOperationStatus));
+    LOG_I(MODULE_PREFIX, "busOperationStatusCB %s", RaftBus::busOperationStatusToString(busOperationStatus));
 #endif
     busStatus = busOperationStatus;
 };
 
 // Callback for bus element status
-BusElemStatusCB busElemStatusCB = [](BusBase& bus, const std::vector<BusElemAddrAndStatus>& statusChanges) {
+BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusElemAddrAndStatus>& statusChanges) {
 
     // Append to status changes list for later checking
     if (statusChangesList.size() < 500)
@@ -156,11 +156,11 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
     return reslt;
 };
 
-// BusBase
-BusBase busBase(busElemStatusCB, busOperationStatusCB);
+// RaftBus
+RaftBus raftBus(busElemStatusCB, busOperationStatusCB);
 
 // BusStatusMgr
-BusStatusMgr busStatusMgr(busBase);
+BusStatusMgr busStatusMgr(raftBus);
 BusPowerController busPowerController(busReqSyncFn);
 BusStuckHandler busStuckHandler(busReqSyncFn);
 BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
@@ -184,7 +184,7 @@ void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
     helper_set_online_addrs(onlineAddrs);
 
     // Config
-    busBase.setup(configJson);
+    raftBus.setup(configJson);
     busStatusMgr.setup(configJson);
     RaftJsonPrefixed busExtenderConfigJson(configJson, "mux");
     busExtenderMgr.setup(busExtenderConfigJson);

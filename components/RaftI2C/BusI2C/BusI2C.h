@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "BusBase.h"
+#include "RaftBus.h"
 #include "RaftI2CCentralIF.h"
 #include "BusI2CRequestRec.h"
 #include "BusScanner.h"
@@ -24,7 +24,7 @@
 
 class RaftI2CCentralIF;
 
-class BusI2C : public BusBase
+class BusI2C : public RaftBus
 {
 public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,7 +43,7 @@ public:
     /// @brief Create function to create a new instance of this class
     /// @param busElemStatusCB - callback for bus element status changes
     /// @param busOperationStatusCB - callback for bus operation status changes
-    static BusBase* createFn(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB)
+    static RaftBus* createFn(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB)
     {
         return new BusI2C(busElemStatusCB, busOperationStatusCB);
     }
@@ -63,8 +63,8 @@ public:
     virtual void loop() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get bus device interface
-    virtual BusDeviceIF* getBusDeviceIF() override final
+    /// @brief Get bus devices interface
+    virtual RaftBusDevicesIF* getBusDevicesIF() override final
     {
         return &_deviceIdentMgr;
     }
