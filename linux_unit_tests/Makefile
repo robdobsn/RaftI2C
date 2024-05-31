@@ -10,6 +10,9 @@ INCLUDES = -I../unit_tests/main -I../components/RaftI2C/BusI2C -I../components/R
 # Source files
 SOURCES = main.cpp utils.cpp ./RaftCore/components/core/Utils/RaftUtils.cpp ./RaftCore/components/core/ArduinoUtils/ArduinoWString.cpp
 
+# Object files
+OBJECTS = $(SOURCES:.cpp=.o)
+
 # Output binary
 OUTPUT = linux_unit_tests
 
@@ -19,19 +22,28 @@ DEST_DIR=./RaftCore
 # GIT_TAG=v1.0  # Optional: Specify a tag if needed
 
 # Ensure raft_core is executed every time by making it .PHONY
-.PHONY: all raft_core test_dev_types_generated clean
+.PHONY: raft_core test_dev_types_generated clean all
 
 all: $(OUTPUT)
 
 raft_core:
+	@echo "Fetching RaftCore repository..."
 	python3 ../scripts/FetchGitRepo.py $(REPO_URL) $(DEST_DIR) $(GIT_TAG)
 
 test_dev_types_generated:
+	@echo "Generating TestDevTypes..."
 	python3 "../scripts/ProcessDevTypeJsonToC.py" "TestDevTypeRecs.json" "TestDevTypes_generated.h"
 
-# Ensure raft_core is run whenever OUTPUT is built
-$(OUTPUT): $(SOURCES) raft_core test_dev_types_generated
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT) $(SOURCES)
+# Compile object files
+%.o: %.cpp
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Ensure $(OUTPUT) depends on both raft_core and test_dev_types_generated
+$(OUTPUT): $(OBJECTS) raft_core test_dev_types_generated
+	@echo "Building $(OUTPUT)..."
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT) $(OBJECTS)
 
 clean:
-	rm -f $(OUTPUT)
+	@echo "Cleaning up..."
+	rm -f $(OUTPUT) $(OBJECTS)

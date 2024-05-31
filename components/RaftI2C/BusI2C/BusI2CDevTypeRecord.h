@@ -14,7 +14,7 @@
 /// @param decodeState decode state (used for stateful decoding including timestamp wrap-around handling)
 /// @return number of records decoded
 typedef uint32_t (*BusI2CDevTypeRecordDecodeFn)(const uint8_t* pPollBuf, uint32_t pollBufLen, void* pStructOut, uint32_t structOutSize, 
-            uint16_t maxRecCount, BusDeviceDecodeState& decodeState);
+            uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class BusI2CDevTypeRecord
