@@ -12,13 +12,10 @@
 #include "RaftJsonNVS.h"
 #include "RaftSysMod.h"
 #include "BusBase.h"
-#include "SupervisorStats.h"
+#include "BusManager.h"
 #include "BusRequestResult.h"
 
 class APISourceInfo;
-
-// Bus factory creator function
-typedef BusBase* (*BusFactoryCreatorFn)(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB);
 
 class HWDevMan : public RaftSysMod
 {
@@ -57,40 +54,8 @@ private:
     uint32_t _mutableDataChangeLastMs = 0;
     bool _mutableDataDirty = false;
 
-    // Supervisor statistics
-    SupervisorStats _supervisorStats;
-    uint8_t _supervisorBusFirstIdx = 0;
-
-    // Bus Factory
-    BusBase* busFactoryCreate(const char* busName, BusElemStatusCB busElemStatusCB, 
-                        BusOperationStatusCB busOperationStatusCB);
-    class BusFactoryTypeDef
-    {
-    public:
-        BusFactoryTypeDef(const String& name, BusFactoryCreatorFn createFn)
-        {
-            _name = name;
-            _createFn = createFn;
-        }
-        bool isIdenticalTo(const BusFactoryTypeDef& other) const
-        {
-            if (!_name.equalsIgnoreCase(other._name))
-                return false;
-            return _createFn == other._createFn;
-        }
-        bool nameMatch(const String& name) const
-        {
-            return _name.equalsIgnoreCase(name);
-        }
-        String _name;
-        BusFactoryCreatorFn _createFn;
-    };
-
-    // List of bus types that can be created
-    std::list<BusFactoryTypeDef> _busFactoryTypeList;
-
-    // List of buses
-    std::list<BusBase*> _busList;
+    // Bus manager
+    BusManager _busManager;
 
     // Helper functions
     void deinit();
@@ -98,9 +63,6 @@ private:
     void saveMutableData();
     void debugShowCurrentState();
     void getStatusHash(std::vector<uint8_t>& stateHash);
-    void busRegister(const char* busConstrName, BusFactoryCreatorFn busCreateFn);
-    void setupBuses();
-    BusBase* getBusByName(const String& busName);
     void cmdResultReportCallback(BusRequestResult& reqResult);
  
     // Bus operation and status functions

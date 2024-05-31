@@ -64,7 +64,7 @@ def process_dev_types(json_path, header_path, gen_options):
                 addr_list.append(int(addr_range, 16))
             else:
                 print(f"Invalid address range {addr_range}")
-                sys.exit(1)        
+                sys.exit(1)
 
         # Debug
         addr_list_hex = ",".join([f'0x{addr:02x}' for addr in addr_list])

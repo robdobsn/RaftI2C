@@ -13,6 +13,10 @@ Main library
 [] work out divisor on MSA301 - try out on qtpy hardware as address conflict on pwr management
 [] bus stuck on LEDStick - maybe power - be good to work out if it is fixable
 [] consider whether sync messages a good idea - maybe general call 0x00 address can be used? a time-stamp in ms could be sent to all devices this way
+[] add a field into JSON to say that device should be tried later in the detection process - e.g. for robotical servos they need a wake-up command and this shouldn't be tried before trying other, simpler, devices
+[] put polling and attributes into groups so there can be multiple polls for each device
+[] consider whether custom functions for detection, initialisation and polling would be helpful - e.g. for responses of variable length in polls
+[] check w value in actions in JSON dev types - should it have 0x prefix?
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

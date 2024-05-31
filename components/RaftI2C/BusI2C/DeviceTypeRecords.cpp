@@ -334,7 +334,7 @@ bool DeviceTypeRecords::extractMaskAndDataFromHexStr(const String& readStr, std:
         }
         return true;
     }
-    return readStr.length() == 0;
+    return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -401,6 +401,7 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
             continue;
         if (!extractMaskAndDataFromHexStr(detectionNameValue.value, detectionRec.readDataMask, detectionRec.readDataCheck, true))
             continue;
+        detectionRec.pauseAfterSendMs = extractBarAccessMs(detectionNameValue.value);
         detectionRecs.push_back(detectionRec);
     }
 

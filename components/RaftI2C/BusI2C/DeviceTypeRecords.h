@@ -68,6 +68,7 @@ public:
         std::vector<uint8_t> writeData;
         std::vector<uint8_t> readDataMask;
         std::vector<uint8_t> readDataCheck;
+        uint16_t pauseAfterSendMs;
     };
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

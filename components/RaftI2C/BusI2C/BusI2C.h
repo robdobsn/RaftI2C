@@ -237,7 +237,7 @@ private:
     volatile TaskHandle_t _i2cWorkerTaskHandle = nullptr;
     static const int DEFAULT_TASK_CORE = 0;
     static const int DEFAULT_TASK_PRIORITY = 5;
-    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 10000;
+    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5000;
     static const uint32_t WAIT_FOR_TASK_EXIT_MS = 1000;
 
     // Pause/run status

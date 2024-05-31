@@ -646,6 +646,67 @@
                     }
                 ]
             }
+        },
+        "RoboticalServo": {
+            "addresses": "0x10-0x18",
+            "deviceType": "RoboticalServo",
+            "detectionValues": "=p250&0x6004ff9c=p250&0x9904ff63=0x526f626f746963616c&0x00=r2",
+            "initValues": "",
+            "pollInfo": {
+                "c": "=r6",
+                "i": 100,
+                "s": 10
+            },
+            "scanPriority": "high",
+            "devInfoJson": {
+                "name": "Robotical Servo",
+                "desc": "Servo",
+                "manu": "Robotical",
+                "type": "RoboticalServo",
+                "resp": {
+                    "b": 6,
+                    "a": [
+                        {
+                            "n": "angle",
+                            "t": ">h",
+                            "r": [-32768, 32767],
+                            "f": "d",
+                            "o": "int16"
+                        },
+                        {
+                            "n": "current",
+                            "t": "b",
+                            "r": [-128, 127],
+                            "f": "d",
+                            "o": "int8"
+                        },
+                        {
+                            "n": "state",
+                            "t": "B",
+                            "r": [0, 255],
+                            "f": "02x",
+                            "o": "uint8"
+                        },
+                        {
+                            "n": "velocity",
+                            "t": ">h",
+                            "r": [-32768, 32767],
+                            "f": "d",
+                            "o": "int16"
+                        }
+                    ]
+                },
+                "actions": [
+                    {
+                        "n": "angle",
+                        "t": ">h",
+                        "w": "00",
+                        "wz": "0064",
+                        "f": "d",
+                        "r": [-32768,32767]
+                    }
+                ]
+            }
         }
     }
 }

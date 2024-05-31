@@ -17,20 +17,12 @@
 #include "BusI2C.h"
 #include "BusRequestInfo.h"
 
-// Warn
-#define WARN_ON_NO_BUSES_DEFINED
-
 // Debug
-#define DEBUG_BUSES_CONFIGURATION
 #define DEBUG_MAKE_BUS_REQUEST_VERBOSE
 #define DEBUG_API_CMDRAW
 #define DEBUG_CMD_RESULT
 
 static const char *MODULE_PREFIX = "HWDevMan";
-
-// Debug supervisor step (for hangup detection within a service call)
-// Uses global logger variables - see logger.h
-#define DEBUG_GLOB_HWDEVMAN 2
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -61,11 +53,13 @@ void HWDevMan::setup()
     LOG_I(MODULE_PREFIX, "setup enabled");
 
     // Register BusI2C
-    busRegister("I2C", BusI2C::createFn);
+    _busManager.registerBus("I2C", BusI2C::createFn);
 
     // Setup buses
-    _supervisorBusFirstIdx = _supervisorStats.getCount();
-    setupBuses();
+    _busManager.setup("Buses", modConfig(),
+            std::bind(&HWDevMan::busElemStatusCB, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&HWDevMan::busOperationStatusCB, this, std::placeholders::_1, std::placeholders::_2)
+    );
 
     // Debug show state
     debugShowCurrentState();
@@ -114,15 +108,7 @@ void HWDevMan::loop()
     }
 
     // Service the buses
-    uint32_t busIdx = 0;
-    for (BusBase* pBus : _busList)
-    {
-        if (pBus)
-        {
-            SUPERVISE_LOOP_CALL(_supervisorStats, _supervisorBusFirstIdx+busIdx, DEBUG_GLOB_HWDEVMAN, pBus->loop())
-        }
-        busIdx++;
-    }
+    _busManager.loop();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +155,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeMissing");
 
         // Find the bus
-        BusBase* pBus = getBusByName(busName);
+        BusBase* pBus = _busManager.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
@@ -208,7 +194,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failMissingAddr");
 
         // Find the bus
-        BusBase* pBus = getBusByName(busName);
+        BusBase* pBus = _busManager.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
@@ -277,7 +263,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 String HWDevMan::getStatusJSON() const
 {
     String jsonStr;
-    for (BusBase* pBus : _busList)
+    for (BusBase* pBus : _busManager.getBusList())
     {
         if (!pBus)
             continue;
@@ -331,7 +317,7 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
     stateHash.clear();
 
     // Check all buses for data
-    for (BusBase* pBus : _busList)
+    for (BusBase* pBus : _busManager.getBusList())
     {
         // Check bus
         if (pBus)
@@ -370,11 +356,7 @@ void HWDevMan::saveMutableData()
 void HWDevMan::deinit()
 {
     // Deinit buses
-    for (BusBase* pBus : _busList)
-    {
-        delete pBus;
-    }
-    _busList.clear();
+    _busManager.deinit();
 
     // Deinit done
     _isInitialised = false;
@@ -387,92 +369,6 @@ void HWDevMan::deinit()
 void HWDevMan::debugShowCurrentState()
 {
     LOG_I(MODULE_PREFIX, "debugShowCurrentState testingtesting %d", 123);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup Buses
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void HWDevMan::setupBuses()
-{
-    // Config prefixed for buses
-    RaftJsonPrefixed busesConfig(modConfig(), "Buses");
-
-    // Buses list
-    std::vector<String> busesListJSONStrings;
-    if (!busesConfig.getArrayElems("buslist", busesListJSONStrings))
-    {
-#ifdef WARN_ON_NO_BUSES_DEFINED
-        LOG_W(MODULE_PREFIX, "No buses defined");
-#endif
-        return;
-    }
-
-    // Iterate bus configs
-    for (RaftJson busConfig : busesListJSONStrings)
-    {
-        // Get bus type
-        String busType = busConfig.getString("type", "");
-
-#ifdef DEBUG_BUSES_CONFIGURATION
-        LOG_I(MODULE_PREFIX, "setting up bus type %s with %s", busType.c_str(), busConfig.c_str());
-#endif
-
-        // Create bus
-        BusBase* pNewBus = busFactoryCreate(busType.c_str(), 
-            std::bind(&HWDevMan::busElemStatusCB, this, std::placeholders::_1, std::placeholders::_2),
-            std::bind(&HWDevMan::busOperationStatusCB, this, std::placeholders::_1, std::placeholders::_2)
-        );
-
-        // Setup if valid
-        if (pNewBus)
-        {
-            if (pNewBus->setup(busConfig))
-            {
-                // Add to bus list
-                _busList.push_back(pNewBus);
-
-                // Add to supervisory
-                _supervisorStats.add(pNewBus->getBusName().c_str());
-            }
-        }
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Register Bus type
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void HWDevMan::busRegister(const char* busConstrName, BusFactoryCreatorFn busCreateFn)
-{
-    // See if already registered
-    BusFactoryTypeDef newElem(busConstrName, busCreateFn);
-    for (const BusFactoryTypeDef& el : _busFactoryTypeList)
-    {
-        if (el.isIdenticalTo(newElem))
-            return;
-    }
-    _busFactoryTypeList.push_back(newElem);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Create bus of specified type
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-BusBase* HWDevMan::busFactoryCreate(const char* busConstrName, BusElemStatusCB busElemStatusCB, 
-                        BusOperationStatusCB busOperationStatusCB)
-{
-    for (const auto& el : _busFactoryTypeList)
-    {
-        if (el.nameMatch(busConstrName))
-        {
-#ifdef DEBUG_BUS_FACTORY_CREATE
-            LOG_I(MODULE_PREFIX, "create bus %s", busConstrName);
-#endif
-            return el._createFn(busElemStatusCB, busOperationStatusCB);
-        }
-    }
-    return nullptr;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -498,20 +394,6 @@ void HWDevMan::busElemStatusCB(BusBase& bus, const std::vector<BusElemAddrAndSta
         LOG_I(MODULE_PREFIX, "busElemStatusInfo %s %s %s", bus.getBusName().c_str(), 
             bus.addrToString(el.address).c_str(), el.isChangeToOnline ? "Online" : ("Offline" + String(el.isChangeToOffline ? " (was online)" : "")).c_str());
     }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Get bus by name
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-BusBase* HWDevMan::getBusByName(const String& busName)
-{
-    for (BusBase* pBus : _busList)
-    {
-        if (pBus && pBus->getBusName().equalsIgnoreCase(busName))
-            return pBus;
-    }
-    return nullptr;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
