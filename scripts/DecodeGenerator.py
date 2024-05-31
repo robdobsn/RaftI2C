@@ -428,7 +428,7 @@ class DecodeGenerator:
         if struct_name == "":
             return "nullptr"
         fn_def =  "[](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, \n\
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {\n"
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {\n"
         fn_def += self.gen_extract_code(dev_info_json, "        ")
         fn_def += "        }"
         return fn_def

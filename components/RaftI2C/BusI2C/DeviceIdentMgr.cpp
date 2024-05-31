@@ -315,6 +315,33 @@ String DeviceIdentMgr::getPollResponsesJson() const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get decoded poll responses
+/// @param address address of device to get data from
+/// @param pStructOut pointer to structure (or array of structures) to receive decoded data
+/// @param structOutSize size of structure (in bytes) to receive decoded data
+/// @param maxRecCount maximum number of records to decode
+/// @param decodeState decode state for this device
+/// @return number of records decoded
+/// @note the pStructOut should generally point to structures of the correct type for the device data and the
+///       decodeState should be maintained between calls for the same device
+uint32_t DeviceIdentMgr::getDecodedPollResponses(uint32_t address, 
+                void* pStructOut, uint32_t structOutSize, 
+                uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
+{
+    // Get poll result for each address
+    bool isOnline = false;
+    uint16_t deviceTypeIndex = 0;
+    std::vector<uint8_t> devicePollResponseData;
+    uint32_t responseSize = 0;
+    _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+    // Decode the poll response
+    return decodePollResponses(deviceTypeIndex, devicePollResponseData.data(), responseSize, 
+                pStructOut, structOutSize, 
+                maxRecCount, decodeState);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Decode one or more poll responses for a device
 /// @param deviceTypeIndex index of device type
 /// @param pPollBuf buffer containing poll responses
@@ -326,7 +353,7 @@ String DeviceIdentMgr::getPollResponsesJson() const
 uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex, 
             const uint8_t* pPollBuf, uint32_t pollBufLen, 
             void* pStructOut, uint32_t structOutSize, 
-            uint16_t maxRecCount, BusDeviceDecodeState& decodeState)
+            uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
     // Get device type info
     const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);

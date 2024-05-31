@@ -31,26 +31,6 @@ public:
     /// @brief Setup
     /// @param config configuration
     void setup(const RaftJsonIF& config);
-  
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Identify device
-    /// @param addrAndSlot address and slot
-    /// @param deviceStatus (out) device status
-    void identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Check device type match (communicates with the device to check its type)
-    /// @param addrAndSlot address and slot
-    /// @param pDevTypeRec device type record
-    /// @return true if device type matches
-    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Process device initialisation
-    /// @param addrAndSlot address and slot
-    /// @param pDevTypeRec device type record
-    /// @return true if device initialisation was successful
-    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get list of device addresses attached to the bus
@@ -76,6 +56,40 @@ public:
     /// @brief Get poll responses json
     /// @return JSON string
     virtual String getPollResponsesJson() const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get decoded poll responses
+    /// @param address address of device to get data from
+    /// @param pStructOut pointer to structure (or array of structures) to receive decoded data
+    /// @param structOutSize size of structure (in bytes) to receive decoded data
+    /// @param maxRecCount maximum number of records to decode
+    /// @param decodeState decode state for this device
+    /// @return number of records decoded
+    /// @note the pStructOut should generally point to structures of the correct type for the device data and the
+    ///       decodeState should be maintained between calls for the same device
+    virtual uint32_t getDecodedPollResponses(uint32_t address, 
+                    void* pStructOut, uint32_t structOutSize, 
+                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Identify device
+    /// @param addrAndSlot address and slot
+    /// @param deviceStatus (out) device status
+    void identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Check device type match (communicates with the device to check its type)
+    /// @param addrAndSlot address and slot
+    /// @param pDevTypeRec device type record
+    /// @return true if device type matches
+    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Process device initialisation
+    /// @param addrAndSlot address and slot
+    /// @param pDevTypeRec device type record
+    /// @return true if device initialisation was successful
+    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
 
 private:
     // Device indentification enabled
@@ -116,5 +130,5 @@ private:
     uint32_t decodePollResponses(uint16_t deviceTypeIndex, 
                     const uint8_t* pPollBuf, uint32_t pollBufLen, 
                     void* pStructOut, uint32_t structOutSize, 
-                    uint16_t maxRecCount, BusDeviceDecodeState& decodeState) override final;                    
+                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;                    
 };

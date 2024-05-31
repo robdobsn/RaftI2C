@@ -31,7 +31,7 @@ int main()
     {
         // Device type
         const char* pDevTypeStr = "VCNL4040";
-        BusDeviceDecodeState decodeState;
+        RaftBusDeviceDecodeState decodeState;
 
         // Poll response
         uint8_t pollResp[50];
@@ -66,7 +66,7 @@ int main()
     {
         // Device type
         const char* pDevTypeStr = "MAX30101";
-        BusDeviceDecodeState decodeState;
+        RaftBusDeviceDecodeState decodeState;
 
         // Poll response
         uint32_t bufIdx = 0;

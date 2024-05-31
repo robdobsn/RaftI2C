@@ -75,7 +75,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         6,
         R"({"name":"VCNL4040","desc":"Prox&ALS","manu":"Vishay","type":"VCNL4040","resp":{"b":6,"a":[{"n":"prox","t":"<H","u":"","r":[0,65535],"d":0,"f":"5d","o":"uint16"},{"n":"als","t":"<H","u":"lux","r":[0,65535],"d":10,"f":"5.2f","o":"float"},{"n":"white","t":"<H","u":"lux","r":[0,65535],"d":10,"f":"5.2f","o":"float"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_VCNL4040* pStruct = (struct poll_VCNL4040*) pStructOut;
             struct poll_VCNL4040* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -132,7 +132,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         2,
         R"({"name":"VL6180","desc":"ToF","manu":"ST","type":"VL6180","resp":{"b":2,"a":[{"n":"valid","t":"B","u":"","r":[0,1],"m":"0x04","s":2,"f":"b","o":"bool","vs":false},{"n":"dist","t":"B","u":"mm","r":[0,255],"f":"3d","o":"float","vft":"valid"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_VL6180* pStruct = (struct poll_VL6180*) pStructOut;
             struct poll_VL6180* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -184,7 +184,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         51,
         R"({"name":"MAX30101","desc":"Prox&ALS","manu":"Vishay","type":"MAX30101","resp":{"b":51,"a":[{"n":"Red","t":">I","u":"","r":[0,16777215],"f":"6d","o":"uint32"},{"n":"IR","t":">I","u":"","r":[0,16777215],"f":"6d","o":"uint32"}],"c":{"n":"max30101_fifo","c":"int N=(buf[0]+32-buf[2])%32;int k=3;int i=0;while(i<N){out.Red=(buf[k]<<16)|(buf[k+1]<<8)|buf[k+2];out.IR=(buf[k+3]<<16)|(buf[k+4]<<8)|buf[k+5];k+=6;i++;next;}"},"us":40000}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_MAX30101* pStruct = (struct poll_MAX30101*) pStructOut;
             struct poll_MAX30101* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -236,7 +236,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         6,
         R"({"name":"ADXL313","desc":"3-Axis Accel","manu":"Analog Devices","type":"ADXL313","resp":{"b":6,"a":[{"n":"x","t":"<h","u":"g","r":[-4.0,4.0],"d":1024,"f":".2f","o":"float"},{"n":"y","t":"<h","u":"g","r":[-4.0,4.0],"d":1024,"f":".2f","o":"float"},{"n":"z","t":"<h","u":"g","r":[-4.0,4.0],"d":1024,"f":".2f","o":"float"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_ADXL313* pStruct = (struct poll_ADXL313*) pStructOut;
             struct poll_ADXL313* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -294,7 +294,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         6,
         R"({"name":"AHT20","desc":"Temp&Humid","manu":"Asair","type":"AHT20","resp":{"b":6,"a":[{"n":"status","t":"B","u":"","f":"02x","o":"uint8","vs":false},{"n":"humidity","t":">I","u":"%","r":[0,100],"m":"0xfffff000","s":12,"d":10485.76,"f":"3.1f","o":"float"},{"n":"temperature","at":2,"t":">I","u":"&deg;C","r":[-40,80],"m":"0x000fffff","d":5242.88,"a":-50,"f":"3.2f","o":"float"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_AHT20* pStruct = (struct poll_AHT20*) pStructOut;
             struct poll_AHT20* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -357,7 +357,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         2,
         R"({"name":"MCP9808","desc":"Temp","manu":"Microchip","type":"MCP9808","resp":{"b":2,"a":[{"n":"temperature","t":">H","u":"&deg;C","r":[-40,125],"m":"0x1fff","d":16,"sb":12,"ss":4096,"f":"3.2f","o":"float"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_MCP9808* pStruct = (struct poll_MCP9808*) pStructOut;
             struct poll_MCP9808* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -405,7 +405,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         6,
         R"({"name":"LPS25","desc":"Pressure","manu":"ST","type":"LPS25","resp":{"b":6,"a":[{"n":"status","t":"B","r":[0,255],"m":"0xff","f":"02x","o":"uint8","vs":false},{"n":"pressure","at":0,"t":"<I","u":"hPa","r":[260,1260],"s":8,"d":4096,"f":"4.2f","o":"float"},{"n":"temperature","at":4,"t":"<h","u":"&deg;C","r":[-30,105],"d":480,"a":42.5,"f":"3.2f","o":"float"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_LPS25* pStruct = (struct poll_LPS25*) pStructOut;
             struct poll_LPS25* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -468,7 +468,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         2,
         R"({"name":"CAP1203","desc":"Capacitive Touch x 3","manu":"Sparkfun","type":"CAP1203","resp":{"b":2,"a":[{"n":"A","at":1,"t":"B","r":[0,1],"m":"0x01","s":0,"f":"b","o":"bool"},{"n":"B","at":1,"t":"B","r":[0,1],"m":"0x02","s":1,"f":"b","o":"bool"},{"n":"C","at":1,"t":"B","r":[0,1],"m":"0x04","s":2,"f":"b","o":"bool"},{"n":"status","t":">H","vs":false,"f":"04x","o":"uint16"}]}})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_CAP1203* pStruct = (struct poll_CAP1203*) pStructOut;
             struct poll_CAP1203* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -537,7 +537,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         1,
         R"({"name":"Qwiic Button","desc":"Button","manu":"Sparkfun","type":"QwiicButton","resp":{"b":1,"a":[{"n":"press","t":"B","u":"","r":[0,1],"m":"0x04","s":2,"f":"b","o":"bool"}]},"actions":[{"n":"brightness","t":"B","w":"19","r":[0,255]},{"n":"granularity","t":"B","w":"1a","r":[1,255]},{"n":"cycle time","t":"<H","w":"1b","r":[0,65535]},{"n":"off time","t":"<H","w":"1d","r":[0,65535]}]})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             struct poll_Qwiic_Button* pStruct = (struct poll_Qwiic_Button*) pStructOut;
             struct poll_Qwiic_Button* pOut = pStruct;
             const uint8_t* pBufEnd = pBufIn + bufLen;
@@ -584,7 +584,7 @@ static BusI2CDevTypeRecord baseDevTypeRecords[] =
         0,
         R"({"name":"Qwiic LED Stick","desc":"LEDs","manu":"Sparkfun","type":"QwiicLEDStick","actions":[{"n":"pixels","t":"BBBB","w":"71","f":"LEDPIX","NX":10,"NY":1,"concat":false,"r":[0,255]},{"n":"brightness","t":"B","w":"76","r":[0,255],"d":50},{"n":"off","w":"78"}]})",
         [](const uint8_t* pBufIn, uint32_t bufLen, void* pStructOut, uint32_t structOutSize, 
-                        uint16_t maxRecCount, BusDeviceDecodeState& decodeState) -> uint32_t {
+                        uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) -> uint32_t {
             return 0;
         }
     },
