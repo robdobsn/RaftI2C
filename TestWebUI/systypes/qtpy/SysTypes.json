@@ -121,7 +121,7 @@
         "pubList": [
             {
                 "name": "devices",
-                "trigger": "Time",
+                "trigger": "TimeOrChange",
                 "msgID": "devices",
                 "rates": [
                 ]

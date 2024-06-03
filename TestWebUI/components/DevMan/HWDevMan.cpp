@@ -64,12 +64,12 @@ void HWDevMan::setup()
     // Debug show state
     debugShowCurrentState();
 
-    // Setup publisher with callback functions
+    // Add data-source with callback functions to publisher
     SysManager* pSysManager = getSysManager();
     if (pSysManager)
     {
-        // Register publish message generator
-        pSysManager->sendMsgGenCB("Publish", "devices", 
+        // Register data source (message generator and state detector functions)
+        pSysManager->registerDataSource("Publish", "devices", 
             [this](const char* messageName, CommsChannelMsg& msg) {
                 String statusStr = getStatusJSON();
                 msg.setFromBuffer((uint8_t*)statusStr.c_str(), statusStr.length());
@@ -257,9 +257,8 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Get JSON status
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Get status as JSON
+/// @return JSON string
 String HWDevMan::getStatusJSON() const
 {
     String jsonStr;
@@ -309,10 +308,9 @@ String HWDevMan::getStatusJSON() const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Check status change
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash)
+/// @brief Check for change of state
+/// @param stateHash hash of the current state
+void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash) const
 {
     stateHash.clear();
 

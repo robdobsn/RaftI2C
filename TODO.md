@@ -21,6 +21,9 @@ Main library
 [] maybe implement ability to define multiple variants of the same device? probably not - just have to chose a more generic name
 [] implement ability to match more than one value in identification match - currently only can do masking which isn't enough sometimes - want to match 0x6c or 0x69 with LSM6DS3
 [] implement filters in the script which processes DeviceTypeRecords.json to: (a) limit the embedded records to a smaller number of devices, (b) enable or disable code generation, (c) enable or disable storing of verbose JSON for the schema
+[] Add ability to use DecodeGenerator.py as a main program and allow for generation in python/ts on demand for a specific device type
+[] Add the capability to generate JSON from decoded device information - this would require auto-generator to create the sprintf type code to format to JSON
+[] Add an option to publish JSON with decoded device info instead of raw info
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

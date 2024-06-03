@@ -62,7 +62,7 @@ private:
     RaftRetCode apiDevMan(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo);
     void saveMutableData();
     void debugShowCurrentState();
-    void getStatusHash(std::vector<uint8_t>& stateHash);
+    void getStatusHash(std::vector<uint8_t>& stateHash) const;
     void cmdResultReportCallback(BusRequestResult& reqResult);
  
     // Bus operation and status functions
