@@ -79,7 +79,7 @@ private:
     uint16_t _scanAddressesCurrentList = 0;
     
     // Scan priority
-    std::vector<std::vector<RaftI2CAddrType>> _scanPriorityLists;
+    std::vector<std::vector<BusElemAddrType>> _scanPriorityLists;
     
     // Scanning priority state - three MUST be exactly the same number
     // of scan priority recs as there are scan priority lists
@@ -138,7 +138,7 @@ private:
                 bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    uint32_t getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap);
+    BusElemAddrType getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     uint32_t getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone);

@@ -42,7 +42,7 @@ public:
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device polling info
-    /// @param addrAndSlot i2c address and slot
+    /// @param addr address
     /// @param pDevTypeRec device type record
     /// @param pollRequests (out) polling info
     void getPollInfo(BusElemAddrType addrAndSlot, const DeviceTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
@@ -79,24 +79,24 @@ public:
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get initialisation bus requests
-    /// @param addrAndSlot i2c address and slot
+    /// @param addr address
     /// @param pDevTypeRec device type record
     /// @param initBusRequests (out) initialisation bus requests
-    void getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const DeviceTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
+    void getInitBusRequests(BusElemAddrType addr, const DeviceTypeRecord* pDevTypeRec, std::vector<BusRequestInfo>& initRequests);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Convert poll response to JSON
-    /// @param addrAndSlot i2c address and slot
+    /// @param addr address
     /// @param isOnline true if device is online
     /// @param pDevTypeRec pointer to device type record
     /// @param devicePollResponseData device poll response data
-    String deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
+    String deviceStatusToJson(BusElemAddrType addr, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
             const std::vector<uint8_t>& devicePollResponseData) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get scan priority lists
     /// @param priorityLists (out) priority lists
-    static void getScanPriorityLists(std::vector<std::vector<RaftI2CAddrType>>& priorityLists);
+    static void getScanPriorityLists(std::vector<std::vector<BusElemAddrType>>& priorityLists);
 
 private:
     // Helpers

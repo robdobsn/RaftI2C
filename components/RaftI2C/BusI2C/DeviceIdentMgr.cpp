@@ -7,6 +7,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "DeviceIdentMgr.h"
+#include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
 #include "Logger.h"
 
@@ -70,11 +71,11 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
     }
 
     // Check if this address is in the range of any known device
-    std::vector<uint16_t> deviceTypesForAddr = _deviceTypeRecords.getDeviceTypeIdxsForAddr(addrAndSlot.addr);
+    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(addrAndSlot.addr);
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
         // Get JSON definition for device
-        const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
+        const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
         if (!pDevTypeRec)
             continue;
 
@@ -97,7 +98,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
             deviceStatus.deviceTypeIndex = deviceTypeIdx;
 
             // Get polling info
-            _deviceTypeRecords.getPollInfo(addrAndSlot.addr, pDevTypeRec, deviceStatus.deviceIdentPolling);
+            deviceTypeRecords.getPollInfo(addrAndSlot.addr, pDevTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 
@@ -127,7 +128,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
 {
     // Get the detection records
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
-    _deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs);
+    deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs);
 
     // Check if all values match
     for (const auto& detectionRec : detectionRecs)
@@ -216,8 +217,8 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
 bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec)
 {
     // Get initialisation bus requests
-    std::vector<BusI2CRequestRec> initBusRequests;
-    _deviceTypeRecords.getInitBusRequests(addrAndSlot, pDevTypeRec, initBusRequests);
+    std::vector<BusRequestInfo> initBusRequests;
+    deviceTypeRecords.getInitBusRequests(addrAndSlot.toCompositeAddrAndSlot(), pDevTypeRec, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "processDeviceInit addr@slot+1 %s numInitBusRequests %d", 
@@ -228,7 +229,8 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
     for (auto& initBusRequest : initBusRequests)
     {
         std::vector<uint8_t> readData;
-        _busI2CReqSyncFn(&initBusRequest, &readData);
+        BusI2CRequestRec reqRec(initBusRequest);
+        _busI2CReqSyncFn(&reqRec, &readData);
 
         // Check for bar-access time after each request
         if (initBusRequest.getBarAccessForMsAfterSend() > 0)
@@ -246,12 +248,12 @@ String DeviceIdentMgr::deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
     // Get device type info
-    const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
+    const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
         return "";
 
     // Get the poll response JSON
-    return _deviceTypeRecords.deviceStatusToJson(addrAndSlot, isOnline, pDevTypeRec, devicePollResponseData);
+    return deviceTypeRecords.deviceStatusToJson(addrAndSlot.toCompositeAddrAndSlot(), isOnline, pDevTypeRec, devicePollResponseData);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -266,7 +268,7 @@ String DeviceIdentMgr::getDevTypeInfoJsonByAddr(uint32_t address, bool includePl
         return "{}";
 
     // Get device type info
-    return _deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -276,7 +278,7 @@ String DeviceIdentMgr::getDevTypeInfoJsonByAddr(uint32_t address, bool includePl
 String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const
 {
     // Get device type info
-    return _deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -352,7 +354,7 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
     // Get device type info
-    const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
+    const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
         return 0;
 

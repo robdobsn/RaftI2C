@@ -9,6 +9,7 @@
 #include "RaftUtils.h"
 #include "BusScanner.h"
 #include "BusI2CRequestRec.h"
+#include "DeviceTypeRecords.h"
 
 // #define DEBUG_BUS_SCANNER
 // #define DEBUG_MOVE_TO_NORMAL_SCANNING
@@ -371,7 +372,7 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
 /// @param scanMode current scanning mode
 /// @param indexWrap index has wrapped around
 /// @return Address to scan
-uint32_t BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap)
+BusElemAddrType BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap)
 {
     indexWrap = false;
     switch(scanMode)
@@ -407,7 +408,7 @@ uint32_t BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanInde
         case SCAN_INDEX_PRIORITY_LIST_INDEX:
         {
             // Get the current list and priority record
-            std::vector<RaftI2CAddrType>& scanList = _scanPriorityLists[_scanAddressesCurrentList];
+            std::vector<BusElemAddrType>& scanList = _scanPriorityLists[_scanAddressesCurrentList];
             ScanPriorityRec& scanRec = _scanPriorityRecs[_scanAddressesCurrentList];
 
             // Check the index is valid

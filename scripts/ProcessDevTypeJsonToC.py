@@ -135,8 +135,8 @@ def process_dev_types(json_path, dev_type_header_path, dev_poll_header_path, gen
         header_file.write('#include "DevicePollRecords_generated.h"\n')
         header_file.write('using namespace Raft;\n\n')
 
-        # Generate the BusI2CDevTypeRecord array
-        header_file.write('static BusI2CDevTypeRecord baseDevTypeRecords[] =\n')
+        # Generate the DeviceTypeRecord array
+        header_file.write('static DeviceTypeRecord baseDevTypeRecords[] =\n')
         header_file.write('{\n')
 
         # Iterate records

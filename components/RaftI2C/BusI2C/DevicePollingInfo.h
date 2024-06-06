@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <list>
-#include "BusI2CRequestRec.h"
+#include "BusRequestInfo.h"
 
 class DevicePollingInfo 
 {

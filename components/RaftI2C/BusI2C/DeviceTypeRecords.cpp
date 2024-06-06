@@ -9,10 +9,10 @@
 #include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
 
-#define DEBUG_DEVICE_INFO_RECORDS
-#define DEBUG_POLL_REQUEST_REQS
-#define DEBUG_DEVICE_INFO_PERFORMANCE
-#define DEBUG_DEVICE_INIT_REQS
+// #define DEBUG_DEVICE_INFO_RECORDS
+// #define DEBUG_POLL_REQUEST_REQS
+// #define DEBUG_DEVICE_INFO_PERFORMANCE
+// #define DEBUG_DEVICE_INIT_REQS
 
 #if defined(DEBUG_DEVICE_INFO_RECORDS) || defined(DEBUG_DEVICE_INFO_PERFORMANCE) 
 static const char* MODULE_PREFIX = "DeviceTypeRecords";
@@ -61,12 +61,12 @@ std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusElemAddrTyp
     
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t endTimeUs = micros();
-    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d typeIdxs %lld us", BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), 
+    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %04x %d typeIdxs %lld us", addr, 
                     devTypeIdxsForAddr.size(), endTimeUs - startTimeUs);
 #endif
 
 #ifdef DEBUG_DEVICE_INFO_RECORDS
-    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d types", BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), devTypeIdxsForAddr.size());
+    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %04x %d types", addr, devTypeIdxsForAddr.size());
 #endif
     return devTypeIdxsForAddr;
 }
@@ -100,7 +100,7 @@ const DeviceTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& deviceTyp
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get device polling info
-/// @param addrAndSlot i2c address and slot
+/// @param addr address
 /// @param pDevTypeRec device type record
 /// @param pollRequests (out) polling info
 void DeviceTypeRecords::getPollInfo(BusElemAddrType addr, const DeviceTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
@@ -153,8 +153,8 @@ void DeviceTypeRecords::getPollInfo(BusElemAddrType addr, const DeviceTypeRecord
         Raft::getHexStrFromBytes(readDataMask.data(), readDataMask.size(), readDataMaskStr);
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
-        LOG_I(MODULE_PREFIX, "getPollInfo addr@slot+1 %s writeData %s readDataMask %s readData %s", 
-                    BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), writeDataStr.c_str(), readDataMaskStr.c_str(), readDataStr.c_str());
+        LOG_I(MODULE_PREFIX, "getPollInfo addr %04x writeData %s readDataMask %s readData %s", 
+                    addr, writeDataStr.c_str(), readDataMaskStr.c_str(), readDataStr.c_str());
 #endif
 
         // Create the poll request
@@ -187,7 +187,7 @@ void DeviceTypeRecords::getPollInfo(BusElemAddrType addr, const DeviceTypeRecord
 /// @brief Get initialisation bus requests
 /// @param deviceType device type
 /// @param initRequests (out) initialisation requests
-void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const DeviceTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
+void DeviceTypeRecords::getInitBusRequests(BusElemAddrType addr, const DeviceTypeRecord* pDevTypeRec, std::vector<BusRequestInfo>& initRequests)
 {
     // Clear initially
     initRequests.clear();
@@ -211,8 +211,8 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
         uint32_t barAccessForMs = extractBarAccessMs(initNameValue.value);
 
         // Create a bus request to write the initialisation value
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
-                    addrAndSlot,
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
+                    addr,
                     0, 
                     writeData.size(), 
                     writeData.data(),
@@ -226,8 +226,8 @@ void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const 
 #ifdef DEBUG_DEVICE_INIT_REQS
         String writeDataStr;
         Raft::getHexStrFromBytes(writeData.data(), writeData.size(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "getInitBusRequests addr@slot+1 %s devType %s writeData %s readDataSize %d", 
-                    addrAndSlot.toString().c_str(), pDevTypeRec->deviceType, 
+        LOG_I(MODULE_PREFIX, "getInitBusRequests addr %04x devType %s writeData %s readDataSize %d", 
+                    addr, pDevTypeRec->deviceType, 
                     writeDataStr.c_str(), numReadDataBytes);
 #endif
     }
@@ -415,11 +415,11 @@ void DeviceTypeRecords::getDetectionRecs(const DeviceTypeRecord* pDevTypeRec, st
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Convert poll response to JSON
-/// @param addrAndSlot i2c address and slot
+/// @param addr address
 /// @param isOnline true if device is online
 /// @param pDevTypeRec pointer to device type record
 /// @param devicePollResponseData device poll response data
-String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
+String DeviceTypeRecords::deviceStatusToJson(BusElemAddrType addr, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
         const std::vector<uint8_t>& devicePollResponseData) const
 {
     // Device type name
@@ -427,7 +427,7 @@ String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool
     // Form a hex buffer
     String hexOut;
     Raft::getHexStrFromBytes(devicePollResponseData.data(), devicePollResponseData.size(), hexOut);
-    return "\"" + addrAndSlot.toString() + "\":{\"x\":\"" + hexOut + "\",\"_o\":" + String(isOnline ? "1" : "0") + ",\"_t\":\"" + devTypeName + "\"}";
+    return "\"" + String(addr, 16) + "\":{\"x\":\"" + hexOut + "\",\"_o\":" + String(isOnline ? "1" : "0") + ",\"_t\":\"" + devTypeName + "\"}";
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -467,7 +467,7 @@ String DeviceTypeRecords::getDevTypeInfoJsonByTypeName(const String& deviceTypeN
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get scan priority lists
 /// @param priorityLists (out) priority lists
-void DeviceTypeRecords::getScanPriorityLists(std::vector<std::vector<RaftI2CAddrType>>& priorityLists)
+void DeviceTypeRecords::getScanPriorityLists(std::vector<std::vector<BusElemAddrType>>& priorityLists)
 {
     // Clear initially
     priorityLists.clear();

@@ -9,7 +9,7 @@
 #pragma once
 
 #include "RaftBusDevicesIF.h"
-#include "DeviceTypeRecords.h"
+#include "DeviceTypeRecord.h"
 #include "BusStatusMgr.h"
 #include "BusExtenderMgr.h"
 #include "DeviceStatus.h"
@@ -103,9 +103,6 @@ private:
 
     // Bus i2c request function
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
-
-    // Device type records
-    DeviceTypeRecords _deviceTypeRecords;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON

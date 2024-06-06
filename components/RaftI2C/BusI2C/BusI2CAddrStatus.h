@@ -10,6 +10,7 @@
 
 #include "BusI2CConsts.h"
 #include "DeviceStatus.h"
+#include "BusI2CAddrAndSlot.h"
 
 // I2C address status
 class BusI2CAddrStatus
