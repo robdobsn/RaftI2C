@@ -82,14 +82,14 @@ public:
     /// @param addrAndSlot address and slot
     /// @param pDevTypeRec device type record
     /// @return true if device type matches
-    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
+    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Process device initialisation
     /// @param addrAndSlot address and slot
     /// @param pDevTypeRec device type record
     /// @return true if device initialisation was successful
-    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec);
+    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec);
 
 private:
     // Device indentification enabled

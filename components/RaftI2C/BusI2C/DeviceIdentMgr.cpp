@@ -70,11 +70,11 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
     }
 
     // Check if this address is in the range of any known device
-    std::vector<uint16_t> deviceTypesForAddr = _deviceTypeRecords.getDeviceTypeIdxsForAddr(addrAndSlot);
+    std::vector<uint16_t> deviceTypesForAddr = _deviceTypeRecords.getDeviceTypeIdxsForAddr(addrAndSlot.addr);
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
         // Get JSON definition for device
-        const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
+        const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
         if (!pDevTypeRec)
             continue;
 
@@ -97,7 +97,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
             deviceStatus.deviceTypeIndex = deviceTypeIdx;
 
             // Get polling info
-            _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, deviceStatus.deviceIdentPolling);
+            _deviceTypeRecords.getPollInfo(addrAndSlot.addr, pDevTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 
@@ -123,7 +123,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
+bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec)
 {
     // Get the detection records
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
@@ -213,7 +213,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
 // Process initialisation of a device
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec)
+bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec)
 {
     // Get initialisation bus requests
     std::vector<BusI2CRequestRec> initBusRequests;
@@ -246,13 +246,9 @@ String DeviceIdentMgr::deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
     // Get device type info
-    const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
+    const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
         return "";
-
-    // Get polling info
-    DevicePollingInfo pollingInfo;
-    _deviceTypeRecords.getPollInfo(addrAndSlot, pDevTypeRec, pollingInfo);
 
     // Get the poll response JSON
     return _deviceTypeRecords.deviceStatusToJson(addrAndSlot, isOnline, pDevTypeRec, devicePollResponseData);
@@ -356,7 +352,7 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
     // Get device type info
-    const BusI2CDevTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
+    const DeviceTypeRecord* pDevTypeRec = _deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
     if (!pDevTypeRec)
         return 0;
 

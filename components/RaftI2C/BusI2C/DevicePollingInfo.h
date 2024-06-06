@@ -43,7 +43,7 @@ public:
     uint32_t pollResultSizeIncTimestamp = 0;
 
     // Poll request rec
-    std::vector<BusI2CRequestRec> pollReqs;
+    std::vector<BusRequestInfo> pollReqs;
 
     // Poll result timestamp size
     static const uint32_t POLL_RESULT_TIMESTAMP_SIZE = 2;

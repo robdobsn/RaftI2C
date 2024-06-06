@@ -9,19 +9,22 @@
 #include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
 
-// #define DEBUG_DEVICE_INFO_RECORDS
-// #define DEBUG_POLL_REQUEST_REQS
-// #define DEBUG_DEVICE_INFO_PERFORMANCE
-// #define DEBUG_DEVICE_INIT_REQS
+#define DEBUG_DEVICE_INFO_RECORDS
+#define DEBUG_POLL_REQUEST_REQS
+#define DEBUG_DEVICE_INFO_PERFORMANCE
+#define DEBUG_DEVICE_INIT_REQS
 
 #if defined(DEBUG_DEVICE_INFO_RECORDS) || defined(DEBUG_DEVICE_INFO_PERFORMANCE) 
 static const char* MODULE_PREFIX = "DeviceTypeRecords";
 #endif
 
+// Global object
+DeviceTypeRecords deviceTypeRecords;
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Generated device type records
 #include "DeviceTypeRecords_generated.h"
-static const uint32_t BASE_DEV_TYPE_ARRAY_SIZE = sizeof(baseDevTypeRecords) / sizeof(BusI2CDevTypeRecord);
+static const uint32_t BASE_DEV_TYPE_ARRAY_SIZE = sizeof(baseDevTypeRecords) / sizeof(DeviceTypeRecord);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -31,18 +34,18 @@ DeviceTypeRecords::DeviceTypeRecords()
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief get device types (strings) for an address
-/// @param addrAndSlot i2c address and slot
+/// @param addr address
 /// @returns device type indexes (into generated baseDevTypeRecords array) that match the address
-std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusI2CAddrAndSlot addrAndSlot) const
+std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusElemAddrType addr) const
 {
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t startTimeUs = micros();
 #endif
 
     // Check valid
-    if ((addrAndSlot.addr < BASE_DEV_INDEX_BY_ARRAY_MIN_ADDR) || (addrAndSlot.addr > BASE_DEV_INDEX_BY_ARRAY_MAX_ADDR))
+    if ((addr < BASE_DEV_INDEX_BY_ARRAY_MIN_ADDR) || (addr > BASE_DEV_INDEX_BY_ARRAY_MAX_ADDR))
         return std::vector<uint16_t>();
-    uint32_t addrIdx = addrAndSlot.addr - BASE_DEV_INDEX_BY_ARRAY_MIN_ADDR;
+    uint32_t addrIdx = addr - BASE_DEV_INDEX_BY_ARRAY_MIN_ADDR;
     
     // Get number of types for this addr - if none then return
     uint32_t numTypes = baseDevTypeCountByAddr[addrIdx];
@@ -58,12 +61,12 @@ std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusI2CAddrAndS
     
 #ifdef DEBUG_DEVICE_INFO_PERFORMANCE
     uint64_t endTimeUs = micros();
-    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d typeIdxs %lld us", addrAndSlot.toString().c_str(), 
+    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d typeIdxs %lld us", BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), 
                     devTypeIdxsForAddr.size(), endTimeUs - startTimeUs);
 #endif
 
 #ifdef DEBUG_DEVICE_INFO_RECORDS
-    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d types", addrAndSlot.toString().c_str(), devTypeIdxsForAddr.size());
+    LOG_I(MODULE_PREFIX, "getDeviceTypeIdxsForAddr %s %d types", BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), devTypeIdxsForAddr.size());
 #endif
     return devTypeIdxsForAddr;
 }
@@ -72,7 +75,7 @@ std::vector<uint16_t> DeviceTypeRecords::getDeviceTypeIdxsForAddr(BusI2CAddrAndS
 /// @brief Get device type for a device type index
 /// @param deviceTypeIdx device type index
 /// @return pointer to device type record if device type found, nullptr if not
-const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeIdx) const
+const DeviceTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeIdx) const
 {
     // Check if in range
     if (deviceTypeIdx >= BASE_DEV_TYPE_ARRAY_SIZE)
@@ -84,7 +87,7 @@ const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(uint16_t deviceTypeI
 /// @brief Get device type for a device type name
 /// @param deviceTypeName device type name
 /// @return pointer to device type record if device type found, nullptr if not
-const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& deviceTypeName) const
+const DeviceTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& deviceTypeName) const
 {
     // Iterate the device types
     for (uint16_t i = 0; i < BASE_DEV_TYPE_ARRAY_SIZE; i++)
@@ -100,7 +103,7 @@ const BusI2CDevTypeRecord* DeviceTypeRecords::getDeviceInfo(const String& device
 /// @param addrAndSlot i2c address and slot
 /// @param pDevTypeRec device type record
 /// @param pollRequests (out) polling info
-void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
+void DeviceTypeRecords::getPollInfo(BusElemAddrType addr, const DeviceTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const
 {
     // Clear initially
     pollingInfo.clear();
@@ -151,12 +154,12 @@ void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CD
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
         LOG_I(MODULE_PREFIX, "getPollInfo addr@slot+1 %s writeData %s readDataMask %s readData %s", 
-                    addrAndSlot.toString().c_str(), writeDataStr.c_str(), readDataMaskStr.c_str(), readDataStr.c_str());
+                    BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr).toString().c_str(), writeDataStr.c_str(), readDataMaskStr.c_str(), readDataStr.c_str());
 #endif
 
         // Create the poll request
-        BusI2CRequestRec pollReq(BUS_REQ_TYPE_POLL, 
-                addrAndSlot,
+        BusRequestInfo pollReq(BUS_REQ_TYPE_POLL, 
+                addr,
                 DevicePollingInfo::DEV_IDENT_POLL_CMD_ID, 
                 writeData.size(),
                 writeData.data(), 
@@ -184,7 +187,7 @@ void DeviceTypeRecords::getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CD
 /// @brief Get initialisation bus requests
 /// @param deviceType device type
 /// @param initRequests (out) initialisation requests
-void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
+void DeviceTypeRecords::getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const DeviceTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initRequests)
 {
     // Clear initially
     initRequests.clear();
@@ -379,7 +382,7 @@ uint32_t DeviceTypeRecords::extractBarAccessMs(const String& readStr)
 /// @brief Get detection records
 /// @param deviceType device type
 /// @param detectionRecs (out) detection records
-void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs)
+void DeviceTypeRecords::getDetectionRecs(const DeviceTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs)
 {
     // Clear initially
     detectionRecs.clear();
@@ -416,7 +419,7 @@ void DeviceTypeRecords::getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec,
 /// @param isOnline true if device is online
 /// @param pDevTypeRec pointer to device type record
 /// @param devicePollResponseData device poll response data
-String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
+String DeviceTypeRecords::deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
         const std::vector<uint8_t>& devicePollResponseData) const
 {
     // Device type name
@@ -439,7 +442,7 @@ String DeviceTypeRecords::getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bo
         return "{}";
 
     // Get the device type record
-    const BusI2CDevTypeRecord* pDevTypeRec = &baseDevTypeRecords[deviceTypeIdx];
+    const DeviceTypeRecord* pDevTypeRec = &baseDevTypeRecords[deviceTypeIdx];
     if (!pDevTypeRec)
         return "{}";
 
@@ -455,7 +458,7 @@ String DeviceTypeRecords::getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bo
 String DeviceTypeRecords::getDevTypeInfoJsonByTypeName(const String& deviceTypeName, bool includePlugAndPlayInfo) const
 {
     // Get the device type info
-    const BusI2CDevTypeRecord* pDevTypeRec = getDeviceInfo(deviceTypeName);
+    const DeviceTypeRecord* pDevTypeRec = getDeviceInfo(deviceTypeName);
 
     // Get JSON for device type
     return pDevTypeRec ? pDevTypeRec->getJson(includePlugAndPlayInfo) : "{}";

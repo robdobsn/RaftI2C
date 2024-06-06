@@ -9,10 +9,10 @@
 #pragma once
 
 #include "RaftUtils.h"
-#include "BusI2CConsts.h"
-#include "BusI2CDevTypeRecord.h"
-#include "DevicePollingInfo.h"
 #include "RaftJson.h"
+#include "RaftBusConsts.h"
+#include "DeviceTypeRecord.h"
+#include "DevicePollingInfo.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class DeviceTypeRecords
@@ -24,28 +24,28 @@ public:
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type for address
-    /// @param addrAndSlot i2c address and slot
+    /// @param addr device address
     /// @returns device type indexes that match the address
-    std::vector<uint16_t> getDeviceTypeIdxsForAddr(BusI2CAddrAndSlot addrAndSlot) const;
+    std::vector<uint16_t> getDeviceTypeIdxsForAddr(BusElemAddrType addr) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type record for a device type index
     /// @param deviceTypeIdx device type index
     /// @return pointer to info record if device type found, nullptr if not
-    const BusI2CDevTypeRecord* getDeviceInfo(uint16_t deviceTypeIdx) const;
+    const DeviceTypeRecord* getDeviceInfo(uint16_t deviceTypeIdx) const;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type record for a device type name
     /// @param deviceType device type name
     /// @return pointer to info record if device type found, nullptr if not
-    const BusI2CDevTypeRecord* getDeviceInfo(const String& deviceType) const;
+    const DeviceTypeRecord* getDeviceInfo(const String& deviceType) const;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device polling info
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
     /// @param pollRequests (out) polling info
-    void getPollInfo(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
+    void getPollInfo(BusElemAddrType addrAndSlot, const DeviceTypeRecord* pDevTypeRec, DevicePollingInfo& pollingInfo) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type info JSON by device type index
@@ -75,14 +75,14 @@ public:
     /// @brief Get detection records
     /// @param pDevTypeRec device type record
     /// @param detectionRecs (out) detection records
-    void getDetectionRecs(const BusI2CDevTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs);
+    void getDetectionRecs(const DeviceTypeRecord* pDevTypeRec, std::vector<DeviceDetectionRec>& detectionRecs);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get initialisation bus requests
     /// @param addrAndSlot i2c address and slot
     /// @param pDevTypeRec device type record
     /// @param initBusRequests (out) initialisation bus requests
-    void getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const BusI2CDevTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
+    void getInitBusRequests(BusI2CAddrAndSlot addrAndSlot, const DeviceTypeRecord* pDevTypeRec, std::vector<BusI2CRequestRec>& initBusRequests);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Convert poll response to JSON
@@ -90,7 +90,7 @@ public:
     /// @param isOnline true if device is online
     /// @param pDevTypeRec pointer to device type record
     /// @param devicePollResponseData device poll response data
-    String deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const BusI2CDevTypeRecord* pDevTypeRec, 
+    String deviceStatusToJson(BusI2CAddrAndSlot addrAndSlot, bool isOnline, const DeviceTypeRecord* pDevTypeRec, 
             const std::vector<uint8_t>& devicePollResponseData) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,3 +106,6 @@ private:
     static uint32_t extractReadDataSize(const String& readStr);
     static uint32_t extractBarAccessMs(const String& readStr);
 };
+
+// Access to single instance
+extern DeviceTypeRecords deviceTypeRecords;
