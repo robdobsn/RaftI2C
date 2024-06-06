@@ -1,5 +1,5 @@
 {
-    "SysTypeName": "BusI2CTest",
+    "SystemName": "BusI2CTest",
     "CmdsAtStart": "",
     "WebUI": "",
     "SysManager": {

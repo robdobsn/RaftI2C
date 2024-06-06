@@ -24,6 +24,7 @@ Main library
 [] Add ability to use DecodeGenerator.py as a main program and allow for generation in python/ts on demand for a specific device type
 [] Add the capability to generate JSON from decoded device information - this would require auto-generator to create the sprintf type code to format to JSON
 [] Add an option to publish JSON with decoded device info instead of raw info
+[] Move device types out of a specific bus and maybe even out of BusI2C into a more general location
 
 TestWebUI
 [] ensure that only one call to get device type info is performed

@@ -96,7 +96,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
         // Go through once and look for changes
         for (auto& addrStatus : _i2cAddrStatus)
         {
-            if (addrStatus.isChange)
+            if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 numChanges++;
         }
 
@@ -115,17 +115,19 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
         {
             for (auto& addrStatus : _i2cAddrStatus)
             {
-                if (addrStatus.isChange)
+                if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 {
                     // Handle element change
                     BusElemAddrAndStatus statusChange = 
                         {
                             addrStatus.addrAndSlot.toCompositeAddrAndSlot(), 
-                            addrStatus.isOnline,
-                            addrStatus.wasOnceOnline && !addrStatus.isOnline,
+                            addrStatus.isOnline && addrStatus.isChange,
+                            (addrStatus.wasOnceOnline && !addrStatus.isOnline) && addrStatus.isChange,
+                            addrStatus.isNewlyIdentified
                         };
                     statusChanges.push_back(statusChange);
                     addrStatus.isChange = false;
+                    addrStatus.isNewlyIdentified = false;
                 }
 
                 // Check if this is the addrForLockupDetect
@@ -449,8 +451,14 @@ void BusStatusMgr::setBusElemDeviceStatus(BusI2CAddrAndSlot addrAndSlot, const D
     BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
     if (pAddrStatus)
     {
-        // Set device type
+        // Set device status (includes device type index)
         pAddrStatus->deviceStatus = deviceStatus;
+
+        // Check if device type index is valid - if so this is a new identification
+        if (deviceStatus.getDeviceTypeIndex() != DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
+        {
+            pAddrStatus->isNewlyIdentified = true;
+        }
     }
 
     // Return semaphore
