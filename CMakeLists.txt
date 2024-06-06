@@ -17,7 +17,6 @@ idf_component_register(
       "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
       "components/RaftI2C/BusI2C/DevicePollingMgr.cpp"
       "components/RaftI2C/BusI2C/DeviceStatus.cpp"
-      "components/RaftI2C/BusI2C/DeviceTypeRecords.cpp"
       "components/RaftI2C/I2CCentral/RaftI2CCentral.cpp"
       "components/RaftI2C/I2CCentral/ESPIDF5I2C/ESPIDF5I2CCentral.cpp"
     INCLUDE_DIRS
@@ -29,23 +28,3 @@ idf_component_register(
       RaftCore
       driver
     )
-
-# Find Python
-find_package(Python3 REQUIRED)
-
-# Device type record paths
-set(JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/DeviceTypeRecords/DeviceTypeRecords.json")
-set(DEV_TYPE_RECS_HEADER "${CMAKE_BINARY_DIR}/DeviceTypeRecords_generated.h")
-set(DEV_POLL_RECS_HEADER "${CMAKE_BINARY_DIR}/DevicePollRecords_generated.h")
-
-# Custom command to generate device type records header file from JSON
-add_custom_command(
-    OUTPUT ${DEV_TYPE_RECS_HEADER} ${DEV_POLL_RECS_HEADER}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ProcessDevTypeJsonToC.py" "${JSON_FILE}" "${DEV_TYPE_RECS_HEADER}" "${DEV_POLL_RECS_HEADER}"
-    DEPENDS ${JSON_FILE}
-    COMMENT "---------------------- Generating Device Record headers from JSON ---------------------------"
-)
-
-add_custom_target(generate_dev_ident_header DEPENDS ${DEV_TYPE_RECS_HEADER} ${DEV_POLL_RECS_HEADER})
-
-add_dependencies(${COMPONENT_LIB} generate_dev_ident_header)
