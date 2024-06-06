@@ -123,7 +123,8 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                             addrStatus.addrAndSlot.toCompositeAddrAndSlot(), 
                             addrStatus.isOnline && addrStatus.isChange,
                             (addrStatus.wasOnceOnline && !addrStatus.isOnline) && addrStatus.isChange,
-                            addrStatus.isNewlyIdentified
+                            addrStatus.isNewlyIdentified,
+                            addrStatus.deviceStatus.getDeviceTypeIndex()
                         };
                     statusChanges.push_back(statusChange);
                     addrStatus.isChange = false;
