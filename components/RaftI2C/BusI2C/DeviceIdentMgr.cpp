@@ -11,9 +11,9 @@
 #include "BusRequestInfo.h"
 #include "Logger.h"
 
-// #define DEBUG_DEVICE_IDENT_MGR
-// #define DEBUG_DEVICE_IDENT_MGR_DETAIL
-// #define DEBUG_HANDLE_BUS_DEVICE_INFO
+#define DEBUG_DEVICE_IDENT_MGR
+#define DEBUG_DEVICE_IDENT_MGR_DETAIL
+#define DEBUG_HANDLE_BUS_DEVICE_INFO
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
 
@@ -131,24 +131,15 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
     deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs);
 
     // Check if all values match
+    bool detectionValuesMatch = true;
     for (const auto& detectionRec : detectionRecs)
     {
 
-#ifdef DEBUG_DEVICE_IDENT_MGR
-        String writeStr;
-        Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
-        String readMaskStr;
-        Raft::getHexStrFromBytes(detectionRec.readDataMask.data(), detectionRec.readDataMask.size(), readMaskStr);
-        String readCheckStr;
-        Raft::getHexStrFromBytes(detectionRec.readDataCheck.data(), detectionRec.readDataCheck.size(), readCheckStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s readDataMask %s readDataCheck %s readSize %d pauseAfterMs %d", 
-                    addrAndSlot.toString().c_str(), 
-                    writeStr.c_str(),
-                    readMaskStr.c_str(),
-                    readCheckStr.c_str(),
-                    detectionRec.readDataCheck.size(),
-                    detectionRec.pauseAfterSendMs);
-#endif
+        // Check there is a read data check
+        uint32_t readDataCheckBytes = 0;
+        if (detectionRec.checkValues.size() == 0)
+            continue;
+        readDataCheckBytes = detectionRec.checkValues[0].second.size();
 
         // Create a bus request to read the detection value
         // Create the poll request
@@ -157,7 +148,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
                 0, 
                 detectionRec.writeData.size(), 
                 detectionRec.writeData.data(),
-                detectionRec.readDataCheck.size(),
+                readDataCheckBytes,
                 detectionRec.pauseAfterSendMs, 
                 nullptr, 
                 this);
@@ -165,49 +156,74 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         RaftI2CCentralIF::AccessResultCode rslt = _busI2CReqSyncFn(&reqRec, &readData);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        String writeHexStr;
-        Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeHexStr);
-        String readHexStr;
-        Raft::getHexStrFromBytes(readData.data(), readData.size(), readHexStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s writeData %s rslt %d readData %s", 
-                    addrAndSlot.toString().c_str(), writeHexStr.c_str(), rslt, readHexStr.c_str());
+        String writeStr;
+        Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
+        String readDataStr;
+        Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr@slot+1 %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+                    rslt == RaftI2CCentralIF::ACCESS_RESULT_OK ? "OK" : "BUS ACCESS FAILED",
+                    addrAndSlot.toString().c_str(), writeStr.c_str(), rslt, readDataStr.c_str(), readData.size(), detectionRec.pauseAfterSendMs);
 #endif
 
         // Check ok result
         if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
             return false;
 
-        // Check the read data
-        if (readData.size() != detectionRec.readDataCheck.size())
+        // Iterate through check values to see if one of them matches
+        bool checkValueMatch = false;
+        for (const auto& checkValue : detectionRec.checkValues)
         {
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch SIZE MISMATCH addr@slot+1 %s", addrAndSlot.toString().c_str());
-#endif
-            return false;
-        }
-        for (int i = 0; i < readData.size(); i++)
-        {
-            uint8_t readDataMaskedVal = readData[i] & detectionRec.readDataMask[i];
+
 #ifdef DEBUG_DEVICE_IDENT_MGR
             String readMaskStr;
-            Raft::getHexStrFromBytes(detectionRec.readDataMask.data(), detectionRec.readDataMask.size(), readMaskStr);
+            Raft::getHexStrFromBytes(checkValue.first.data(), checkValue.first.size(), readMaskStr);
             String readCheckStr;
-            Raft::getHexStrFromBytes(detectionRec.readDataCheck.data(), detectionRec.readDataCheck.size(), readCheckStr);
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s idx %d addr@slot+1 %s readMask 0x%s readCheck 0x%s readData 0x%02x readDataMaskedVal 0x%02x readDataMsg 0x%02x readDataCheck 0x%02x",
-                        readDataMaskedVal == detectionRec.readDataCheck[i] ? "OK" : "FAIL", i,
-                        addrAndSlot.toString().c_str(), readMaskStr, readCheckStr, readData[i], readDataMaskedVal, detectionRec.readDataMask[i], detectionRec.readDataCheck[i]);
+            Raft::getHexStrFromBytes(checkValue.second.data(), checkValue.second.size(), readCheckStr);
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readDataMask %s readDataCheck %s VS readData %s",
+                        readMaskStr.c_str(),
+                        readCheckStr.c_str(),
+                        readDataStr.c_str());
 #endif
-            if (readDataMaskedVal != detectionRec.readDataCheck[i])
-                return false;
+
+            // Check the read data
+            bool sizeMatch = readData.size() == checkValue.second.size();
+            if (sizeMatch)
+            {
+                bool checkByteMatch = true;
+                for (int i = 0; i < readData.size(); i++)
+                {
+                    if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
+                    {
+                        checkByteMatch = false;
+                        break;
+                    }
+                }
+                if (checkByteMatch)
+                {
+                    checkValueMatch = true;
+                    break;
+                }
+            }
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readData %s sizeMatch %d checkValueMatch %d", 
+                        readDataStr.c_str(), sizeMatch, checkValueMatch);
+#endif
         }
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s OK", addrAndSlot.toString().c_str());
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s %s", 
+                    addrAndSlot.toString().c_str(),
+                    checkValueMatch ? "MATCH" : "NO MATCH");
 #endif
+
+        // Check if all values match
+        if (!checkValueMatch)
+            detectionValuesMatch = false;
     }
 
     // Access the device and check the response
-    return true;
+    return detectionValuesMatch;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
