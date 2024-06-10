@@ -8,6 +8,7 @@
 #include "RegisterSysMods.h"
 #include "RegisterWebServer.h"
 #include "BusI2CTest.h"
+#include "BusI2C.h"
 #include "HWDevMan.h"
 
 // Entry point
@@ -20,6 +21,9 @@ extern "C" void app_main(void)
 
     // Register WebServer from RaftWebServer library
     RegisterSysMods::registerWebServer(raftCoreApp.getSysManager());
+
+    // Register BusI2C
+    raftBusSystem.registerBus("I2C", BusI2C::createFn);
 
     // Register sysmod
     raftCoreApp.registerSysMod("BusI2CTest", BusI2CTest::create, true);

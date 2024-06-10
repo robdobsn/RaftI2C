@@ -52,11 +52,8 @@ void HWDevMan::setup()
     // Debug
     LOG_I(MODULE_PREFIX, "setup enabled");
 
-    // Register BusI2C
-    _raftBusSystem.registerBus("I2C", BusI2C::createFn);
-
     // Setup buses
-    _raftBusSystem.setup("Buses", modConfig(),
+    raftBusSystem.setup("Buses", modConfig(),
             std::bind(&HWDevMan::busElemStatusCB, this, std::placeholders::_1, std::placeholders::_2),
             std::bind(&HWDevMan::busOperationStatusCB, this, std::placeholders::_1, std::placeholders::_2)
     );
@@ -108,7 +105,7 @@ void HWDevMan::loop()
     }
 
     // Service the buses
-    _raftBusSystem.loop();
+    raftBusSystem.loop();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +152,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failTypeMissing");
 
         // Find the bus
-        RaftBus* pBus = _raftBusSystem.getBusByName(busName);
+        RaftBus* pBus = raftBusSystem.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
@@ -194,7 +191,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failMissingAddr");
 
         // Find the bus
-        RaftBus* pBus = _raftBusSystem.getBusByName(busName);
+        RaftBus* pBus = raftBusSystem.getBusByName(busName);
         if (!pBus)
             return Raft::setJsonErrorResult(reqStr.c_str(), respStr, "failBusNotFound");
 
@@ -262,7 +259,7 @@ RaftRetCode HWDevMan::apiDevMan(const String &reqStr, String &respStr, const API
 String HWDevMan::getStatusJSON() const
 {
     String jsonStr;
-    for (RaftBus* pBus : _raftBusSystem.getBusList())
+    for (RaftBus* pBus : raftBusSystem.getBusList())
     {
         if (!pBus)
             continue;
@@ -315,7 +312,7 @@ void HWDevMan::getStatusHash(std::vector<uint8_t>& stateHash) const
     stateHash.clear();
 
     // Check all buses for data
-    for (RaftBus* pBus : _raftBusSystem.getBusList())
+    for (RaftBus* pBus : raftBusSystem.getBusList())
     {
         // Check bus
         if (pBus)
@@ -354,7 +351,7 @@ void HWDevMan::saveMutableData()
 void HWDevMan::deinit()
 {
     // Deinit buses
-    _raftBusSystem.deinit();
+    raftBusSystem.deinit();
 
     // Deinit done
     _isInitialised = false;

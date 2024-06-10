@@ -54,9 +54,6 @@ private:
     uint32_t _mutableDataChangeLastMs = 0;
     bool _mutableDataDirty = false;
 
-    // Bus system
-    RaftBusSystem _raftBusSystem;
-
     // Helper functions
     void deinit();
     RaftRetCode apiDevMan(const String &reqStr, String &respStr, const APISourceInfo& sourceInfo);
