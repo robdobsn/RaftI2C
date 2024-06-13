@@ -8,7 +8,8 @@
 
 #include "DevicePollingMgr.h"
 
-// #define DEBUG_POLL_RESULT
+#define DEBUG_POLL_REQUEST
+#define DEBUG_POLL_RESULT
 
 #ifdef DEBUG_POLL_RESULT
 static const char* MODULE_PREFIX = "DevicePollingMgr";
@@ -48,7 +49,11 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             return;
         BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pollInfo.pollReqs[0].getAddressUint32());
 
-        // Check if a bus mux slot can be set (if required)
+#ifdef DEBUG_POLL_REQUEST
+        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), pollInfo.pollReqs[0].getAddressUint32());
+#endif
+
+        // Enable the slot
         auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotPlus1);
         if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
             return;
@@ -64,14 +69,6 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             std::vector<uint8_t> readData;
             BusI2CRequestRec reqRec(busReqRec);
             auto rslt = _busI2CReqSyncFn(&reqRec, &readData);
-            if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
-            {
-                allResultsOk = false;
-                break;
-            }
-
-            // Add to data aggregator
-            pollResultAdd(pollInfo, readData);
 
 #ifdef DEBUG_POLL_RESULT
             String writeDataHexStr;
@@ -84,6 +81,15 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
                             readDataHexStr.c_str(),
                             RaftI2CCentralIF::getAccessResultStr(rslt));
 #endif
+
+            if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            {
+                allResultsOk = false;
+                break;
+            }
+
+            // Add to data aggregator
+            pollResultAdd(pollInfo, readData);
         }
 
         // Store the poll result if all requests succeeded

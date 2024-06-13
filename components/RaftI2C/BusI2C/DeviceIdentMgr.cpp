@@ -98,7 +98,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
             deviceStatus.deviceTypeIndex = deviceTypeIdx;
 
             // Get polling info
-            deviceTypeRecords.getPollInfo(addrAndSlot.addr, pDevTypeRec, deviceStatus.deviceIdentPolling);
+            deviceTypeRecords.getPollInfo(addrAndSlot.toCompositeAddrAndSlot(), pDevTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 

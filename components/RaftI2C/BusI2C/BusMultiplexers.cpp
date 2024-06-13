@@ -19,8 +19,10 @@
 // #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
+// #define DEBUG_SET_SLOT_ENABLES
+// #define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
 
-static const char* MODULE_PREFIX = "BusMultiplexers";
+static const char* MODULE_PREFIX = "BusMux";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -38,10 +40,8 @@ BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuc
 BusMultiplexers::~BusMultiplexers()
 {
     // Reset pins
-    if (_resetPin >= 0)
-        gpio_reset_pin(_resetPin);
-    if (_resetPinAlt >= 0)
-        gpio_reset_pin(_resetPinAlt);
+    for (auto resetPin : _resetPins)
+        gpio_reset_pin((gpio_num_t) resetPin);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,30 +60,29 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
     if (_isEnabled)
     {
         // Multiplexer reset pin(s)
-        _resetPin = (gpio_num_t) config.getLong("rstPin", -1);
-        _resetPinAlt = (gpio_num_t) config.getLong("rstPinAlt", -1);
+        _resetPins.clear();
+        std::vector<String> resetPinStrs;
+        config.getArrayElems("rstPins", resetPinStrs);
+        for (auto& resetPinStr : resetPinStrs)
+            if (resetPinStr.toInt() >= 0)
+                _resetPins.push_back(resetPinStr.toInt());
+        
+        // Add single reset pin if specified that way
+        int resetPin = config.getInt("rstPin", -1);
+        if (resetPin >= 0)
+            _resetPins.push_back(resetPin);
 
         // Setup reset pins
-        gpio_config_t io_conf = {};
-        if (_resetPin >= 0)
+        for (auto resetPin : _resetPins)
         {
+            gpio_config_t io_conf = {};
             io_conf.intr_type = GPIO_INTR_DISABLE;
             io_conf.mode = GPIO_MODE_OUTPUT;
-            io_conf.pin_bit_mask = 1ULL << _resetPin;
+            io_conf.pin_bit_mask = 1ULL << resetPin;
             io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
             io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
             gpio_config(&io_conf);
-            gpio_set_level(_resetPin, 1);
-        }
-        if (_resetPinAlt >= 0)
-        {
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_OUTPUT;
-            io_conf.pin_bit_mask = 1ULL << _resetPinAlt;
-            io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-            io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-            gpio_config(&io_conf);
-            gpio_set_level(_resetPinAlt, 1);
+            gpio_set_level((gpio_num_t)resetPin, 1);
         }
     }
 
@@ -92,8 +91,12 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
         busMux.maskWrittenOk = false;
 
     // Debug
-    LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
-            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busMuxRecs.size(), _resetPin, _resetPinAlt);
+    String resetPinStr;
+    for (auto resetPin : _resetPins)
+        resetPinStr += String(resetPin) + " ";
+    LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d resetPin(s) %s", 
+            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busMuxRecs.size(), 
+            resetPinStr.c_str());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,8 +114,9 @@ void BusMultiplexers::taskService()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Handle state change on an element
 /// @param addr Address of element
+/// @param slotNum Slot number (1-based)
 /// @param elemResponding True if element is responding
-void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
+void BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elemResponding)
 {
     // Check if this is a bus multiplexer
     if (!isBusMultiplexer(addr))
@@ -127,10 +131,11 @@ void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
         {
             changeDetected = true;
             _busMuxRecs[elemIdx].maskWrittenOk = false;
+            _busMuxRecs[elemIdx].muxConnSlotNum = slotNum;
 
             // Debug
 #ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
-            LOG_I(MODULE_PREFIX, "elemStateChange new mux 0x%02x", addr);
+            LOG_I(MODULE_PREFIX, "elemStateChange new mux addr 0x%02x slotNum %d", addr, slotNum);
 #endif
         }
         _busMuxRecs[elemIdx].isDetected = true;
@@ -141,7 +146,7 @@ void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
 
         // Debug
 #ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
-        LOG_I(MODULE_PREFIX, "elemStateChange mux now offline so re-init 0x%02x", addr);
+        LOG_I(MODULE_PREFIX, "elemStateChange mux now offline so re-init 0x%02x slotNum %d", addr, slotNum);
 #endif
 
     }
@@ -170,12 +175,38 @@ void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
 /// @param muxIdx Multiplexer index
 /// @param slotMask Slot mask
 /// @param force Force enable/disable (even if status indicates it is not necessary)
+/// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
 /// @return Result code
-RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxIdx, uint32_t slotMask, bool force)
+RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxIdx, 
+            uint32_t slotMask, bool force, uint32_t recurseLevel)
 {
     // Check valid
     if (muxIdx >= _busMuxRecs.size())
         return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    // Check if this slot relies on another slot
+    if (recurseLevel > MAX_RECURSE_LEVEL_MUX_CONNECTIONS)
+        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    if (_busMuxRecs[muxIdx].muxConnSlotNum > 0)
+    {
+#ifdef DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
+        LOG_I(MODULE_PREFIX, "setSlotEnables muxIdx %d slotMask 0x%02x force %d recurseLevel %d", 
+                muxIdx, slotMask, force, recurseLevel);
+#endif
+        // Get the mux index and slot index
+        uint32_t muxConnSlotNum = _busMuxRecs[muxIdx].muxConnSlotNum;
+        uint32_t muxConnMuxIdx = 0;
+        uint32_t muxConnSlotIdx = 0;
+        if (!getMuxAndSlotIdx(muxConnSlotNum, muxConnMuxIdx, muxConnSlotIdx))
+            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        // Check if the mux is online
+        if (!_busMuxRecs[muxConnMuxIdx].isOnline)
+            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        // Check if the slot is enabled
+        if ((_busMuxRecs[muxConnMuxIdx].curBitMask & (1 << muxConnSlotIdx)) == 0)
+            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        // Recursively set the slot enables
+        return setSlotEnables(muxConnMuxIdx, slotMask, force, recurseLevel+1);
+    }
     // Check if slot initialized
     if (!_busMuxRecs[muxIdx].maskWrittenOk)
     {
@@ -212,6 +243,10 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxI
     {
         _busMuxRecs[muxIdx].maskWrittenOk = false;
     }
+#ifdef DEBUG_SET_SLOT_ENABLES
+        LOG_I(MODULE_PREFIX, "setSlotEnables rslt %s(%d) muxIdx %d slotMask 0x%02x force %d recurseLevel %d", 
+                RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask, force, recurseLevel);
+#endif
     return rslt;
 }
 
@@ -309,7 +344,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 void BusMultiplexers::disableAllSlots(bool force)
 {
     // Check if reset is available
-    if (_resetPin < 0)
+    if (_resetPins.size() == 0)
     {
         // Set all bus multiplexer channels off
         for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
@@ -322,16 +357,12 @@ void BusMultiplexers::disableAllSlots(bool force)
     else
     {
         // Reset bus multiplexers
-        if (_resetPin >= 0)
-            gpio_set_level(_resetPin, 0);
-        if (_resetPinAlt >= 0)
-            gpio_set_level(_resetPinAlt, 0);
-        delayMicroseconds(1);
-        if (_resetPin >= 0)
-            gpio_set_level(_resetPin, 1);
-        if (_resetPinAlt >= 0)
-            gpio_set_level(_resetPinAlt, 1);
-        delayMicroseconds(1);
+        for (auto resetPin : _resetPins)
+        {
+            gpio_set_level((gpio_num_t)resetPin, 0);
+            delayMicroseconds(1);
+            gpio_set_level((gpio_num_t)resetPin, 1);
+        }
 
         // Clear mask values
         for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)

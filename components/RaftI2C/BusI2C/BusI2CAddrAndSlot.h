@@ -35,13 +35,13 @@ public:
     static BusI2CAddrAndSlot fromCompositeAddrAndSlot(uint32_t compositeAddrAndSlot)
     {
         BusI2CAddrAndSlot addrAndSlot;
-        addrAndSlot.addr = compositeAddrAndSlot & 0x3FF;
-        addrAndSlot.slotPlus1 = (compositeAddrAndSlot >> 10) & 0x3F;
+        addrAndSlot.addr = compositeAddrAndSlot & 0xFF;
+        addrAndSlot.slotPlus1 = (compositeAddrAndSlot >> 8) & 0x3F;
         return addrAndSlot;
     }
     uint32_t toCompositeAddrAndSlot() const
     {
-        return (addr & 0x3FF) | ((slotPlus1 & 0x3F) << 10);
+        return (addr & 0xFF) | ((slotPlus1 & 0x3F) << 8);
     }
     void clear()
     {

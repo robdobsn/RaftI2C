@@ -130,7 +130,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
             // Init vars and go to scan extenders
             _scanAddressesCurrentList = 0;
             _scanPriorityRecs[_scanAddressesCurrentList].scanListIndex = 0;
-            _scanPriorityRecs[_scanAddressesCurrentList].scanSlotIndexPlus1 = 0;
+            _scanPriorityRecs[_scanAddressesCurrentList].scanSlotNum = 0;
             _scanState = SCAN_STATE_SCAN_EXTENDERS;
             _scanStateRepeatCount = 0;
             break;
@@ -146,13 +146,13 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
             {
                 // Get address to scan
                 uint32_t addr = 0;
-                uint32_t slotPlus1 = 0;
-                if (!getAddrAndGetSlotToScanNext(addr, slotPlus1, sweepCompleted, true, _scanState == SCAN_STATE_SCAN_EXTENDERS, true))
+                uint32_t slotNum = 0;
+                if (!getAddrAndGetSlotToScanNext(addr, slotNum, sweepCompleted, true, _scanState == SCAN_STATE_SCAN_EXTENDERS, true))
                     break;
 
                 // Scan main bus elements - simple linear scanning with all slots turned off
                 RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-                _busMultiplexers.elemStateChange(addr, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+                _busMultiplexers.elemStateChange(addr, 0, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
                 updateBusElemState(addr, 0, rslt);
 
                 // Check sweep completed or timeout
@@ -167,14 +167,14 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
         {
             // Find the next address to scan - scan based on scan frequency tables
             uint32_t addr = 0;
-            uint32_t slotPlus1 = 0;
+            uint32_t slotNum = 0;
             bool addrIsValid = false;
 
             // Scan loop
             while (true)
             {
                 // Get next address to scan
-                addrIsValid = getAddrAndGetSlotToScanNext(addr, slotPlus1, sweepCompleted, false, false, false);
+                addrIsValid = getAddrAndGetSlotToScanNext(addr, slotNum, sweepCompleted, false, false, false);
                 if (!addrIsValid)
                 {
 #ifdef DEBUG_NO_VALID_ADDRESS
@@ -185,16 +185,17 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
 
                 // Only scan the main bus for addresses already known to be on the main bus - otherwise
                 // they will incorrectly appear multiple times on slots
-                if ((slotPlus1 != 0) && _busStatusMgr.isAddrFoundOnMainBus(addr))
+                if ((slotNum != 0) && _busStatusMgr.isAddrFoundOnMainBus(addr))
                     continue;
 
                 // Enable the slot (if there is one)
-                auto rslt = _busMultiplexers.enableOneSlot(slotPlus1);
+                auto rslt = _busMultiplexers.enableOneSlot(slotNum);
                 if (rslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
                 {
                     // Handle the scan
                     rslt = scanOneAddress(addr);
-                    updateBusElemState(addr, slotPlus1, rslt);
+                    _busMultiplexers.elemStateChange(addr, slotNum, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+                    updateBusElemState(addr, slotNum, rslt);
                 }
                 else if (rslt == RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK)
                 {
@@ -202,8 +203,8 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                     _busStatusMgr.informBusStuck();
 
 #ifdef DEBUG_CANT_ENABLE_SLOT
-                    LOG_I(MODULE_PREFIX, "taskService %s bus stuck attempting to set slotPlus1 %d", 
-                                getScanStateStr(_scanState), slotPlus1);
+                    LOG_I(MODULE_PREFIX, "taskService %s bus stuck attempting to set slotNum %d", 
+                                getScanStateStr(_scanState), slotNum);
 #endif
                     break;
                 }
@@ -271,13 +272,13 @@ bool BusScanner::isScanPending(uint32_t curTimeMs)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set current address and get slot to scan next
 /// @param addr (out) Address
-/// @param slotPlus1 (out) Slot number (1-based)
+/// @param slotNum (out) Slot number (1-based)
 /// @param sweepCompleted (out) Sweep completed
 /// @param onlyMainBus Only main bus (don't scan slots)
 /// @param onlyExtenderAddrs Only return extender addresses (only valid if ignorePriorities is true)
 /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
 /// @return True if valid
-bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool& sweepCompleted,
+bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted,
             bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities)
 {
     // Flag for addresses on a slot done
@@ -350,12 +351,12 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1
     }
 
     // Get the slot to scan
-    slotPlus1 = getSlotPlus1FromSlotIndex(_scanPriorityRecs[_scanAddressesCurrentList], sweepCompleted, onlyMainBus, addressesOnSlotDone);
+    slotNum = getSlotNumFromSlotIdx(_scanPriorityRecs[_scanAddressesCurrentList], sweepCompleted, onlyMainBus, addressesOnSlotDone);
 
 #ifdef DEBUG_SCAN_SEQUENCE
-    LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext %s slots addr %02x slotPlus1 %d sweepCompleted %s addressesOnSlotDone %s onlyMainBus %s onlyExtenderAddrs %s ignorePriorities %s", 
+    LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext %s slots addr %02x slotNum %d sweepCompleted %s addressesOnSlotDone %s onlyMainBus %s onlyExtenderAddrs %s ignorePriorities %s", 
                 getScanStateStr(_scanState),
-                addr, slotPlus1,
+                addr, slotNum,
                 sweepCompleted ? "Y" : "N",
                 addressesOnSlotDone ? "Y" : "N",
                 onlyMainBus ? "Y" : "N",
@@ -440,12 +441,12 @@ BusElemAddrType BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, S
 /// @param onlyMainBus Only main bus
 /// @param addressesOnSlotDone Addresses on slot done
 /// @return Slot to scan
-uint32_t BusScanner::getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone)
+uint32_t BusScanner::getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone)
 {
     // Check if we are only scanning the main bus
     if (onlyMainBus)
     {
-        scanRec.scanSlotIndexPlus1 = 0;
+        scanRec.scanSlotNum = 0;
         if (addressesOnSlotDone)
         {
             sweepCompleted = true;
@@ -456,24 +457,24 @@ uint32_t BusScanner::getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& s
     // We need to ensure that the main bus is scanned more frequently than the slots - so use indices 0 and 1 for the main bus here
     // and then the slots are from 2 onwards
     // Check slot index is valid
-    if (scanRec.scanSlotIndexPlus1 > _busMultiplexers.getSlotIndices().size() + 1)
-        scanRec.scanSlotIndexPlus1 = 0;
+    if (scanRec.scanSlotNum > _busMultiplexers.getSlotIndices().size() + 1)
+        scanRec.scanSlotNum = 0;
 
-    // Get the slotPlus1
-    uint32_t slotPlus1 = scanRec.scanSlotIndexPlus1 < 2 ? 0 : _busMultiplexers.getSlotIndices()[scanRec.scanSlotIndexPlus1-2] + 1;
+    // Get the slotNum
+    uint32_t slotNum = scanRec.scanSlotNum < 2 ? 0 : _busMultiplexers.getSlotIndices()[scanRec.scanSlotNum-2] + 1;
 
     // Check if we are done with addresses on a slot
     if (addressesOnSlotDone)
     {
-        scanRec.scanSlotIndexPlus1++;
+        scanRec.scanSlotNum++;
         // Check for wrap around
-        if (scanRec.scanSlotIndexPlus1 > _busMultiplexers.getSlotIndices().size() + 1)
+        if (scanRec.scanSlotNum > _busMultiplexers.getSlotIndices().size() + 1)
         {
-            scanRec.scanSlotIndexPlus1 = 0;
+            scanRec.scanSlotNum = 0;
             sweepCompleted = true;
         }
     }
-    return slotPlus1;
+    return slotNum;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

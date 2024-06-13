@@ -33,7 +33,7 @@ public:
     void taskService();
     
     // State change on an element (may or may not be a bus mux)
-    void elemStateChange(uint32_t addr, bool elemResponding);
+    void elemStateChange(uint32_t addr, uint32_t slotNum, bool elemResponding);
 
     // Check if address is a bus mux
     bool isBusMultiplexer(uint8_t addr)
@@ -99,6 +99,9 @@ public:
     // Number of times to retry bus stuck recovery
     static const uint32_t BUS_CLEAR_ATTEMPT_REPEAT_COUNT = 5;
 
+    // Max number of recurse levels mux connected to mux connected to mux etc
+    static const uint32_t MAX_RECURSE_LEVEL_MUX_CONNECTIONS = 5;
+
 private:
     // Multiplexer functionality enabled
     bool _isEnabled = true;
@@ -120,8 +123,7 @@ private:
     uint32_t _maxAddr = I2C_BUS_MUX_BASE+I2C_BUS_MUX_MAX-1;
 
     // Bus mux reset pin(s)
-    gpio_num_t _resetPin = GPIO_NUM_NC;
-    gpio_num_t _resetPinAlt = GPIO_NUM_NC;
+    std::vector<int8_t> _resetPins;
 
     // Bus multiplexer record
     class BusMux
@@ -129,13 +131,16 @@ private:
     public:
         // Flags
         // isDetected:1 - mux has been detected
-        bool isDetected:1 = false,
+        bool isDetected:1 = false;
 
         // isOnline:1 - mux is online
-             isOnline:1 = false,
+        bool isOnline:1 = false;
 
         // maskWrittenOk:1 - Current bit mask has been written to the mux
-             maskWrittenOk:1 = false;
+        bool maskWrittenOk:1 = false;
+
+        // Mux connection slot number (0 for main bus, 1-N for accessed via another mux)
+        uint8_t muxConnSlotNum = 0;
 
         // Current bit mask (each bit enables a slot when 1)
         uint32_t curBitMask = 0;
@@ -163,8 +168,10 @@ private:
     /// @param muxIdx Multiplexer index
     /// @param slotMask Slot mask
     /// @param force Force enable/disable (even if status indicates it is not necessary)
+    /// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
     /// @return Result code
-    RaftI2CCentralIF::AccessResultCode setSlotEnables(uint32_t muxIdx, uint32_t slotMask, bool force);
+    RaftI2CCentralIF::AccessResultCode setSlotEnables(uint32_t muxIdx, uint32_t slotMask, 
+                bool force, uint32_t recurseLevel = 0);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Attempt to clear bus stuck problem

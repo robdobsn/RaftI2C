@@ -144,7 +144,7 @@
                         "enable": 1,
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
-                        "rstPin": 2
+                        "rstPins": [2]
                     },
                     "pwr": {
                         "ioexps":

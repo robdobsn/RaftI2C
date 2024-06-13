@@ -151,8 +151,7 @@
                     "taskPriority": 5,
                     "mux": {
                         "enable": 1,
-                        "rstPin": 4,
-                        "rstPinAlt": 5,
+                        "rstPins": [4,5],
                         "minAddr": "0x70",
                         "maxAddr": "0x77"
                     },

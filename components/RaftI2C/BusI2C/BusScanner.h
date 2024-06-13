@@ -88,7 +88,7 @@ private:
         uint16_t count = 0;
         uint16_t maxCount = 0;
         uint16_t scanListIndex = 0;
-        uint16_t scanSlotIndexPlus1 = 0;
+        uint16_t scanSlotNum = 0;
 #ifdef DEBUG_SCANNING_SWEEP_TIME
         uint32_t _debugScanSweepStartMs = 0;
 #endif
@@ -123,24 +123,24 @@ private:
 
     // Helpers
     RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
-    void updateBusElemState(uint32_t addr, uint32_t slotPlus1, RaftI2CCentralIF::AccessResultCode accessResult);
+    void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftI2CCentralIF::AccessResultCode accessResult);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set current address and get slot to scan next
     /// @param addr (out) Address
-    /// @param slotPlus1 (out) Slot number (1-based)
+    /// @param slotNum (out) Slot number (1-based)
     /// @param sweepCompleted (out) Sweep completed
     /// @param onlyMainBus Only main bus (don't scan extenders)
     /// @param onlyExtenderAddrs Only return extender addresses
     /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
     /// @return True if valid
-    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotPlus1, bool& sweepCompleted, 
+    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted, 
                 bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     BusElemAddrType getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    uint32_t getSlotPlus1FromSlotIndex(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone);
+    uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone);
 
 };
