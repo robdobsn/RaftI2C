@@ -6,7 +6,7 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "BusExtenderMgr.h"
+#include "BusMultiplexers.h"
 #include "RaftJsonPrefixed.h"
 #include "RaftJson.h"
 #include "RaftUtils.h"
@@ -21,11 +21,11 @@
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
 
-static const char* MODULE_PREFIX = "BusExtenderMgr";
+static const char* MODULE_PREFIX = "BusMultiplexers";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusExtenderMgr::BusExtenderMgr(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
+BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
         BusStatusMgr& BusStatusMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busPowerController(busPowerController), _busStuckHandler(busStuckHandler),
     _busStatusMgr(BusStatusMgr), _busI2CReqSyncFn(busI2CReqSyncFn)
@@ -36,7 +36,7 @@ BusExtenderMgr::BusExtenderMgr(BusPowerController& busPowerController, BusStuckH
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Destructor
-BusExtenderMgr::~BusExtenderMgr()
+BusMultiplexers::~BusMultiplexers()
 {
     // Reset pins
     if (_resetPin >= 0)
@@ -48,7 +48,7 @@ BusExtenderMgr::~BusExtenderMgr()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Setup
 /// @param config Configuration
-void BusExtenderMgr::setup(const RaftJsonIF& config)
+void BusMultiplexers::setup(const RaftJsonIF& config)
 {
     // Check if extender functionality is enabled
     _isEnabled = config.getBool("enable", true);
@@ -99,13 +99,13 @@ void BusExtenderMgr::setup(const RaftJsonIF& config)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service
-void BusExtenderMgr::loop()
+void BusMultiplexers::loop()
 {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service called from I2C task
-void BusExtenderMgr::taskService()
+void BusMultiplexers::taskService()
 {
 }
 
@@ -113,7 +113,7 @@ void BusExtenderMgr::taskService()
 /// @brief Handle state change on an element
 /// @param addr Address of element
 /// @param elemResponding True if element is responding
-void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
+void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
 {
     // Check if this is a bus extender
     if (!isBusExtender(addr))
@@ -173,7 +173,7 @@ void BusExtenderMgr::elemStateChange(uint32_t addr, bool elemResponding)
 /// @param slotMask Slot mask
 /// @param force Force enable/disable (even if status indicates it is not necessary)
 /// @return Result code
-RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setSlotEnables(uint32_t extenderIdx, uint32_t slotMask, bool force)
+RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t extenderIdx, uint32_t slotMask, bool force)
 {
     // Check valid
     if (extenderIdx >= _busExtenderRecs.size())
@@ -222,7 +222,7 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::setSlotEnables(uint32_t exten
 /// @param slotNum Slot number (1-based)
 /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or 
 ///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
-RaftI2CCentralIF::AccessResultCode BusExtenderMgr::enableOneSlot(uint32_t slotNum)
+RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
 {
     // If the bus is stuck at this point it implies that a main bus issue has occurred or there is an issue with the last slot
     // that was enabled (if it was definitely a single-slot issue it would have been detected after the slot was first enabled).
@@ -308,7 +308,7 @@ RaftI2CCentralIF::AccessResultCode BusExtenderMgr::enableOneSlot(uint32_t slotNu
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Disable all slots on bus extenders
-void BusExtenderMgr::disableAllSlots(bool force)
+void BusMultiplexers::disableAllSlots(bool force)
 {
     // Check if reset is available
     if (_resetPin < 0)
@@ -345,7 +345,7 @@ void BusExtenderMgr::disableAllSlots(bool force)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Initialise bus extender records
-void BusExtenderMgr::initBusExtenderRecs()
+void BusMultiplexers::initBusExtenderRecs()
 {
     // Clear existing records
     _busExtenderRecs.clear();
@@ -360,7 +360,7 @@ void BusExtenderMgr::initBusExtenderRecs()
 /// @param slotIdx Slot index
 /// @return True if valid
 /// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
-bool BusExtenderMgr::getExtenderAndSlotIdx(uint32_t slotNum, uint32_t& extenderIdx, uint32_t& slotIdx)
+bool BusMultiplexers::getExtenderAndSlotIdx(uint32_t slotNum, uint32_t& extenderIdx, uint32_t& slotIdx)
 {
     // Check valid slot
     if ((slotNum == 0) || (slotNum > I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size()))
@@ -377,7 +377,7 @@ bool BusExtenderMgr::getExtenderAndSlotIdx(uint32_t slotNum, uint32_t& extenderI
 /// @param slotNum Slot number (1-based)
 /// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
 /// @return Next slot number (1-based)
-uint32_t BusExtenderMgr::getNextSlotNum(uint32_t slotNum)
+uint32_t BusMultiplexers::getNextSlotNum(uint32_t slotNum)
 {
     // Check if no slots available
     if (_busExtenderSlotIndices.size() == 0)
@@ -397,7 +397,7 @@ uint32_t BusExtenderMgr::getNextSlotNum(uint32_t slotNum)
 /// @param failAfterSlotSet Bus stuck after setting slot (so an individual slot maybe at fault)
 /// @param slotNum Slot number (1-based) (valid if after slot set)
 /// @return true if slot setting is still valid
-bool BusExtenderMgr::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotNum)
+bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotNum)
 {
 #ifdef DEBUG_BUS_STUCK
     LOG_I(MODULE_PREFIX, "attemptToClearBusStuck %s slotNum %d", 

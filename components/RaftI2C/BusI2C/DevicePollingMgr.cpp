@@ -18,9 +18,9 @@ static const char* MODULE_PREFIX = "DevicePollingMgr";
 // Constructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
-    _busExtenderMgr(BusExtenderMgr),
+    _busMultiplexers(BusMultiplexers),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }
@@ -48,8 +48,8 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             return;
         BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pollInfo.pollReqs[0].getAddressUint32());
 
-        // Check if a bus extender slot can be set (if required)
-        auto rslt = _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+        // Check if a bus mux slot can be set (if required)
+        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotPlus1);
         if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
             return;
 
@@ -90,7 +90,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         if (allResultsOk)
             _busStatusMgr.pollResultStore(timeNowUs, pollInfo, addrAndSlot, _pollDataResult);
 
-        // Restore the bus extender(s) if necessary
-        _busExtenderMgr.disableAllSlots(false);
+        // Restore the bus multiplexers if necessary
+        _busMultiplexers.disableAllSlots(false);
     }
 }

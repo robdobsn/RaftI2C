@@ -21,9 +21,9 @@ static const char* MODULE_PREFIX = "DeviceIdentMgr";
 // Consructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusExtenderMgr& busExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusMultiplexers& busMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(BusStatusMgr),
-    _busExtenderMgr(busExtenderMgr),
+    _busMultiplexers(busMultiplexers),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }

@@ -108,8 +108,8 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
                         break;
                     }
                     // Calculate the extender idx and mask required
-                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT;
-                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT);
+                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT;
+                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT);
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
@@ -163,9 +163,9 @@ RaftBus raftBus(busElemStatusCB, busOperationStatusCB);
 BusStatusMgr busStatusMgr(raftBus);
 BusPowerController busPowerController(busReqSyncFn);
 BusStuckHandler busStuckHandler(busReqSyncFn);
-BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
-DeviceIdentMgr deviceIdentMgr(busStatusMgr, busExtenderMgr, busReqSyncFn);
-BusScanner busScanner(busStatusMgr, busExtenderMgr, deviceIdentMgr, busReqSyncFn);
+BusMultiplexers busMultiplexers(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
+DeviceIdentMgr deviceIdentMgr(busStatusMgr, busMultiplexers, busReqSyncFn);
+BusScanner busScanner(busStatusMgr, busMultiplexers, deviceIdentMgr, busReqSyncFn);
 
 void helper_reset_status_changes_list()
 {
@@ -187,7 +187,7 @@ void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
     raftBus.setup(configJson);
     busStatusMgr.setup(configJson);
     RaftJsonPrefixed busExtenderConfigJson(configJson, "mux");
-    busExtenderMgr.setup(busExtenderConfigJson);
+    busMultiplexers.setup(busExtenderConfigJson);
     busScanner.setup(configJson);
 }
 
@@ -232,9 +232,9 @@ void helper_show_status_change_list(const char* linePrefix)
 
 bool helper_check_bus_extender_list(std::vector<uint32_t> busExtenderList)
 {
-    // Check bus extenders
+    // Check bus multiplexers
     std::vector<uint32_t> busExtenders;
-    busExtenderMgr.getActiveExtenderAddrs(busExtenders);
+    busMultiplexers.getActiveExtenderAddrs(busExtenders);
     if (busExtenders.size() != busExtenderList.size())
     {
         LOG_E(MODULE_PREFIX, "Bus extender list size mismatch actual len %d expected %d", busExtenders.size(), busExtenderList.size());
@@ -293,29 +293,29 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
 
 TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
 {
-    // Setup bus extenders
-    BusExtenderMgr busExtenderMgr(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
-    busExtenderMgr.setup(configJson);
+    // Setup bus multiplexers
+    BusMultiplexers busMultiplexers(busPowerController, busStuckHandler, busStatusMgr, busReqSyncFn);
+    busMultiplexers.setup(configJson);
 
     // Check next slot
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(0) == 0, "getNextSlotNum 0 not 0 when no extenders");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(11) == 0, "getNextSlotNum 11 not 0 when no extenders");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(0) == 0, "getNextSlotNum 0 not 0 when no extenders");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(11) == 0, "getNextSlotNum 11 not 0 when no extenders");
 
-    // Add some bus extenders
-    busExtenderMgr.elemStateChange(0x73, true); // SlotPlus1 range = 25-32 (inclusive)
-    busExtenderMgr.elemStateChange(0x75, true); // SlotPlus1 range = 41-48 (inclusive)
+    // Add some bus multiplexers
+    busMultiplexers.elemStateChange(0x73, true); // SlotPlus1 range = 25-32 (inclusive)
+    busMultiplexers.elemStateChange(0x75, true); // SlotPlus1 range = 41-48 (inclusive)
 
     // Check next slot
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(0) == 25, "getNextSlotNum 0 not 25");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(1) == 25, "getNextSlotNum 1 not 25");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(24) == 25, "getNextSlotNum 24 not 25");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(25) == 26, "getNextSlotNum 25 not 26");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(28) == 29, "getNextSlotNum 28 not 29");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(31) == 32, "getNextSlotNum 31 not 32");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(32) == 41, "getNextSlotNum 32 not 41");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(41) == 42, "getNextSlotNum 33 not 42");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(47) == 48, "getNextSlotNum 47 not 48");
-    TEST_ASSERT_MESSAGE(busExtenderMgr.getNextSlotNum(48) == 0, "getNextSlotNum 48 not 0");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(0) == 25, "getNextSlotNum 0 not 25");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(1) == 25, "getNextSlotNum 1 not 25");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(24) == 25, "getNextSlotNum 24 not 25");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(25) == 26, "getNextSlotNum 25 not 26");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(28) == 29, "getNextSlotNum 28 not 29");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(31) == 32, "getNextSlotNum 31 not 32");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(32) == 41, "getNextSlotNum 32 not 41");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(41) == 42, "getNextSlotNum 33 not 42");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(47) == 48, "getNextSlotNum 47 not 48");
+    TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(48) == 0, "getNextSlotNum 48 not 0");
 }
 
 TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
@@ -413,7 +413,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Setup test
     BusI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
     BusI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
+    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -429,8 +429,8 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, extenderAddr1}), "online/offline elems not correct");
 
     // Add two further slotted addresses
-    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
-    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusExtenderMgr::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
+    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
+    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time

@@ -12,7 +12,7 @@
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
-#include "BusExtenderMgr.h"
+#include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
 #include "BusI2CRequestRec.h"
 #include "DeviceIdentMgr.h"
@@ -22,7 +22,7 @@
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr,
+    BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers,
                 DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
@@ -112,8 +112,8 @@ private:
     // Status manager
     BusStatusMgr& _busStatusMgr;
 
-    // Bus extender manager
-    BusExtenderMgr& _busExtenderMgr;
+    // Bus multiplexers
+    BusMultiplexers& _busMultiplexers;
 
     // Device ident manager
     DeviceIdentMgr& _deviceIdentMgr;

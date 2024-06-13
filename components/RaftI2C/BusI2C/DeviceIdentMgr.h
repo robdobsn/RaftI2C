@@ -11,7 +11,7 @@
 #include "RaftBusDevicesIF.h"
 #include "DeviceTypeRecord.h"
 #include "BusStatusMgr.h"
-#include "BusExtenderMgr.h"
+#include "BusMultiplexers.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
 #include <vector>
@@ -23,9 +23,9 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Constructor
     /// @param busStatusMgr bus status manager
-    /// @param busExtenderMgr bus extender manager
+    /// @param busMultiplexers bus mulitplexers
     /// @param busI2CReqSyncFn bus i2c synchronous access request function
-    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusExtenderMgr& busExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& busMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Setup
@@ -98,8 +98,8 @@ private:
     // Bus status
     BusStatusMgr& _busStatusMgr;
 
-    // Bus extender manager
-    BusExtenderMgr& _busExtenderMgr;
+    // Bus multiplexers
+    BusMultiplexers& _busMultiplexers;
 
     // Bus i2c request function
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;

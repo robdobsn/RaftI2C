@@ -49,16 +49,16 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busStuckHandler(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busExtenderMgr(_busPowerController, _busStuckHandler, _busStatusMgr,
+        _busMultiplexers(_busPowerController, _busStuckHandler, _busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _deviceIdentMgr(_busStatusMgr, _busExtenderMgr,
+        _deviceIdentMgr(_busStatusMgr, _busMultiplexers,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busScanner(_busStatusMgr, _busExtenderMgr, _deviceIdentMgr,
+        _busScanner(_busStatusMgr, _busMultiplexers, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
         ),
-        _devicePollingMgr(_busStatusMgr, _busExtenderMgr,
+        _devicePollingMgr(_busStatusMgr, _busMultiplexers,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _busAccessor(*this,
@@ -135,9 +135,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
     // Bus status manager
     _busStatusMgr.setup(config);
 
-    // Bus extender setup
+    // Bus mux setup
     RaftJsonPrefixed busExtenderConfig(config, "mux");
-    _busExtenderMgr.setup(busExtenderConfig);
+    _busMultiplexers.setup(busExtenderConfig);
 
     // Bus power controller setup
     RaftJsonPrefixed busPowerConfig(config, "pwr");
@@ -244,8 +244,8 @@ void BusI2C::loop()
     bool busIsStuck = _busStuckHandler.isStuck();
     _busStatusMgr.loop(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
 
-    // Service bus extender
-    _busExtenderMgr.loop();
+    // Service bus mux
+    _busMultiplexers.loop();
 
     // Bus power controller loop
     _busPowerController.loop();
@@ -381,8 +381,8 @@ void BusI2C::i2cWorkerTask()
         delayMicroseconds(1);
 #endif
 
-        // Bus extender loop
-        _busExtenderMgr.taskService();
+        // Bus mux loop
+        _busMultiplexers.taskService();
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -501,8 +501,8 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
     if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
         return rslt;
 
-    // Check if a bus extender slot is specified
-    rslt = _busExtenderMgr.enableOneSlot(addrAndSlot.slotPlus1);
+    // Check if a bus mux slot is specified
+    rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotPlus1);
     if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
         return rslt;
 
@@ -520,8 +520,8 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
     rslt = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
-    // Reset bus extenders to turn off all slots
-    _busExtenderMgr.disableAllSlots(false);
+    // Reset bus multiplexers to turn off all slots
+    _busMultiplexers.disableAllSlots(false);
 
     // Check for scanning
     if (!pReqRec->isScan())

@@ -13,7 +13,7 @@
 #include "BusI2CRequestRec.h"
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
-#include "BusExtenderMgr.h"
+#include "BusMultiplexers.h"
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
@@ -265,8 +265,8 @@ private:
     // Bus stuck handler
     BusStuckHandler _busStuckHandler;
     
-    // Bus extender manager
-    BusExtenderMgr _busExtenderMgr;
+    // Bus multiplexers (mux)
+    BusMultiplexers _busMultiplexers;
 
     // Device identifier
     DeviceIdentMgr _deviceIdentMgr;

@@ -15,13 +15,13 @@
 #include "RaftJsonIF.h"
 #include "driver/gpio.h"
 
-class BusExtenderMgr
+class BusMultiplexers
 {
 public:
     // Constructor and destructor
-    BusExtenderMgr(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
+    BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
             BusStatusMgr& busStatusMgr, BusI2CReqSyncFn busI2CReqSyncFn);
-    virtual ~BusExtenderMgr();
+    virtual ~BusMultiplexers();
 
     // Setup
     void setup(const RaftJsonIF& config);

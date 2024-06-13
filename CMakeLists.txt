@@ -5,11 +5,11 @@ idf_component_register(
       RaftI2C
     SRCS 
       "components/RaftI2C/BusI2C/BusAccessor.cpp"
-      "components/RaftI2C/BusI2C/BusExtenderMgr.cpp"
       "components/RaftI2C/BusI2C/BusI2C.cpp"
       "components/RaftI2C/BusI2C/BusI2CAddrStatus.cpp"
       "components/RaftI2C/BusI2C/BusI2CESPIDF.cpp"
       "components/RaftI2C/BusI2C/BusI2CScheduler.cpp"
+      "components/RaftI2C/BusI2C/BusMultiplexers.cpp"
       "components/RaftI2C/BusI2C/BusPowerController.cpp"
       "components/RaftI2C/BusI2C/BusScanner.cpp"
       "components/RaftI2C/BusI2C/BusStatusMgr.cpp"

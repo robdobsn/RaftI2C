@@ -11,13 +11,13 @@
 #include "RaftJson.h"
 #include "BusI2CRequestRec.h"
 #include "BusStatusMgr.h"
-#include "BusExtenderMgr.h"
+#include "BusMultiplexers.h"
 
 class DevicePollingMgr
 {
 public:
     // Constructor
-    DevicePollingMgr(BusStatusMgr& busStatusMgr, BusExtenderMgr& BusExtenderMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+    DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn);
 
     // Setup
     void setup(const RaftJsonIF& config);
@@ -57,8 +57,8 @@ private:
     // Bus status manager
     BusStatusMgr& _busStatusMgr;
 
-    // Bus extender manager
-    BusExtenderMgr& _busExtenderMgr;
+    // Bus multiplexers
+    BusMultiplexers& _busMultiplexers;
 
     // I2C request sync function
     BusI2CReqSyncFn _busI2CReqSyncFn;
