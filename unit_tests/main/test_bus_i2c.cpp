@@ -33,7 +33,7 @@ BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
 
 // Test configuration
 std::vector<BusI2CAddrAndSlot> testConfigOnlineAddrList;
-uint32_t busExtenderStatusChanMask[I2C_BUS_EXTENDERS_MAX] = {0};
+uint32_t busExtenderStatusChanMask[I2C_BUS_MUX_MAX] = {0};
 
 // Callback for bus operating
 BusOperationStatusCB busOperationStatusCB = [](RaftBus& bus, BusOperationStatus busOperationStatus) {
@@ -83,9 +83,9 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
     if(inOnlineList)
     {
         // Check if this is an extender
-        if ((addr >= I2C_BUS_EXTENDER_BASE) && (addr < I2C_BUS_EXTENDER_BASE + I2C_BUS_EXTENDERS_MAX))
+        if ((addr >= I2C_BUS_MUX_BASE) && (addr < I2C_BUS_MUX_BASE + I2C_BUS_MUX_MAX))
         {
-            uint32_t extenderIdx = addr - I2C_BUS_EXTENDER_BASE;
+            uint32_t extenderIdx = addr - I2C_BUS_MUX_BASE;
             // Check if data being written to extender
             if (pReqRec->getWriteDataLen() > 0)
             {
@@ -108,8 +108,8 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
                         break;
                     }
                     // Calculate the extender idx and mask required
-                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT;
-                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT);
+                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT;
+                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT);
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
@@ -234,7 +234,7 @@ bool helper_check_bus_extender_list(std::vector<uint32_t> busExtenderList)
 {
     // Check bus multiplexers
     std::vector<uint32_t> busExtenders;
-    busMultiplexers.getActiveExtenderAddrs(busExtenders);
+    busMultiplexers.getActiveMuxAddrs(busExtenders);
     if (busExtenders.size() != busExtenderList.size())
     {
         LOG_E(MODULE_PREFIX, "Bus extender list size mismatch actual len %d expected %d", busExtenders.size(), busExtenderList.size());
@@ -413,7 +413,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Setup test
     BusI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
     BusI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 1};
+    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 1};
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -429,8 +429,8 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, extenderAddr1}), "online/offline elems not correct");
 
     // Add two further slotted addresses
-    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 2};
-    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_EXTENDER_BASE) * BusMultiplexers::I2C_BUS_EXTENDER_SLOT_COUNT + 5};
+    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 2};
+    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time

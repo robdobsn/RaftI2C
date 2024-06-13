@@ -145,6 +145,16 @@
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
                         "rstPin": 2
+                    },
+                    "pwr": {
+                        "ioexps":
+                        [
+                            {
+                                "dev": "PCA9535",
+                                "addr": "0x26",
+                                "ioNumsStart": 100
+                            }
+                        ]
                     }
                 }
             ]

@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// I2C Bus Extender Manager
+// I2C Bus Multiplexers
 //
 // Rob Dobson 2024
 //
@@ -13,11 +13,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-// #define DEBUG_BUS_EXTENDER_SETUP
+// #define DEBUG_BUS_MUX_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
-// #define DEBUG_BUS_EXTENDERS
-// #define DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
+// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
 
@@ -30,8 +29,8 @@ BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuc
     _busPowerController(busPowerController), _busStuckHandler(busStuckHandler),
     _busStatusMgr(BusStatusMgr), _busI2CReqSyncFn(busI2CReqSyncFn)
 {
-    // Init bus extender records
-    initBusExtenderRecs();
+    // Init bus multiplexer records
+    initBusMuxRecs();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -50,17 +49,17 @@ BusMultiplexers::~BusMultiplexers()
 /// @param config Configuration
 void BusMultiplexers::setup(const RaftJsonIF& config)
 {
-    // Check if extender functionality is enabled
+    // Check if multiplexer functionality is enabled
     _isEnabled = config.getBool("enable", true);
 
-    // Get the bus extender address range
-    _minAddr = config.getLong("minAddr", I2C_BUS_EXTENDER_BASE);
-    _maxAddr = config.getLong("maxAddr", I2C_BUS_EXTENDER_BASE+I2C_BUS_EXTENDERS_MAX-1);
+    // Get the bus multiplexer address range
+    _minAddr = config.getLong("minAddr", I2C_BUS_MUX_BASE);
+    _maxAddr = config.getLong("maxAddr", I2C_BUS_MUX_BASE+I2C_BUS_MUX_MAX-1);
 
     // Check if enabled
     if (_isEnabled)
     {
-        // Extender reset pin(s)
+        // Multiplexer reset pin(s)
         _resetPin = (gpio_num_t) config.getLong("rstPin", -1);
         _resetPinAlt = (gpio_num_t) config.getLong("rstPinAlt", -1);
 
@@ -88,13 +87,13 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
         }
     }
 
-    // Set the flag to indicate that the bus extenders need to be initialized
-    for (auto &busExtender : _busExtenderRecs)
-        busExtender.maskWrittenOk = false;
+    // Set the flag to indicate that the bus multiplexers need to be initialized
+    for (auto &busMux : _busMuxRecs)
+        busMux.maskWrittenOk = false;
 
     // Debug
     LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d rstPin %d rstPinAlt %d", 
-            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busExtenderRecs.size(), _resetPin, _resetPinAlt);
+            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busMuxRecs.size(), _resetPin, _resetPinAlt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -115,35 +114,34 @@ void BusMultiplexers::taskService()
 /// @param elemResponding True if element is responding
 void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
 {
-    // Check if this is a bus extender
-    if (!isBusExtender(addr))
+    // Check if this is a bus multiplexer
+    if (!isBusMultiplexer(addr))
         return;
 
-    // Update the bus extender record
+    // Update the bus multiplexer record
     bool changeDetected = false;
     uint32_t elemIdx = addr-_minAddr;
     if (elemResponding)
     {
-        if (!_busExtenderRecs[elemIdx].isDetected)
+        if (!_busMuxRecs[elemIdx].isDetected)
         {
-            _busExtenderCount++;
             changeDetected = true;
-            _busExtenderRecs[elemIdx].maskWrittenOk = false;
+            _busMuxRecs[elemIdx].maskWrittenOk = false;
 
             // Debug
-#ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
-            LOG_I(MODULE_PREFIX, "elemStateChange new bus extender 0x%02x numDetectedExtenders %d", addr, _busExtenderCount);
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+            LOG_I(MODULE_PREFIX, "elemStateChange new mux 0x%02x", addr);
 #endif
         }
-        _busExtenderRecs[elemIdx].isDetected = true;
+        _busMuxRecs[elemIdx].isDetected = true;
     }
-    else if (_busExtenderRecs[elemIdx].isDetected)
+    else if (_busMuxRecs[elemIdx].isDetected)
     {
         changeDetected = true;
 
         // Debug
-#ifdef DEBUG_BUS_EXTENDER_ELEM_STATE_CHANGE
-        LOG_I(MODULE_PREFIX, "elemStateChange bus extender now offline so re-init 0x%02x numDetectedExtenders %d", addr, _busExtenderCount);
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+        LOG_I(MODULE_PREFIX, "elemStateChange mux now offline so re-init 0x%02x", addr);
 #endif
 
     }
@@ -152,48 +150,48 @@ void BusMultiplexers::elemStateChange(uint32_t addr, bool elemResponding)
     if (changeDetected)
     {
         // Update the slot indices
-        _busExtenderSlotIndices.clear();
-        for (uint32_t i = 0; i < _busExtenderRecs.size(); i++)
+        _busMuxSlotIndices.clear();
+        for (uint32_t i = 0; i < _busMuxRecs.size(); i++)
         {
-            if (_busExtenderRecs[i].isDetected)
+            if (_busMuxRecs[i].isDetected)
             {
-                for (uint32_t slot = 0; slot < I2C_BUS_EXTENDER_SLOT_COUNT; slot++)
-                    _busExtenderSlotIndices.push_back(i * I2C_BUS_EXTENDER_SLOT_COUNT + slot);
+                for (uint32_t slot = 0; slot < I2C_BUS_MUX_SLOT_COUNT; slot++)
+                    _busMuxSlotIndices.push_back(i * I2C_BUS_MUX_SLOT_COUNT + slot);
             }
         }
     }
 
     // Set the online status
-    _busExtenderRecs[elemIdx].isOnline = elemResponding;
+    _busMuxRecs[elemIdx].isOnline = elemResponding;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set slot enables on extender
-/// @param extenderIdx Extender index
+/// @brief Set slot enables on multiplexer
+/// @param muxIdx Multiplexer index
 /// @param slotMask Slot mask
 /// @param force Force enable/disable (even if status indicates it is not necessary)
 /// @return Result code
-RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t extenderIdx, uint32_t slotMask, bool force)
+RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxIdx, uint32_t slotMask, bool force)
 {
     // Check valid
-    if (extenderIdx >= _busExtenderRecs.size())
+    if (muxIdx >= _busMuxRecs.size())
         return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
     // Check if slot initialized
-    if (!_busExtenderRecs[extenderIdx].maskWrittenOk)
+    if (!_busMuxRecs[muxIdx].maskWrittenOk)
     {
         force = true;
-        _busExtenderRecs[extenderIdx].maskWrittenOk = true;
+        _busMuxRecs[muxIdx].maskWrittenOk = true;
     }
     // Check if status indicates that the mask is already correct
     if (!force)
     {
-        BusExtender& busExtender = _busExtenderRecs[extenderIdx];
-        if (busExtender.curBitMask == slotMask)
+        BusMux& busMux = _busMuxRecs[muxIdx];
+        if (busMux.curBitMask == slotMask)
             return RaftI2CCentralIF::ACCESS_RESULT_OK;
     }
     // Calculate the address
-    uint32_t addr = _minAddr + extenderIdx;
-    // Initialise bus extender
+    uint32_t addr = _minAddr + muxIdx;
+    // Initialise bus multiplexer
     BusI2CAddrAndSlot addrAndSlot(addr, 0);
     uint8_t writeData[1] = { uint8_t(slotMask) };
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
@@ -208,17 +206,17 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t exte
     // Store the resulting mask information if the operation was successful
     if (rslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
     {
-        _busExtenderRecs[extenderIdx].curBitMask = slotMask;
+        _busMuxRecs[muxIdx].curBitMask = slotMask;
     }
     else
     {
-        _busExtenderRecs[extenderIdx].maskWrittenOk = false;
+        _busMuxRecs[muxIdx].maskWrittenOk = false;
     }
     return rslt;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Enable a single slot on bus extender(s)
+/// @brief Enable a single slot on bus multiplexer(s)
 /// @param slotNum Slot number (1-based)
 /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or 
 ///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
@@ -254,10 +252,10 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
         disableAllSlots(false);
         return RaftI2CCentralIF::ACCESS_RESULT_OK;
     }
-    // Get the bus extender index and slot index
+    // Get the bus multiplexer index and slot index
     uint32_t slotIdx = 0;
-    uint32_t extenderIdx = 0;
-    if (!getExtenderAndSlotIdx(slotNum, extenderIdx, slotIdx))
+    uint32_t muxIdx = 0;
+    if (!getMuxAndSlotIdx(slotNum, muxIdx, slotIdx))
     {
 #ifdef DEBUG_SLOT_INDEX_INVALID
         LOG_I(MODULE_PREFIX, "enableOneSlot slotNum %d invalid", slotNum);
@@ -276,7 +274,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 
     // Enable the slot
     uint32_t mask = 1 << slotIdx;
-    bool slotSetOk = setSlotEnables(extenderIdx, mask, false) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+    bool slotSetOk = setSlotEnables(muxIdx, mask, false) == RaftI2CCentralIF::ACCESS_RESULT_OK;
 
     // Check if bus is now stuck - if we have an issue at this point it is probably due to a single slot because
     // the earlier bus stuck check would have been true if it was a wider issue. So initially try to clear the
@@ -307,23 +305,23 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Disable all slots on bus extenders
+/// @brief Disable all slots on bus multiplexers
 void BusMultiplexers::disableAllSlots(bool force)
 {
     // Check if reset is available
     if (_resetPin < 0)
     {
-        // Set all bus extender channels off
-        for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
+        // Set all bus multiplexer channels off
+        for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
         {
-            BusExtender& busExtender = _busExtenderRecs[extenderIdx];
-            if ((busExtender.isDetected) && (busExtender.isOnline))
-                setSlotEnables(extenderIdx, 0, force);
+            BusMux& busMux = _busMuxRecs[muxIdx];
+            if ((busMux.isDetected) && (busMux.isOnline))
+                setSlotEnables(muxIdx, 0, force);
         }
     }
     else
     {
-        // Reset bus extenders
+        // Reset bus multiplexers
         if (_resetPin >= 0)
             gpio_set_level(_resetPin, 0);
         if (_resetPinAlt >= 0)
@@ -336,39 +334,38 @@ void BusMultiplexers::disableAllSlots(bool force)
         delayMicroseconds(1);
 
         // Clear mask values
-        for (uint32_t extenderIdx = 0; extenderIdx < _busExtenderRecs.size(); extenderIdx++)
+        for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
         {
-            _busExtenderRecs[extenderIdx].curBitMask = 0;
+            _busMuxRecs[muxIdx].curBitMask = 0;
         }
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Initialise bus extender records
-void BusMultiplexers::initBusExtenderRecs()
+/// @brief Initialise bus multiplexer records
+void BusMultiplexers::initBusMuxRecs()
 {
     // Clear existing records
-    _busExtenderRecs.clear();
-    _busExtenderRecs.resize(_maxAddr-_minAddr+1);
-    _busExtenderCount = 0;
+    _busMuxRecs.clear();
+    _busMuxRecs.resize(_maxAddr-_minAddr+1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get extender and slot index from slotNum
+/// @brief Get multiplexer and slot index from slotNum
 /// @param slotNum Slot number (1-based)
-/// @param extenderIdx Extender index
+/// @param muxIdx Multiplexer index
 /// @param slotIdx Slot index
 /// @return True if valid
 /// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
-bool BusMultiplexers::getExtenderAndSlotIdx(uint32_t slotNum, uint32_t& extenderIdx, uint32_t& slotIdx)
+bool BusMultiplexers::getMuxAndSlotIdx(uint32_t slotNum, uint32_t& muxIdx, uint32_t& slotIdx)
 {
     // Check valid slot
-    if ((slotNum == 0) || (slotNum > I2C_BUS_EXTENDER_SLOT_COUNT * _busExtenderRecs.size()))
+    if ((slotNum == 0) || (slotNum > I2C_BUS_MUX_SLOT_COUNT * _busMuxRecs.size()))
         return false;
 
-    // Calculate the bus extender index and slot index
-    extenderIdx = (slotNum-1) / I2C_BUS_EXTENDER_SLOT_COUNT;
-    slotIdx = (slotNum-1) % I2C_BUS_EXTENDER_SLOT_COUNT;
+    // Calculate the bus multiplexer index and slot index
+    muxIdx = (slotNum-1) / I2C_BUS_MUX_SLOT_COUNT;
+    slotIdx = (slotNum-1) % I2C_BUS_MUX_SLOT_COUNT;
     return true;
 }
 
@@ -380,10 +377,10 @@ bool BusMultiplexers::getExtenderAndSlotIdx(uint32_t slotNum, uint32_t& extender
 uint32_t BusMultiplexers::getNextSlotNum(uint32_t slotNum)
 {
     // Check if no slots available
-    if (_busExtenderSlotIndices.size() == 0)
+    if (_busMuxSlotIndices.size() == 0)
         return 0;
     // Find first slot which is >= slotNum
-    for (uint32_t slotIdx : _busExtenderSlotIndices)
+    for (uint32_t slotIdx : _busMuxSlotIndices)
     {
         if (slotIdx >= slotNum)
             return slotIdx+1;
