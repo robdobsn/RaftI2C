@@ -80,7 +80,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s addr@slot+1 %s", 
+        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s addr@slotNum %s", 
                     pDevTypeRec->deviceType, addrAndSlot.toString().c_str());
 #endif
 
@@ -105,7 +105,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 
 #ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
-            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slot+1 %s numPollResToStore %d pollResSizeIncTimestamp %d", 
+            LOG_I(MODULE_PREFIX, "setBusElemDevInfo addr@slotNum %s numPollResToStore %d pollResSizeIncTimestamp %d", 
                     addrAndSlot.toString().c_str(),
                     deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
@@ -160,7 +160,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr@slot+1 %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr@slotNum %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
                     rslt == RaftI2CCentralIF::ACCESS_RESULT_OK ? "OK" : "BUS ACCESS FAILED",
                     addrAndSlot.toString().c_str(), writeStr.c_str(), rslt, readDataStr.c_str(), readData.size(), detectionRec.pauseAfterSendMs);
 #endif
@@ -212,7 +212,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         }
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slot+1 %s %s", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch addr@slotNum %s %s", 
                     addrAndSlot.toString().c_str(),
                     checkValueMatch ? "MATCH" : "NO MATCH");
 #endif
@@ -237,7 +237,7 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
     deviceTypeRecords.getInitBusRequests(addrAndSlot.toCompositeAddrAndSlot(), pDevTypeRec, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-    LOG_I(MODULE_PREFIX, "processDeviceInit addr@slot+1 %s numInitBusRequests %d", 
+    LOG_I(MODULE_PREFIX, "processDeviceInit addr@slotNum %s numInitBusRequests %d", 
                 addrAndSlot.toString().c_str(), initBusRequests.size());
 #endif
 

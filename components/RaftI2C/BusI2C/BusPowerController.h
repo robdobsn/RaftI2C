@@ -110,8 +110,8 @@ private:
         // Power controller GPIO bits record
         uint16_t pwrCtrlGPIOReg = 0xffff;
 
-        // Power controller data is dirty
-        bool pwrCtrlDirty = true;
+        // IO expander data is dirty
+        bool ioExpanderDirty = true;
 
         // Per slot info
         uint16_t minSlotPlus1 = 0;

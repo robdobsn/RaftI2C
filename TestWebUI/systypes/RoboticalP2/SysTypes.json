@@ -1,0 +1,194 @@
+{
+    "SystemName": "BusI2CTest",
+    "CmdsAtStart": "",
+    "WebUI": "",
+    "SysManager": {
+        "monitorPeriodMs":10000,
+        "reportList":[
+            "NetMan",
+            "SysMan"
+        ],
+        "slowSysModMs": 50
+    },
+    "ProtExchg": {
+        "RICSerial":{
+            "FrameBound":"0xE7",
+            "CtrlEscape":"0xD7"
+        }
+    },
+    "NetMan": {
+        "wifiSTAEn": 1,
+        "wifiAPEn": 1,
+        "ethEn": 0,
+        "wifiSSID": "",
+        "wifiPW": "",
+        "wifiSTAScanThreshold": "OPEN",
+        "wifiAPSSID": "test",
+        "wifiAPPW": "testtest",
+        "wifiAPChannel": 1,
+        "wifiAPMaxConn": 4,
+        "wifiAPAuthMode": "WPA2_PSK",
+        "NTPServer": "pool.ntp.org",
+        "timezone": "UTC",
+        "logLevel": "D"
+    },
+    "ESPOTAUpdate": {
+        "enable": 1,
+        "OTADirect": 1
+    },
+    "MQTTMan": {
+        "enable": 0,
+        "brokerHostname": "mqttbroker",
+        "brokerPort": 1883,
+        "clientID": "mqttclientid",
+        "topics": [
+            {
+                "name": "examplein",
+                "inbound": 1,
+                "path": "example/in",
+                "qos": 1
+            },
+            {
+                "name": "exampleout",
+                "inbound": 0,
+                "path": "example/out",
+                "qos": 1
+            }
+        ]
+    },
+    "LogManager": {
+        "enable": 0,
+        "logDests": [
+            {
+                "enable": false,
+                "type": "Papertrail",
+                "host": "xxxxx.papertrailapp.com",
+                "port": 12345
+            }
+        ]
+    },    
+    "SerialConsole": {
+        "enable": 1,
+        "uartNum": 0,
+        "rxBuf": 5000,
+        "txBuf": 1500,
+        "crlfOnTx": 1,
+        "protocol": "RICSerial",
+        "logLevel": "D"
+    },
+    "WebServer": {
+        "enable": 1,
+        "webServerPort": 80,
+        "stdRespHeaders": [
+            "Access-Control-Allow-Origin: *"
+        ],
+        "apiPrefix": "api/",
+        "fileServer": 1,
+        "staticFilePaths": "",
+        "numConnSlots": 12,
+        "clearPendingMs": 50,
+        "websockets": [
+            {
+                "pfix": "ws",
+                "pcol": "RICSerial",
+                "maxConn": 4,
+                "txQueueMax": 20,
+                "pingMs": 30000
+            },
+            {
+                "pfix": "devjson",
+                "pcol": "RICJSON",
+                "maxConn": 4,
+                "txQueueMax": 20,
+                "pingMs": 30000,
+                "content": "text"
+            }
+        ],
+        "logLevel": "D",
+        "sendMax": 5000,
+        "taskCore": 0,
+        "taskStack": 5000,
+        "taskPriority": 9
+    },
+    "FileManager": {
+        "LocalFsDefault": "littlefs",
+        "LocalFSFormatIfCorrupt": 1,
+        "CacheFileSysInfo": 0,
+        "SDEnabled": 0
+    },
+    "Publish": {
+        "enable": 1,
+        "pubList": [
+            {
+                "name": "devices",
+                "trigger": "TimeOrChange",
+                "msgID": "devices",
+                "rates": [
+                ]
+            }
+        ]
+    },
+    "HWDevMan":
+    {
+        "Buses":
+        {
+            "buslist":
+            [
+                {
+                    "name": "I2CA",
+                    "type": "I2C",
+                    "sdaPin": 39,
+                    "sclPin": 40,
+                    "i2cFreq": 100000,
+                    "mux": {
+                        "enable": 1,
+                        "minAddr": "0x70",
+                        "maxAddr": "0x77",
+                        "rstPin": 2
+                    },
+                    "pwr": {
+                        "ioexps":
+                        [
+                            {
+                                "dev": "PCA9535",
+                                "addr": "0x26",
+                                "ioNumsStart": 100
+                            }
+                        ]
+                        "startSlot":
+                        [
+                            {
+                                "dev": "PCA9535",
+                                "addr": "0x26",
+                                "TODO": "The following will need to change for addres 0x75 to 41 (5*8 + 1)",
+                                "minSlotPlus1": 1,
+                                "numSlots": 6,
+                                "onLevels":
+                                [
+                                    1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                                ],
+                                "chanMap":
+                                [
+                                    0, 1, 6, 7, 4, 5, 3, 15, 9, 8, 10, 13
+                                ],
+                                "en3V3": {
+                                    "expio": 14,
+                                    "onLevel": 1
+                                },
+                                "en5V": {
+                                    "gpio": 42,
+                                    "onLevel": 1
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    },
+    "BusI2CTest": {
+        "exampleGroup": {
+            "exampleKey": "Welcome to Raft!"
+        }
+    }
+}

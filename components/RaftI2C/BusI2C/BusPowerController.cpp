@@ -77,7 +77,7 @@ void BusPowerController::setup(const RaftJsonIF& config)
         }
 
         // Create a record for this power controller
-        _pwrCtrlRecs.push_back(PowerControlRec(pwrCtrlDeviceAddr, minSlotPlus1, numSlots));
+         _pwrCtrlRecs.push_back(PowerControlRec(pwrCtrlDeviceAddr, minSlotPlus1, numSlots));
 
 #ifdef DEBUG_POWER_CONTROL_SETUP
         LOG_I(MODULE_PREFIX, "setupPowerControl dev %s addr 0x%02x minSlotPlus1 %d numSlots %d", 
@@ -222,57 +222,6 @@ void BusPowerController::taskService(uint64_t timeNowUs)
         // Handle writing of any changes to power control registers
         pwrCtrlRec.updatePowerControlRegisters(true, _busI2CReqSyncFn);
     }
-
-    // Process the state machine for 
-    // // Check time to change power control initialisation state
-    // switch (_powerControlInitState)
-    // {
-    //     case POWER_CONTROL_INIT_OFF:
-    //         if (Raft::isTimeout(millis(), _powerControlInitLastMs, STARTUP_POWER_OFF_MS))
-    //         {
-    //             _powerControlInitState = POWER_CONTROL_INIT_ON;
-    //             setVoltageLevel(0, _defaultVoltageLevel);
-    //         }
-    //         break;
-    //     default:
-    //         break;
-    // }
-
-    // // Handle power cycling state-machine for each slot
-    // for (BusExtender& busExtender : _busExtenderRecs)
-    // {
-    //     // Check if power cycling is required
-    //     if (busExtender.slotPowerCycleStatus == POWER_CYCLE_STATE_DISABLED)
-    //         continue;
-
-    //     // Check if power cycling is required
-    //     if (busExtender.slotPowerCycleStatus == POWER_CYCLE_STATE_POWER_CYCLING_RESETTING)
-    //     {
-    //         // Check if time to reset
-    //         if (Raft::isTimeout(millis(), busExtender.slotPowerCycleLastMs, _powerCycleResetMs))
-    //         {
-    //             // Reset the slot
-    //             setVoltageLevel(busExtender.slotPowerCycleSlotPlus1, POWER_CONTROL_OFF);
-    //             busExtender.slotPowerCycleStatus = POWER_CYCLE_STATE_POWER_CYCLING_ON;
-    //             busExtender.slotPowerCycleLastMs = millis();
-    //         }
-    //     }
-    //     else if (busExtender.slotPowerCycleStatus == POWER_CYCLE_STATE_POWER_CYCLING_ON)
-    //     {
-    //         // Check if time to power on
-    //         if (Raft::isTimeout(millis(), busExtender.slotPowerCycleLastMs, _powerCycleOffMs))
-    //         {
-    //             // Power on the slot
-    //             setVoltageLevel(busExtender.slotPowerCycleSlotPlus1, busExtender.slotPowerCycleVoltageLevel);
-    //             busExtender.slotPowerCycleStatus = POWER_CYCLE_STATE_ON;
-    //             busExtender.slotPowerCycleLastMs = millis();
-    //         }
-    //     }
-    // }
-
-    // // Handle any changes to power control
-    // writePowerControlRegisters();
-
 }
 
 BusPowerController::PowerControlRec* BusPowerController::getPowerControlRec(uint32_t slotPlus1, uint32_t& slotIdx)
@@ -326,12 +275,12 @@ void BusPowerController::PowerControlRec::setVoltageLevel(uint32_t slotIdx, Powe
     {
         // Update the bus extender record
         pwrCtrlGPIOReg = newRegVal;
-        pwrCtrlDirty = true;
+        ioExpanderDirty = true;
     }
 
 #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
     LOG_I(MODULE_PREFIX, "setVoltageLevel hasChanged %s slotIdx %d slotPlus1 %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
-            pwrCtrlDirty ? "YES" : "NO",
+            ioExpanderDirty ? "YES" : "NO",
             slotIdx, minSlotPlus1+slotIdx, powerLevel, 
             pwrCtrlGPIOReg, prevReg);
 #endif
@@ -341,8 +290,8 @@ void BusPowerController::PowerControlRec::setVoltageLevel(uint32_t slotIdx, Powe
 /// @brief Write power control registers for all slots
 void BusPowerController::PowerControlRec::updatePowerControlRegisters(bool onlyIfDirty, BusI2CReqSyncFn busI2CReqSyncFn)
 {
-    // Iterate through slots
-    if (!onlyIfDirty || pwrCtrlDirty)
+    // Check if io expander is dirty
+    if (!onlyIfDirty || ioExpanderDirty)
     {
         // Set the output register first (to avoid unexpected power changes)
         uint8_t writeData[3] = { PCA9535_OUTPUT_PORT_0, 
@@ -372,7 +321,7 @@ void BusPowerController::PowerControlRec::updatePowerControlRegisters(bool onlyI
         rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RaftI2CCentralIF::ACCESS_RESULT_OK;
 
         // Clear the dirty flag if result is ok
-        pwrCtrlDirty = !rsltOk;
+        ioExpanderDirty = !rsltOk;
 
 #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
         LOG_I(MODULE_PREFIX, "writePowerControlRegisters addr 0x%02x reg 0x%04x rslt %s", 

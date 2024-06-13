@@ -156,7 +156,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
     for (auto& statusChange : statusChanges)
     {
-        LOG_I(MODULE_PREFIX, "loop addr@slot+1 %s status change to %s", 
+        LOG_I(MODULE_PREFIX, "loop addr@slotNum %s status change to %s", 
                     statusChange.addrAndSlot.toString().c_str(),
                     statusChange.isChangeToOnline ? "online" : "offline");
     }
@@ -183,7 +183,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline)
 {
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-    LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s isResponding %d", 
+    LOG_I(MODULE_PREFIX, "updateBusElemState addr@slotNum %s isResponding %d", 
                         addrAndSlot.toString().c_str(), elemResponding);
 #endif
 
@@ -265,7 +265,7 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 #endif
         if (isNewStatusChange)
         {
-            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnceOnline %d(was %d) isResponding %d",
+            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slotNum %s count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnceOnline %d(was %d) isResponding %d",
                         newStatus.addrAndSlot.toString().c_str(),
                         newStatus.count, prevStatus.count, 
                         newStatus.isOnline, prevStatus.isOnline, 
@@ -278,7 +278,7 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
     else
     {
 #ifdef WARN_ON_FAILED_TO_GET_SEMAPHORE
-        LOG_E(MODULE_PREFIX, "updateBusElemState addr@slot+1 %s failed to obtain semaphore", 
+        LOG_E(MODULE_PREFIX, "updateBusElemState addr@slotNum %s failed to obtain semaphore", 
                             addrAndSlot.toString().c_str());
 #endif
     }
@@ -382,7 +382,7 @@ void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
     xSemaphoreGive(_busElemStatusMutex);
 
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
-    LOG_W(MODULE_PREFIX, "i2cSendHelper %s barring bus access for addr@slot+1 %s for %dms",
+    LOG_W(MODULE_PREFIX, "i2cSendHelper %s barring bus access for addr@slotNum %s for %dms",
                     pAddrStatus ? "OK" : "FAIL", 
                     addrAndSlot.toString().c_str(), barAccessAfterSendMs);
 #endif
@@ -424,12 +424,12 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
     if (accessBarred)
     {
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slot+1 %s for %ldms", 
+        LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slotNum %s for %ldms", 
                         addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
     }
     if (barReleased)
     {
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slot+1 %s", 
+        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slotNum %s", 
                         addrAndSlot.toString().c_str());
     }
     

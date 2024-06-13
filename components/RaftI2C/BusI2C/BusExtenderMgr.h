@@ -97,7 +97,7 @@ public:
     /// @param slotPlus1 Slot number (1-based)
     /// @note this is used when scanning to work through all slots and then loop back to 0 (main bus)
     /// @return Next slot number (1-based)
-    uint32_t getNextSlot(uint32_t slotPlus1);
+    uint32_t getNextSlotNum(uint32_t slotPlus1);
 
     // Bus extender slot count
     static const uint32_t I2C_BUS_EXTENDER_SLOT_COUNT = 8;

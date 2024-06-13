@@ -144,7 +144,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
 #ifdef DEBUG_REQ_QUEUE_COMMANDS
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slot+1 %s write %s", reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str());
+        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str());
 #endif
 
         // Debug one address only
@@ -208,7 +208,7 @@ void BusAccessor::processPolling()
 #ifdef DEBUG_POLL_TIME_FOR_ADDR
                 if (pReqRec->isPolling() && (pReqRec->getAddrAndSlot().addr == DEBUG_POLL_TIME_FOR_ADDR))
                 {
-                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slot+1 %s elapsed %ld", 
+                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slotNum %s elapsed %ld", 
                                 pReqRec->getAddrAndSlot().toString().c_str(), 
                                 Raft::timeElapsed(millis(), _debugLastPollTimeMs));
                     _debugLastPollTimeMs = millis();
@@ -400,7 +400,7 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
     // Debug
     String writeDataStr;
     Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-    LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slot+1 %s writeData %s readLen %d delayMs %d", 
+    LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slotNum %s writeData %s readLen %d delayMs %d", 
                 reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
 #endif
 

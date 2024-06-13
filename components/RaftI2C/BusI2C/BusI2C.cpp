@@ -448,7 +448,7 @@ void BusI2C::i2cWorkerTask()
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
 {
 #ifdef DEBUG_I2C_SYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendSync addr@slot+1 writeLen %d readLen %d reqType %d",
+    LOG_I(MODULE_PREFIX, "I2CSendSync addr@slotNum writeLen %d readLen %d reqType %d",
                     pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType());
 #endif
@@ -490,7 +490,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
 {
 #ifdef DEBUG_I2C_ASYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slot+1 %s writeLen %d readLen %d reqType %d pollListIdx %d",
+    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slotNum %s writeLen %d readLen %d reqType %d pollListIdx %d",
                     pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
 #endif
