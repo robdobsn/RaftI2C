@@ -61,10 +61,10 @@ void BusPowerController::setup(const RaftJsonIF& config)
         }
 
         // Get the min slot + 1 for the power controller
-        uint32_t minSlotPlus1 = pwrCtrlElem.getLong("minSlotPlus1", 0);
-        if (minSlotPlus1 == 0)
+        uint32_t minSlotNum = pwrCtrlElem.getLong("minSlotNum", 0);
+        if (minSlotNum == 0)
         {
-            LOG_W(MODULE_PREFIX, "setupPowerControl minSlotPlus1 %d INVALID", minSlotPlus1);
+            LOG_W(MODULE_PREFIX, "setupPowerControl minSlotNum %d INVALID", minSlotNum);
             continue;
         }
 
@@ -77,11 +77,11 @@ void BusPowerController::setup(const RaftJsonIF& config)
         }
 
         // Create a record for this power controller
-         _pwrCtrlRecs.push_back(PowerControlRec(pwrCtrlDeviceAddr, minSlotPlus1, numSlots));
+         _pwrCtrlRecs.push_back(PowerControlRec(pwrCtrlDeviceAddr, minSlotNum, numSlots));
 
 #ifdef DEBUG_POWER_CONTROL_SETUP
-        LOG_I(MODULE_PREFIX, "setupPowerControl dev %s addr 0x%02x minSlotPlus1 %d numSlots %d", 
-                pwrCtrlDeviceType.c_str(), pwrCtrlDeviceAddr, minSlotPlus1, numSlots);
+        LOG_I(MODULE_PREFIX, "setupPowerControl dev %s addr 0x%02x minSlotNum %d numSlots %d", 
+                pwrCtrlDeviceType.c_str(), pwrCtrlDeviceAddr, minSlotNum, numSlots);
 #endif
     }
 }
@@ -94,13 +94,13 @@ void BusPowerController::loop()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if power on a slot is stable
-/// @param slotPlus1 Slot number (1-based)
+/// @param slotNum Slot number (1-based)
 /// @return True if power is stable
-bool BusPowerController::isSlotPowerStable(uint32_t slotPlus1)
+bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 {
     // Get the power control record
     uint32_t slotIdx = 0;
-    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotNum, slotIdx);
 
     // If the power isn't controlled then assume power is stable
     if (pPwrCtrlRec == nullptr)
@@ -115,35 +115,35 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotPlus1)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Power cycle slot
-/// @param slotPlus1 Slot number (1-based) - 0 indicates power cycle entire bus
-void BusPowerController::powerCycleSlot(uint32_t slotPlus1)
+/// @param slotNum Slot number (1-based) - 0 indicates power cycle entire bus
+void BusPowerController::powerCycleSlot(uint32_t slotNum)
 {
-    // TODO - implement bus-wide power management and cycle entire bus here if slotPlus1 == 0
+    // TODO - implement bus-wide power management and cycle entire bus here if slotNum == 0
 
     // Create a vector of slots to power cycle
-    std::vector<uint32_t> slotPlus1VecToPowerCycle;
-    if (slotPlus1 == 0)
+    std::vector<uint32_t> slotNumVecToPowerCycle;
+    if (slotNum == 0)
     {
         // Add all slots to the list
         for (PowerControlRec& pwrCtrlRec : _pwrCtrlRecs)
         {
             for (uint32_t slotIdx = 0; slotIdx < pwrCtrlRec.pwrCtrlSlotRecs.size(); slotIdx++)
             {
-                slotPlus1VecToPowerCycle.push_back(pwrCtrlRec.minSlotPlus1 + slotIdx);
+                slotNumVecToPowerCycle.push_back(pwrCtrlRec.minSlotNum + slotIdx);
             }
         }
     }
     else
     {
-        slotPlus1VecToPowerCycle.push_back(slotPlus1);
+        slotNumVecToPowerCycle.push_back(slotNum);
     }
 
     // Iterate over vector
-    for (auto slotPlus1 : slotPlus1VecToPowerCycle)
+    for (auto slotNum : slotNumVecToPowerCycle)
     {
         // Get the power control record
         uint32_t slotIdx = 0;
-        PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+        PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotNum, slotIdx);
         if (pPwrCtrlRec == nullptr)
             continue;
 
@@ -151,7 +151,7 @@ void BusPowerController::powerCycleSlot(uint32_t slotPlus1)
         PowerControlSlotRec& slotRec = pPwrCtrlRec->pwrCtrlSlotRecs[slotIdx];
 
 #ifdef DEBUG_POWER_CONTROL_STATES
-        LOG_I(MODULE_PREFIX, "powerCycleSlot slotPlus1 %d slotIdx %d power off", slotPlus1, slotIdx);
+        LOG_I(MODULE_PREFIX, "powerCycleSlot slotNum %d slotIdx %d power off", slotNum, slotIdx);
 #endif
 
         // Turn the slot power off
@@ -185,7 +185,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, STARTUP_POWER_OFF_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d init voltage off", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotNum %d slotIdx %d init voltage off", pwrCtrlRec.minSlotNum + slotIdx, slotIdx);
 #endif
                         pwrCtrlRec.setVoltageLevel(slotIdx, POWER_CONTROL_OFF);
                         slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, timeNowMs);
@@ -195,7 +195,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, VOLTAGE_STABILIZING_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage is stable", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotNum %d slotIdx %d voltage is stable", pwrCtrlRec.minSlotNum + slotIdx, slotIdx);
 #endif
                         slotRec.setState(SLOT_POWER_ON_LOW_V, timeNowMs);
                     }
@@ -204,7 +204,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                     if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, POWER_CYCLE_OFF_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotPlus1 %d slotIdx %d voltage 3V3", pwrCtrlRec.minSlotPlus1 + slotIdx, slotIdx);
+                        LOG_I(MODULE_PREFIX, "taskService slotNum %d slotIdx %d voltage 3V3", pwrCtrlRec.minSlotNum + slotIdx, slotIdx);
 #endif
                         pwrCtrlRec.setVoltageLevel(slotIdx, POWER_CONTROL_3V3);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
@@ -224,24 +224,24 @@ void BusPowerController::taskService(uint64_t timeNowUs)
     }
 }
 
-BusPowerController::PowerControlRec* BusPowerController::getPowerControlRec(uint32_t slotPlus1, uint32_t& slotIdx)
+BusPowerController::PowerControlRec* BusPowerController::getPowerControlRec(uint32_t slotNum, uint32_t& slotIdx)
 {
     // Iterate through power control records
     for (PowerControlRec& pwrCtrlRec : _pwrCtrlRecs)
     {
-        if ((slotPlus1 >= pwrCtrlRec.minSlotPlus1) && (slotPlus1 < pwrCtrlRec.minSlotPlus1 + pwrCtrlRec.pwrCtrlSlotRecs.size()))
+        if ((slotNum >= pwrCtrlRec.minSlotNum) && (slotNum < pwrCtrlRec.minSlotNum + pwrCtrlRec.pwrCtrlSlotRecs.size()))
         {
-            slotIdx = slotPlus1 - pwrCtrlRec.minSlotPlus1;
+            slotIdx = slotNum - pwrCtrlRec.minSlotNum;
             return &pwrCtrlRec;
         }
     }
     return nullptr;
 }
 
-bool BusPowerController::isSlotPowerControlled(uint32_t slotPlus1)
+bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
 {
     uint32_t slotIdx = 0;
-    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotPlus1, slotIdx);
+    PowerControlRec* pPwrCtrlRec = getPowerControlRec(slotNum, slotIdx);
     return pPwrCtrlRec != nullptr;
 }
 
@@ -279,9 +279,9 @@ void BusPowerController::PowerControlRec::setVoltageLevel(uint32_t slotIdx, Powe
     }
 
 #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "setVoltageLevel hasChanged %s slotIdx %d slotPlus1 %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
+    LOG_I(MODULE_PREFIX, "setVoltageLevel hasChanged %s slotIdx %d slotNum %d powerLevel %d newRegVal 0x%02x(was 0x%02x)", 
             ioExpanderDirty ? "YES" : "NO",
-            slotIdx, minSlotPlus1+slotIdx, powerLevel, 
+            slotIdx, minSlotNum+slotIdx, powerLevel, 
             pwrCtrlGPIOReg, prevReg);
 #endif
 }

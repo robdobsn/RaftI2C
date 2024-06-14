@@ -30,13 +30,13 @@ public:
     void taskService(uint64_t timeNowUs);
 
     // Check if slot has stable power
-    bool isSlotPowerStable(uint32_t slotPlus1);
+    bool isSlotPowerStable(uint32_t slotNum);
 
     // Power cycle slot
-    void powerCycleSlot(uint32_t slotPlus1);
+    void powerCycleSlot(uint32_t slotNum);
 
     // Check if slot power is controlled
-    bool isSlotPowerControlled(uint32_t slotPlus1);
+    bool isSlotPowerControlled(uint32_t slotNum);
 
 private:
     // Bus access function
@@ -90,8 +90,8 @@ private:
     class PowerControlRec
     {
     public:
-        PowerControlRec(uint32_t addr, uint32_t minSlotPlus1, uint32_t numSlots) :
-            pwrCtrlAddr(addr), minSlotPlus1(minSlotPlus1)
+        PowerControlRec(uint32_t addr, uint32_t minSlotNum, uint32_t numSlots) :
+            pwrCtrlAddr(addr), minSlotNum(minSlotNum)
         {
             pwrCtrlSlotRecs.resize(numSlots);
         }
@@ -114,7 +114,7 @@ private:
         bool ioExpanderDirty = true;
 
         // Per slot info
-        uint16_t minSlotPlus1 = 0;
+        uint16_t minSlotNum = 0;
         std::vector<PowerControlSlotRec> pwrCtrlSlotRecs;
     };
 
@@ -130,6 +130,6 @@ private:
     std::vector<PowerControlRec> _pwrCtrlRecs;
 
     // Helpers
-    PowerControlRec* getPowerControlRec(uint32_t slotPlus1, uint32_t& slotIdx);
+    PowerControlRec* getPowerControlRec(uint32_t slotNum, uint32_t& slotIdx);
 
 };

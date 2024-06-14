@@ -102,14 +102,14 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
                 {
                     // If device test record says slot 0 then the test device is connected to the main bus
                     // so always connected
-                    if (testConfigAddrAndSlot.slotPlus1 == 0)
+                    if (testConfigAddrAndSlot.slotNum == 0)
                     {
                         reslt = RaftI2CCentralIF::ACCESS_RESULT_OK;
                         break;
                     }
                     // Calculate the extender idx and mask required
-                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotPlus1 - 1) / BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT;
-                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotPlus1 - 1) % BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT);
+                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotNum - 1) / BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT;
+                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotNum - 1) % BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT);
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
@@ -265,7 +265,7 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
     {
         if (!busStatusMgr.isElemOnline(addr))
         {
-            LOG_E(MODULE_PREFIX, "Address 0x%02x slotNum %d should be online", addr.addr, addr.slotPlus1);
+            LOG_E(MODULE_PREFIX, "Address 0x%02x slotNum %d should be online", addr.addr, addr.slotNum);
             return false;
         }
         // Remove from list
@@ -302,8 +302,8 @@ TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(11) == 0, "getNextSlotNum 11 not 0 when no extenders");
 
     // Add some bus multiplexers
-    busMultiplexers.elemStateChange(0x73, true); // SlotPlus1 range = 25-32 (inclusive)
-    busMultiplexers.elemStateChange(0x75, true); // SlotPlus1 range = 41-48 (inclusive)
+    busMultiplexers.elemStateChange(0x73, true); // SlotNum range = 25-32 (inclusive)
+    busMultiplexers.elemStateChange(0x75, true); // SlotNum range = 41-48 (inclusive)
 
     // Check next slot
     TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(0) == 25, "getNextSlotNum 0 not 25");

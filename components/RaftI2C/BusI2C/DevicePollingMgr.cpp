@@ -54,7 +54,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 #endif
 
         // Enable the slot
-        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotPlus1);
+        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
         if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
             return;
 

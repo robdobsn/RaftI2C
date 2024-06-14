@@ -161,7 +161,7 @@
                             {
                                 "dev": "PCA9535",
                                 "addr": "0x26",
-                                "minSlotPlus1": 41,
+                                "minSlotNum": 41,
                                 "numSlots": 8
                             }
                         ]

@@ -152,8 +152,9 @@
                             {
                                 "dev": "PCA9535",
                                 "addr": "0x26",
-                                "ioNumsStart": 100
-                            }
+                                "minSlotNum": 1,
+                                "numSlots": 6,
+                                
                         ]
                     }
                 }

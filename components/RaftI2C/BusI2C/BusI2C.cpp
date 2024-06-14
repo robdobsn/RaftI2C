@@ -502,7 +502,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
         return rslt;
 
     // Check if a bus mux slot is specified
-    rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotPlus1);
+    rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
     if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
         return rslt;
 

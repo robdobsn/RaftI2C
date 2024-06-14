@@ -228,7 +228,7 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
             isOnline = pAddrStatus->isOnline;
 
             // Check if this is a main-bus address (not on an extender) and keep track of all main-bus addresses if so
-            if (isNewStatusChange && isOnline && (addrAndSlot.slotPlus1 == 0))
+            if (isNewStatusChange && isOnline && (addrAndSlot.slotNum == 0))
             {
                 // Set address found on main bus
                 setAddrFoundOnMainBus(addrAndSlot.addr);
@@ -347,7 +347,7 @@ bool BusStatusMgr::isAddrFoundOnAnyExtender(uint32_t addr) const
     for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
         if ((addrStatus.addrAndSlot.addr == addr) && 
-                (addrStatus.addrAndSlot.slotPlus1 != 0))
+                (addrStatus.addrAndSlot.slotNum != 0))
         {
             rslt = true;
             break;
@@ -492,8 +492,8 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) c
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Inform that slot is powering down
-/// @param slotPlus1 slotPlus1
-void BusStatusMgr::slotPoweringDown(uint32_t slotPlus1)
+/// @param slotNum slotNum
+void BusStatusMgr::slotPoweringDown(uint32_t slotNum)
 {
     // Find all devices on this slot and indicate that they are offline
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -502,7 +502,7 @@ void BusStatusMgr::slotPoweringDown(uint32_t slotPlus1)
     // Go through all devices and set status
     for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
-        if (addrStatus.addrAndSlot.slotPlus1 == slotPlus1)
+        if (addrStatus.addrAndSlot.slotNum == slotNum)
         {
             addrStatus.isChange = addrStatus.isOnline;
             addrStatus.isOnline = false;

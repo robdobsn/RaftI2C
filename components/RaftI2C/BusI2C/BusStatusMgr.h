@@ -115,8 +115,8 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Inform that slot is powering down
-    /// @param slotPlus1 slotPlus1
-    void slotPoweringDown(uint32_t slotPlus1);
+    /// @param slotNum slotNum
+    void slotPoweringDown(uint32_t slotNum);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Inform that the bus is stuck
@@ -146,7 +146,7 @@ private:
         for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
         {
             if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
-                    (addrStatus.addrAndSlot.slotPlus1 == addrAndSlot.slotPlus1))
+                    (addrStatus.addrAndSlot.slotNum == addrAndSlot.slotNum))
                 return &addrStatus;
         }
         return nullptr;
@@ -159,7 +159,7 @@ private:
         for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
         {
             if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
-                    (addrStatus.addrAndSlot.slotPlus1 == addrAndSlot.slotPlus1))
+                    (addrStatus.addrAndSlot.slotNum == addrAndSlot.slotNum))
                 return &addrStatus;
         }
         return nullptr;
