@@ -11,9 +11,9 @@
 #include "BusRequestInfo.h"
 #include "Logger.h"
 
-#define DEBUG_DEVICE_IDENT_MGR
-#define DEBUG_DEVICE_IDENT_MGR_DETAIL
-#define DEBUG_HANDLE_BUS_DEVICE_INFO
+// #define DEBUG_DEVICE_IDENT_MGR
+// #define DEBUG_DEVICE_IDENT_MGR_DETAIL
+// #define DEBUG_HANDLE_BUS_DEVICE_INFO
 
 static const char* MODULE_PREFIX = "DeviceIdentMgr";
 
