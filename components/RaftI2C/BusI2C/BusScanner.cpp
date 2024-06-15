@@ -11,13 +11,15 @@
 #include "BusI2CRequestRec.h"
 #include "DeviceTypeRecords.h"
 
-// #define DEBUG_BUS_SCANNER
+// #define DEBUG_ELEM_STATUS_UPDATE
 // #define DEBUG_MOVE_TO_NORMAL_SCANNING
 // #define DEBUG_SCAN_PRIORITY_LISTS
 // #define DEBUG_SCAN_SEQUENCE
 // #define DEBUG_SCAN_SEQUENCE_PRIORITY_LISTS
 // #define DEBUG_NO_VALID_ADDRESS
 // #define DEBUG_CANT_ENABLE_SLOT
+#define DEBUG_FORCE_SIMPLE_LINEAR_SCANNING
+#define DEBUG_LIMIT_NON_MUX_ADDRS_TO_LIST 0x6a, 0x70
 
 static const char* MODULE_PREFIX = "BusScanner";
 
@@ -127,41 +129,20 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
     {
         case SCAN_STATE_IDLE:
         {
-            // Init vars and go to scan extenders
+            // Init vars and go to scan multiplexers
             _scanAddressesCurrentList = 0;
             _scanPriorityRecs[_scanAddressesCurrentList].scanListIndex = 0;
             _scanPriorityRecs[_scanAddressesCurrentList].scanSlotNum = 0;
-            _scanState = SCAN_STATE_SCAN_EXTENDERS;
+            _scanState = SCAN_STATE_SCAN_MULTIPLEXERS;
             _scanStateRepeatCount = 0;
+
+            // Disable all slots (only works if a reset pin is defined since we don't know about
+            // multiplexer addresses at this stage - but could be helpful if a soft reset occurs)
+            _busMultiplexers.disableAllSlots(true);
             break;
         }
-        case SCAN_STATE_SCAN_EXTENDERS:
+        case SCAN_STATE_SCAN_MULTIPLEXERS:
         case SCAN_STATE_MAIN_BUS:
-        {
-            // Disable all slots
-            _busMultiplexers.disableAllSlots(false);
-
-            // Scan loop for extenders and main bus
-            while (true)
-            {
-                // Get address to scan
-                uint32_t addr = 0;
-                uint32_t slotNum = 0;
-                if (!getAddrAndGetSlotToScanNext(addr, slotNum, sweepCompleted, true, _scanState == SCAN_STATE_SCAN_EXTENDERS, true))
-                    break;
-
-                // Scan main bus elements - simple linear scanning with all slots turned off
-                RaftI2CCentralIF::AccessResultCode rslt = scanOneAddress(addr);
-                _busMultiplexers.elemStateChange(addr, 0, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
-                updateBusElemState(addr, 0, rslt);
-
-                // Check sweep completed or timeout
-                if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, maxFastTimeInLoopUs))
-                    break;
-            }
-            break;
-        }
-        
         case SCAN_STATE_SCAN_FAST:
         case SCAN_STATE_SCAN_SLOW:
         {
@@ -174,7 +155,16 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
             while (true)
             {
                 // Get next address to scan
-                addrIsValid = getAddrAndGetSlotToScanNext(addr, slotNum, sweepCompleted, false, false, false);
+                addrIsValid = getAddrAndSlotToScanNext(addr, slotNum, sweepCompleted, 
+                            _scanState == SCAN_STATE_MAIN_BUS,
+                            _scanState == SCAN_STATE_SCAN_MULTIPLEXERS,
+#ifdef DEBUG_FORCE_SIMPLE_LINEAR_SCANNING
+                true
+#else
+                false
+#endif
+);
+
                 if (!addrIsValid)
                 {
 #ifdef DEBUG_NO_VALID_ADDRESS
@@ -188,13 +178,25 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                 if ((slotNum != 0) && _busStatusMgr.isAddrFoundOnMainBus(addr))
                     continue;
 
-                // Enable the slot (if there is one)
-                auto rslt = _busMultiplexers.enableOneSlot(slotNum);
-                if (rslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
+                // Avoid scanning a bus multiplexer address on the wrong slot
+                if (_busMultiplexers.isBusMultiplexer(addr))
                 {
-                    // Handle the scan
-                    rslt = scanOneAddress(addr);
-                    _busMultiplexers.elemStateChange(addr, slotNum, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK);
+                    if (!_busMultiplexers.isSlotCorrect(addr, slotNum))
+                        continue;
+                }
+
+                // Scan the address
+                bool failedToEnableSlot = false;
+                auto rslt = scanOneAddress(addr, slotNum, failedToEnableSlot);
+                if (!failedToEnableSlot)
+                {
+                    if (_busMultiplexers.elemStateChange(addr, slotNum, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK))
+                    {
+                        // We get here if there is a change to a mux state (new mux, online/offline, etc)
+                        // so we need to move back to scanning muliplexers
+                        _scanStateRepeatCount = 0;
+                        _scanState = SCAN_STATE_SCAN_MULTIPLEXERS;
+                    }
                     updateBusElemState(addr, slotNum, rslt);
                 }
                 else if (rslt == RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK)
@@ -209,13 +211,13 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                     break;
                 }
 
+                // Disable all slots
+                _busMultiplexers.disableAllSlots(false);
+
                 // Check sweepComplete or timeout
                 if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, _scanState == SCAN_STATE_SCAN_FAST ? maxFastTimeInLoopUs : maxSlowTimeInLoopUs))
                     break;
             }
-
-            // Disable all slots
-            _busMultiplexers.disableAllSlots(false);
             break;
         }
     }
@@ -238,7 +240,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
         {
             switch (_scanState)
             {
-                case SCAN_STATE_SCAN_EXTENDERS: _scanState = SCAN_STATE_MAIN_BUS; break;
+                case SCAN_STATE_SCAN_MULTIPLEXERS: _scanState = SCAN_STATE_MAIN_BUS; break;
                 case SCAN_STATE_MAIN_BUS: _scanState = SCAN_STATE_SCAN_FAST; break;
                 case SCAN_STATE_SCAN_FAST: _scanState = SCAN_STATE_SCAN_SLOW; break;
                 default: break;
@@ -259,7 +261,7 @@ bool BusScanner::isScanPending(uint32_t curTimeMs)
     switch(_scanState)
     {
         case SCAN_STATE_IDLE:
-        case SCAN_STATE_SCAN_EXTENDERS:
+        case SCAN_STATE_SCAN_MULTIPLEXERS:
         case SCAN_STATE_MAIN_BUS:
         case SCAN_STATE_SCAN_FAST:
             return true;
@@ -275,31 +277,28 @@ bool BusScanner::isScanPending(uint32_t curTimeMs)
 /// @param slotNum (out) Slot number (1-based)
 /// @param sweepCompleted (out) Sweep completed
 /// @param onlyMainBus Only main bus (don't scan slots)
-/// @param onlyExtenderAddrs Only return extender addresses (only valid if ignorePriorities is true)
+/// @param onlyMuxAddrs Only return mux addresses (only valid if ignorePriorities is true)
 /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
 /// @return True if valid
-bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted,
-            bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities)
+bool BusScanner::getAddrAndSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted,
+            bool onlyMainBus, bool onlyMuxAddrs, bool ignorePriorities)
 {
     // Flag for addresses on a slot done
     bool addressesOnSlotDone = false;
 
-    // Check for simple scanning sequence
-    bool useSimpleScanningSequence = ignorePriorities;
-
     // Check if we need to switch to simple scanning because of a lack of priority lists, etc
-    if (!useSimpleScanningSequence)
+    if (!ignorePriorities)
     {
         if ((_scanAddressesCurrentList >= _scanPriorityLists.size()) ||
             (_scanPriorityLists[_scanAddressesCurrentList].size() == 0))
         {
             // Revert to simple scanning
-            useSimpleScanningSequence = true;
+            ignorePriorities = true;
         }
     }
 
     // Check priority scanning still ok
-    if (!useSimpleScanningSequence)
+    if (!ignorePriorities)
     {
         // Get address corresponding to index and increment index
         addr = getAddrFromScanListIndex(_scanPriorityRecs[_scanAddressesCurrentList], SCAN_INDEX_PRIORITY_LIST_INDEX, addressesOnSlotDone);
@@ -322,7 +321,7 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, 
                 // Increment the count and check if this list is ready to process
                 _scanPriorityRecs[_scanAddressesCurrentList].count++;
 #ifdef DEBUG_SCAN_SEQUENCE_PRIORITY_LISTS
-                LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext %s %s %s incrementing list %d count %d maxCount %d",
+                LOG_I(MODULE_PREFIX, "getAddrAndSlotToScanNext %s %s %s incrementing list %d count %d maxCount %d",
                             _scanPriorityRecs[_scanAddressesCurrentList].count >= _scanPriorityRecs[_scanAddressesCurrentList].maxCount ? "breaking" : "looping",
                             onlyMainBus ? "main-bus" : "inc-slots", 
                             ignorePriorities ? "ignore-priorities" : "priority",
@@ -341,26 +340,26 @@ bool BusScanner::getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, 
     }
 
     // Check if we need to use a simple scanning sequence
-    if (useSimpleScanningSequence)
+    else
     {
         // Ensure highest-priority record is used
         _scanAddressesCurrentList = 0;
 
         // Simply loop through addresses
-        addr = getAddrFromScanListIndex(_scanPriorityRecs[_scanAddressesCurrentList], onlyExtenderAddrs ? SCAN_INDEX_EXTENDERS_ONLY : SCAN_INDEX_I2C_ADDRESSES, addressesOnSlotDone);
+        addr = getAddrFromScanListIndex(_scanPriorityRecs[_scanAddressesCurrentList], onlyMuxAddrs ? SCAN_INDEX_MULTIPLEXERS_ONLY : SCAN_INDEX_I2C_ADDRESSES, addressesOnSlotDone);
     }
 
     // Get the slot to scan
     slotNum = getSlotNumFromSlotIdx(_scanPriorityRecs[_scanAddressesCurrentList], sweepCompleted, onlyMainBus, addressesOnSlotDone);
 
 #ifdef DEBUG_SCAN_SEQUENCE
-    LOG_I(MODULE_PREFIX, "getAddrAndGetSlotToScanNext %s slots addr %02x slotNum %d sweepCompleted %s addressesOnSlotDone %s onlyMainBus %s onlyExtenderAddrs %s ignorePriorities %s", 
+    LOG_I(MODULE_PREFIX, "getAddrAndSlotToScanNext %s slots addr %02x slotNum %d sweepCompleted %s addressesOnSlotDone %s onlyMainBus %s onlyMuxAddrs %s ignorePriorities %s", 
                 getScanStateStr(_scanState),
                 addr, slotNum,
                 sweepCompleted ? "Y" : "N",
                 addressesOnSlotDone ? "Y" : "N",
                 onlyMainBus ? "Y" : "N",
-                onlyExtenderAddrs ? "Y" : "N",
+                onlyMuxAddrs ? "Y" : "N",
                 ignorePriorities ? "Y" : "N");
 #endif
 
@@ -378,7 +377,7 @@ BusElemAddrType BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, S
     indexWrap = false;
     switch(scanMode)
     {
-        case SCAN_INDEX_EXTENDERS_ONLY:
+        case SCAN_INDEX_MULTIPLEXERS_ONLY:
         {
             uint32_t extMinAddr = _busMultiplexers.getMinAddr();
             uint32_t extMaxAddr = _busMultiplexers.getMaxAddr();
@@ -395,11 +394,21 @@ BusElemAddrType BusScanner::getAddrFromScanListIndex(ScanPriorityRec& scanRec, S
         }
         case SCAN_INDEX_I2C_ADDRESSES:
         {
-            if (scanRec.scanListIndex >= (I2C_BUS_ADDRESS_MAX - I2C_BUS_ADDRESS_MIN + 1))
+#ifdef DEBUG_LIMIT_NON_MUX_ADDRS_TO_LIST
+            static constexpr uint32_t nonMuxAddrs[] = { DEBUG_LIMIT_NON_MUX_ADDRS_TO_LIST };
+            static constexpr uint32_t nonMuxAddrsCount = sizeof(nonMuxAddrs)/sizeof(nonMuxAddrs[0]);
+            static const uint32_t maxScanIndex = nonMuxAddrsCount;
+            if (scanRec.scanListIndex >= maxScanIndex)
+                scanRec.scanListIndex = 0;
+            uint32_t addr = nonMuxAddrs[scanRec.scanListIndex];
+#else
+            static const uint32_t maxScanIndex = (I2C_BUS_ADDRESS_MAX - I2C_BUS_ADDRESS_MIN + 1);
+            if (scanRec.scanListIndex >= maxScanIndex)
                 scanRec.scanListIndex = 0;
             uint32_t addr = I2C_BUS_ADDRESS_MIN + scanRec.scanListIndex;
+#endif
             scanRec.scanListIndex++;
-            if (scanRec.scanListIndex >= (I2C_BUS_ADDRESS_MAX - I2C_BUS_ADDRESS_MIN + 1))
+            if (scanRec.scanListIndex >= maxScanIndex)
             {
                 scanRec.scanListIndex = 0;
                 indexWrap = true;
@@ -454,7 +463,7 @@ uint32_t BusScanner::getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweep
         return 0;
     }
 
-    // We need to ensure that the main bus is scanned more frequently than the slots - so use indices 0 and 1 for the main bus here
+    // We want to ensure that the main bus is scanned more frequently than the slots - so use indices 0 and 1 for the main bus here
     // and then the slots are from 2 onwards
     // Check slot index is valid
     if (scanRec.scanSlotNum > _busMultiplexers.getSlotIndices().size() + 1)
@@ -496,9 +505,21 @@ void BusScanner::requestScan(bool enableSlowScan, bool requestFastScan)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Scan one address
 /// @param addr Address
+/// @param slotNum SlotNum (1-based)
+/// @param failedToEnableSlot (out) Failed to enable slot
 /// @return Access result code
-RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr)
+RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& failedToEnableSlot)
 {
+    // Enable the slot (if there is one)
+    auto rslt = _busMultiplexers.enableOneSlot(slotNum);
+    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    {
+        failedToEnableSlot = true;
+        return rslt;
+    }
+
+    // Handle the scan
+    failedToEnableSlot = false;
     BusI2CAddrAndSlot addrAndSlot(addr, 0);
     BusI2CRequestRec reqRec(BUS_REQ_TYPE_SLOW_SCAN,
                 addrAndSlot,

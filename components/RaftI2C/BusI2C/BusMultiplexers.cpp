@@ -16,11 +16,15 @@
 // #define DEBUG_BUS_MUX_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
-// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+#define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE_CLEAR
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
-// #define DEBUG_SET_SLOT_ENABLES
-// #define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
+#define DEBUG_SET_SLOT_ENABLES
+#define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
+#define DEBUG_BUS_MUX_RESET
+#define DEBUG_BUS_MUX_RESET_MULT_LEVEL
+#define DEBUG_BUS_MUX_RESET_CASCADE
 
 static const char* MODULE_PREFIX = "BusMux";
 
@@ -116,39 +120,117 @@ void BusMultiplexers::taskService()
 /// @param addr Address of element
 /// @param slotNum Slot number (1-based)
 /// @param elemResponding True if element is responding
-void BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elemResponding)
+/// @return True if a change was detected (e.g. new mux or change in online/offline status)
+bool BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elemResponding)
 {
     // Check if this is a bus multiplexer
     if (!isBusMultiplexer(addr))
-        return;
+        return false;
 
     // Update the bus multiplexer record
     bool changeDetected = false;
-    uint32_t elemIdx = addr-_minAddr;
+    uint32_t muxIdx = addr-_minAddr;
+    BusMux& busMux = _busMuxRecs[muxIdx];
     if (elemResponding)
     {
-        if (!_busMuxRecs[elemIdx].isDetected)
+        // Check if this is a new mux
+        if (!busMux.isOnline)
         {
-            changeDetected = true;
-            _busMuxRecs[elemIdx].maskWrittenOk = false;
-            _busMuxRecs[elemIdx].muxConnSlotNum = slotNum;
+            // Increment detection count
+            busMux.detectionCount++;
+            if (busMux.detectionCount >= BusMux::DETECTION_COUNT_THRESHOLD)
+            {
+                // Check matching slot number to last detection
+                if (busMux.muxConnSlotNum == slotNum)
+                {
+                    // Detected
+                    busMux.isOnline = true;
+                    changeDetected = true;
+                    busMux.maskWrittenOk = false;
+                    if (slotNum > 0)
+                        _secondLevelMuxDetected = true;
 
             // Debug
 #ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
-            LOG_I(MODULE_PREFIX, "elemStateChange new mux addr 0x%02x slotNum %d", addr, slotNum);
+                    LOG_I(MODULE_PREFIX, "elemStateChange MUX ONLINE addr 0x%02x slotNum %d muxIdx %d secondLevelMuxDetected %d detectionCount %d", 
+                            addr, slotNum, muxIdx, _secondLevelMuxDetected, busMux.detectionCount);
 #endif
+
+                    // Attempt to clear all slots in muxes cascaded from this one
+                    for (uint32_t slotIdx = 0; slotIdx < I2C_BUS_MUX_SLOT_COUNT; slotIdx++)
+                    {
+                        uint32_t slotMask = 1 << slotIdx;
+                        // Write to bus multiplexer slot enables
+#ifdef DEBUG_BUS_MUX_RESET_CASCADE
+                        LOG_I(MODULE_PREFIX, "elemStateChange resp resetCascade muxIdx %d slotMask 0x%02x", 
+                                    muxIdx, slotMask);
+#endif
+                        writeSlotMaskToMux(muxIdx, slotMask, true, 0);
+                        resetCascadedMuxes(muxIdx);              
+                    }
+                }
+                else
+                {
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+                    LOG_I(MODULE_PREFIX, "elemStateChange NO SLOT MATCH %d addr 0x%02x slotNum %d muxIdx %d", 
+                                busMux.muxConnSlotNum, addr, slotNum, muxIdx);
+#endif
+                }
+                // Reset detection count
+                busMux.detectionCount = 0;
+            }
+            else
+            {
+                // Debug
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+                LOG_I(MODULE_PREFIX, "elemStateChange responding detectionCount %d addr 0x%02x slotNum %d muxIdx %d", 
+                        busMux.detectionCount, addr, slotNum, muxIdx);
+#endif
+            }
+
+            // Store slot number
+            busMux.muxConnSlotNum = slotNum;
         }
-        _busMuxRecs[elemIdx].isDetected = true;
+        else
+        {
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE_CLEAR
+            LOG_I(MODULE_PREFIX, "elemStateChange responding ALREADY ONLINE reset det count addr 0x%02x slotNum %d muxIdx %d", 
+                        addr, slotNum, muxIdx);
+#endif
+            // Reset detection count
+            busMux.detectionCount = 0;
+        }
     }
-    else if (_busMuxRecs[elemIdx].isDetected)
+    else 
     {
-        changeDetected = true;
+        if (busMux.isOnline)
+        {
+            if (busMux.muxConnSlotNum == slotNum)
+            {
+                busMux.detectionCount++;
+                if (busMux.detectionCount >= BusMux::DETECTION_COUNT_THRESHOLD)
+                {
+                    busMux.isOnline = false;
+                    changeDetected = true;
+                }
+            }
 
         // Debug
 #ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
-        LOG_I(MODULE_PREFIX, "elemStateChange mux now offline so re-init 0x%02x slotNum %d", addr, slotNum);
+            LOG_I(MODULE_PREFIX, "elemStateChange not-responding %s addr 0x%02x slotNum %d muxIdx %d detectionCount %d", 
+                    changeDetected ? "MUX OFFLINE" : "detect count inc",
+                    addr, slotNum, muxIdx, busMux.detectionCount);
 #endif
-
+        }
+        else
+        {
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE_CLEAR
+            LOG_I(MODULE_PREFIX, "elemStateChange not responding ALREADY OFFLINE reset det count addr 0x%02x slotNum %d mudxIdx %d", 
+                        addr, slotNum, muxIdx);
+#endif
+            // Reset detection count
+            busMux.detectionCount = 0;
+        }
     }
 
     // Update the slot indices
@@ -158,16 +240,23 @@ void BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elem
         _busMuxSlotIndices.clear();
         for (uint32_t i = 0; i < _busMuxRecs.size(); i++)
         {
-            if (_busMuxRecs[i].isDetected)
+            if (_busMuxRecs[i].isOnline)
             {
                 for (uint32_t slot = 0; slot < I2C_BUS_MUX_SLOT_COUNT; slot++)
                     _busMuxSlotIndices.push_back(i * I2C_BUS_MUX_SLOT_COUNT + slot);
             }
         }
+
+#ifdef DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+        String debugStr;
+        for (auto slotIdx : _busMuxSlotIndices)
+            debugStr += String(slotIdx) + " ";
+        LOG_I(MODULE_PREFIX, "elemStateChange slotIndices %s", debugStr.c_str());
+#endif
     }
 
-    // Set the online status
-    _busMuxRecs[elemIdx].isOnline = elemResponding;
+    // Return change detected
+    return changeDetected;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -183,76 +272,109 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxI
     // Check valid
     if (muxIdx >= _busMuxRecs.size())
         return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+    BusMux& busMux = _busMuxRecs[muxIdx];
     // Check if this slot relies on another slot
     if (recurseLevel > MAX_RECURSE_LEVEL_MUX_CONNECTIONS)
         return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-    if (_busMuxRecs[muxIdx].muxConnSlotNum > 0)
+    if (busMux.muxConnSlotNum > 0)
     {
 #ifdef DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
-        LOG_I(MODULE_PREFIX, "setSlotEnables muxIdx %d slotMask 0x%02x force %d recurseLevel %d", 
-                muxIdx, slotMask, force, recurseLevel);
+        LOG_I(MODULE_PREFIX, "setSlotEnables MULTI_LEVEL muxIdx %d muxConnSlotNum %d slotMask 0x%02x force %d recurseLevel %d", 
+                muxIdx, busMux.muxConnSlotNum, slotMask, force, recurseLevel);
 #endif
         // Get the mux index and slot index
-        uint32_t muxConnSlotNum = _busMuxRecs[muxIdx].muxConnSlotNum;
+        uint32_t muxConnSlotNum = busMux.muxConnSlotNum;
         uint32_t muxConnMuxIdx = 0;
         uint32_t muxConnSlotIdx = 0;
-        if (!getMuxAndSlotIdx(muxConnSlotNum, muxConnMuxIdx, muxConnSlotIdx))
+        bool muxAndSlotOk = getMuxAndSlotIdx(muxConnSlotNum, muxConnMuxIdx, muxConnSlotIdx);
+        bool muxOnline = false;
+        bool muxPowerStable = false;
+        if (muxAndSlotOk)
+        {
+            // Check if the mux is online
+            muxOnline = _busMuxRecs[muxConnMuxIdx].isOnline;
+            if (muxOnline)
+            {
+                // Check if the mux has stable power
+                muxPowerStable = _busPowerController.isSlotPowerStable(muxConnSlotNum);
+            }
+        }
+        if (!muxAndSlotOk || !muxOnline || !muxPowerStable)
+        {
+            // Debug
+#ifdef DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
+            LOG_I(MODULE_PREFIX, "setSlotEnables MULTI_LEVEL muxIdx %d muxConnSlotNum %d slotMask 0x%02x force %d recurseLevel %d muxAndSlotOk %d muxOnline %d muxPowerStable %d", 
+                    muxIdx, busMux.muxConnSlotNum, slotMask, force, recurseLevel, muxAndSlotOk, muxOnline, muxPowerStable);
+#endif
             return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-        // Check if the mux is online
-        if (!_busMuxRecs[muxConnMuxIdx].isOnline)
-            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-        // Check if the slot is enabled
-        if ((_busMuxRecs[muxConnMuxIdx].curBitMask & (1 << muxConnSlotIdx)) == 0)
-            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        }
         // Recursively set the slot enables
-        return setSlotEnables(muxConnMuxIdx, slotMask, force, recurseLevel+1);
+        RaftI2CCentralIF::AccessResultCode rslt = setSlotEnables(muxConnMuxIdx, slotMask, force, recurseLevel+1);
+        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            return rslt;
     }
+    // Write to the mux register
+    return writeSlotMaskToMux(muxIdx, slotMask, force, recurseLevel);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Write slot mask to multiplexer
+/// @param muxIdx Multiplexer index
+/// @param slotMask Slot mask
+/// @param force Force enable/disable (even if status indicates it is not necessary)
+/// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
+/// @return Result code
+RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx, 
+            uint32_t slotMask, bool force, uint32_t recurseLevel)
+{
     // Check if slot initialized
-    if (!_busMuxRecs[muxIdx].maskWrittenOk)
+    BusMux& busMux = _busMuxRecs[muxIdx];
+    bool isInit = true;
+    if (!busMux.maskWrittenOk)
     {
-        force = true;
-        _busMuxRecs[muxIdx].maskWrittenOk = true;
+        isInit = false;
+        busMux.maskWrittenOk = true;
     }
     // Check if status indicates that the mask is already correct
-    if (!force)
+    bool writeNeeded = true;
+    if (!force && isInit)
     {
-        BusMux& busMux = _busMuxRecs[muxIdx];
         if (busMux.curBitMask == slotMask)
-            return RaftI2CCentralIF::ACCESS_RESULT_OK;
+            writeNeeded = false;
     }
-    // Calculate the address
-    uint32_t addr = _minAddr + muxIdx;
-    // Initialise bus multiplexer
-    BusI2CAddrAndSlot addrAndSlot(addr, 0);
-    uint8_t writeData[1] = { uint8_t(slotMask) };
-    BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                addrAndSlot,
-                0, sizeof(writeData),
-                writeData,
-                0,
-                0, 
-                nullptr, 
-                this);
-    auto rslt = _busI2CReqSyncFn(&reqRec, nullptr);
-    // Store the resulting mask information if the operation was successful
-    if (rslt == RaftI2CCentralIF::ACCESS_RESULT_OK)
+    // Handle write to mux register if needed
+    RaftI2CCentralIF::AccessResultCode rslt = RaftI2CCentralIF::ACCESS_RESULT_OK;
+    if (writeNeeded)
     {
-        _busMuxRecs[muxIdx].curBitMask = slotMask;
-    }
-    else
-    {
-        _busMuxRecs[muxIdx].maskWrittenOk = false;
+        // Calculate the address
+        uint32_t addr = _minAddr + muxIdx;
+        // Write to bus multiplexer slot enables
+        BusI2CAddrAndSlot addrAndSlot(addr, 0);
+        uint8_t writeData[1] = { uint8_t(slotMask) };
+        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    addrAndSlot,
+                    0, sizeof(writeData),
+                    writeData,
+                    0,
+                    0, 
+                    nullptr, 
+                    this);
+        rslt = _busI2CReqSyncFn(&reqRec, nullptr);
+        busMux.curBitMask = slotMask;
+        // Store the resulting mask information if the operation was successful
+        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            busMux.maskWrittenOk = false;
     }
 #ifdef DEBUG_SET_SLOT_ENABLES
-        LOG_I(MODULE_PREFIX, "setSlotEnables rslt %s(%d) muxIdx %d slotMask 0x%02x force %d recurseLevel %d", 
-                RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask, force, recurseLevel);
+        LOG_I(MODULE_PREFIX, "writeSlotMaskToMux rslt %s(%d) muxIdx %d slotMask 0x%02x force %d recurseLevel %d isInit %d writeNeeded %d", 
+                RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask, force, recurseLevel, isInit, writeNeeded);
 #endif
     return rslt;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Enable a single slot on bus multiplexer(s)
-/// @param slotNum Slot number (1-based)
+/// @param slotNum Slot number (1-based) - may be 0 for main bus
 /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or 
 ///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
 RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
@@ -343,32 +465,111 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 /// @brief Disable all slots on bus multiplexers
 void BusMultiplexers::disableAllSlots(bool force)
 {
-    // Check if reset is available
+    // Check if no reset pins specified
     if (_resetPins.size() == 0)
     {
-        // Set all bus multiplexer channels off
+        // No reset pins so just set all slots off
         for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
         {
             BusMux& busMux = _busMuxRecs[muxIdx];
-            if ((busMux.isDetected) && (busMux.isOnline))
-                setSlotEnables(muxIdx, 0, force);
+            if (busMux.isOnline)
+            {
+#ifdef DEBUG_BUS_MUX_RESET
+                LOG_I(MODULE_PREFIX, "disableAllSlots muxIdx %d write 0x00 force %d", 
+                            muxIdx, force);
+#endif
+                writeSlotMaskToMux(muxIdx, 0, force, 0);
+            }
         }
     }
     else
     {
-        // Reset bus multiplexers
-        for (auto resetPin : _resetPins)
+        // We have reset pins so assume first-level muxes have reset
+        // But don't assume second-level (and higher) muxes have reset pins
+        if (_secondLevelMuxDetected)
         {
-            gpio_set_level((gpio_num_t)resetPin, 0);
-            delayMicroseconds(1);
-            gpio_set_level((gpio_num_t)resetPin, 1);
+            // Set all second level multiplexer channels off
+            for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
+            {
+                BusMux& busMux = _busMuxRecs[muxIdx];
+                if (busMux.isOnline && (busMux.muxConnSlotNum > 0))
+                {
+#if defined(DEBUG_BUS_MUX_RESET) || defined(DEBUG_BUS_MUX_RESET_MULT_LEVEL)
+                    LOG_I(MODULE_PREFIX, "disableAllSlots MULTI_LEVEL muxIdx %d muxConnSlotNum %d", 
+                            muxIdx, busMux.muxConnSlotNum);
+#endif
+                    if (writeSlotMaskToMux(muxIdx, 0, force, 0) == RaftI2CCentralIF::ACCESS_RESULT_OK)
+                    {
+                        busMux.curBitMask = 0;
+                        busMux.maskWrittenOk = true;
+                    }
+                }
+            }            
         }
 
-        // Clear mask values
+        // Check if any mux still needs to be reset
+        bool needReset = false;
         for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
         {
-            _busMuxRecs[muxIdx].curBitMask = 0;
+            BusMux& busMux = _busMuxRecs[muxIdx];
+            if (!busMux.maskWrittenOk || (busMux.curBitMask != 0))
+            {
+                needReset = true;
+                break;
+            }
         }
+
+        // Reset bus multiplexers with hardware
+        if (needReset)
+        {
+            for (auto resetPin : _resetPins)
+            {
+#ifdef DEBUG_BUS_MUX_RESET
+                LOG_I(MODULE_PREFIX, "disableAllSlots using resetPin %d force %d", resetPin, force);
+#endif
+                gpio_set_level((gpio_num_t)resetPin, 0);
+                delayMicroseconds(1);
+                gpio_set_level((gpio_num_t)resetPin, 1);
+            }
+
+            // Clear mask values for all top-level muxes
+            for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
+            {
+                BusMux& busMux = _busMuxRecs[muxIdx];
+                if (busMux.muxConnSlotNum == 0)
+                {
+                    busMux.curBitMask = 0;
+                    busMux.maskWrittenOk = true;
+                }
+            }
+        }
+
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Reset cascaded muxes
+/// @param muxIdx Multiplexer index
+void BusMultiplexers::resetCascadedMuxes(uint32_t muxIdx)
+{
+    // Iterate over mux addresses
+    for (uint32_t addr = _minAddr; addr <= _maxAddr; addr++)
+    {
+        // Check if this is the same as the current mux (in which case we don't want to reset it)
+        if (addr == _minAddr + muxIdx)
+            continue;
+        // Write to bus multiplexer slot enables
+        BusI2CAddrAndSlot addrAndSlot(addr, 0);
+        uint8_t writeData[1] = { 0 };
+        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    addrAndSlot,
+                    0, sizeof(writeData),
+                    writeData,
+                    0,
+                    0, 
+                    nullptr, 
+                    this);
+        _busI2CReqSyncFn(&reqRec, nullptr);        
     }
 }
 

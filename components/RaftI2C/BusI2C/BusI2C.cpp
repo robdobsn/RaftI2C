@@ -33,7 +33,8 @@ static const char* MODULE_PREFIX = "BusI2C";
 // Debug
 // #define DEBUG_NO_POLLING
 // #define DEBUG_I2C_ASYNC_SEND_HELPER
-// #define DEBUG_I2C_SYNC_SEND_HELPER
+#define DEBUG_I2C_SYNC_SEND_HELPER
+#define DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES 32
 // #define DEBUG_BUS_HIATUS
 // #define DEBUG_LOOP_TIMING_WITH_GPIO_NUM 19
 
@@ -447,38 +448,53 @@ void BusI2C::i2cWorkerTask()
 ///       is used then the bus extender must be set before calling this function
 RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
 {
-#ifdef DEBUG_I2C_SYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendSync addr@slotNum writeLen %d readLen %d reqType %d",
-                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
-                    pReqRec->getReadReqLen(), pReqRec->getReqType());
-#endif
+    // Check valid
+    if (!_pI2CCentral)
+        return RaftI2CCentralIF::ACCESS_RESULT_NOT_INIT;
+
+    // Get address
+    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
 
     // Check address is within valid range
-    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
-    if (rslt == RaftI2CCentralIF::ACCESS_RESULT_INVALID)
-        return rslt;
-
-    // Buffer for read
-    uint32_t readReqLen = 0;
-    uint8_t pDummyReadBuf[1];
-    if (pReadData && pReqRec->getReadReqLen() > 0)
-    {
-        readReqLen = pReqRec->getReadReqLen();
-        pReadData->resize(readReqLen);
-    }
-    uint32_t writeReqLen = pReqRec->getWriteDataLen();
-
-    // Access the bus
-    uint32_t numBytesRead = 0;
     RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
-    if (!_pI2CCentral)
-        return rsltCode;
-    rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
-            pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
+    bool addrOk = checkAddrValidAndNotBarred(addrAndSlot) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+    if (addrOk)
+    {
+        // Buffer for read
+        uint32_t readReqLen = 0;
+        uint8_t pDummyReadBuf[1];
+        if (pReadData && pReqRec->getReadReqLen() > 0)
+        {
+            readReqLen = pReqRec->getReadReqLen();
+            pReadData->resize(readReqLen);
+        }
+        uint32_t writeReqLen = pReqRec->getWriteDataLen();
 
-    // Record time of comms
-    _lastI2CCommsUs = micros();
+        // Access the bus
+        uint32_t numBytesRead = 0;
+        rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
+                pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
+
+        // Record time of comms
+        _lastI2CCommsUs = micros();
+    }
+
+#ifdef DEBUG_I2C_SYNC_SEND_HELPER
+#ifdef DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES
+    String writeDataHexStr;
+    Raft::getHexStrFromBytes(pReqRec->getWriteData(), Raft::clamp(pReqRec->getWriteDataLen(), 0, DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
+    LOG_I(MODULE_PREFIX, "I2CSendSync %s addr 0x%02x writeLen %d readLen %d reqType %d writeData %s",
+                    addrOk ? RaftI2CCentralIF::getAccessResultStr(rsltCode) : "INVALID ADDR",
+                    addrAndSlot.addr, pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getReqType(), writeDataHexStr.c_str());
+#else
+    LOG_I(MODULE_PREFIX, "I2CSendSync %saddr 0x%02x writeLen %d readLen %d reqType %d",
+                    addrOk ? RaftI2CCentralIF::getAccessResultStr(rsltCode) : "INVALID ADDR ",
+                    addrAndSlot.addr, pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getReqType());
+#endif
+#endif
+
     return rsltCode;
 }
 

@@ -145,17 +145,6 @@
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
                         "rstPins": [2]
-                    },
-                    "pwr": {
-                        "ioexps":
-                        [
-                            {
-                                "dev": "PCA9535",
-                                "addr": "0x26",
-                                "minSlotNum": 1,
-                                "numSlots": 6,
-                                
-                        ]
                     }
                 }
             ]
