@@ -12,23 +12,27 @@ static const char *MODULE_PREFIX = "BusI2CTest";
 BusI2CTest::BusI2CTest(const char *pModuleName, RaftJsonIF& sysConfig)
     : RaftSysMod(pModuleName, sysConfig)
 {
-    // This code is executed when the system module is created
-    // ...
 }
 
 BusI2CTest::~BusI2CTest()
 {
-    // This code is executed when the system module is destroyed
-    // ...
 }
 
 void BusI2CTest::setup()
 {
-    // The following code is an example of how to use the config object to
-    // get a parameter from SysType (JSON) file for this system module
-    // Replace this with your own setup code
-    String configValue = config.getString("exampleGroup/exampleKey", "This Should Not Happen!");
-    LOG_I(MODULE_PREFIX, "%s", configValue.c_str());
+    // Get controlled power pin
+    int controlled3V3Pin = config.getInt("controlled3V3Pin", -1);
+    if (controlled3V3Pin < 0)
+    {
+        LOG_W(MODULE_PREFIX, "No controlled3V3Pin specified");
+    }
+    else
+    {
+        // Turn on power
+        pinMode(controlled3V3Pin, OUTPUT);
+        digitalWrite(controlled3V3Pin, HIGH);
+    }
+
 }
 
 void BusI2CTest::loop()

@@ -177,6 +177,6 @@ private:
     /// @brief Attempt to clear bus stuck problem
     /// @param failAfterSlotSet Bus stuck after setting slot (so an individual slot may be stuck)
     /// @param slotNum Slot number (1-based) (valid if after slot set)
-    /// @return True if slot setting is still valid
+    /// @return True if succeeded in clearing the bus stuck problem
     bool attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotNum);
 };

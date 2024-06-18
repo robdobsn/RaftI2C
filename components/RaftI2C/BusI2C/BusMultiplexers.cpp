@@ -13,14 +13,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-// #define DEBUG_BUS_MUX_SETUP
-// #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
-// #define DEBUG_BUS_STUCK
-// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
-// #define DEBUG_SLOT_INDEX_INVALID
-// #define DEBUG_POWER_STABILITY
-// #define DEBUG_SET_SLOT_ENABLES
-// #define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
+#define DEBUG_BUS_MUX_SETUP
+#define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
+#define DEBUG_BUS_STUCK
+#define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+#define DEBUG_SLOT_INDEX_INVALID
+#define DEBUG_POWER_STABILITY
+#define DEBUG_SET_SLOT_ENABLES
+#define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
 
 static const char* MODULE_PREFIX = "BusMux";
 
@@ -267,17 +267,13 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
         // Repeat here seveal times to try to clear the bus-stuck problem
         for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
         {
-            // Attempt to clear bus-stuck
-            attemptToClearBusStuck(false, slotNum);
-
-            // Check again
-            busIsStuck = _busStuckHandler.isStuck();
-            if (!busIsStuck)
+            // Attempt to clear bus-stuck (returns true if it resolved the issue)
+            if (attemptToClearBusStuck(false, slotNum))
                 break;
         }
 
         // Check if still stuck
-        if (busIsStuck)
+        if (_busStuckHandler.isStuck())
             return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
     }
 
@@ -322,17 +318,14 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
         {
             // If the bus is stuck at this point then it is not possible to enable a slot
             // so try to clear the bus-stuck problem in any way possible
-            attemptToClearBusStuck(true, slotNum);
-
-            // Check if still stuck
-            busIsStuck = _busStuckHandler.isStuck();
-            if (!busIsStuck)
+            // (returns true if it resolved the issue)
+            if (attemptToClearBusStuck(false, slotNum))
                 break;
         }
     }
 
     // Check for bus still stuck
-    if (busIsStuck)
+    if (_busStuckHandler.isStuck())
         return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
 
     // Return result
@@ -424,7 +417,7 @@ uint32_t BusMultiplexers::getNextSlotNum(uint32_t slotNum)
 /// @brief Attempt to clear bus stuck problem
 /// @param failAfterSlotSet Bus stuck after setting slot (so an individual slot maybe at fault)
 /// @param slotNum Slot number (1-based) (valid if after slot set)
-/// @return true if slot setting is still valid
+/// @return True if succeeded in clearing the bus stuck problem
 bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotNum)
 {
 #ifdef DEBUG_BUS_STUCK
@@ -467,40 +460,21 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
         disableAllSlots(true);
         
         // Check if failure occurred after the slot was set
-        if (failAfterSlotSet)
+        if (failAfterSlotSet && _busPowerController.isSlotPowerControlled(slotNum))
         {
-            // Check if the slot is power controlled
-            if (_busPowerController.isSlotPowerControlled(slotNum))
-            {
-                // Inform the bus status manager that a slot is powering down
-                _busStatusMgr.slotPoweringDown(slotNum);
+            // Inform the bus status manager that a slot is powering down
+            _busStatusMgr.slotPoweringDown(slotNum);
 
-                // Start power cycling the slot
-                _busPowerController.powerCycleSlot(slotNum);
-
-                // Wait here to allow power off to take effect
-                delay(200);
-            }
-
-            // Attempt to clear the bus-stuck issue by clocking the bus
-            _busStuckHandler.clearStuckByClocking();
+            // Start power cycling the slot
+            _busPowerController.powerCycleSlot(slotNum);
         }
-
-        // Check if still stuck
-        busIsStuck = _busStuckHandler.isStuck();
-        if (busIsStuck)
+        else
         {
+            // Inform the bus status manager that the bus is powering down
+            _busStatusMgr.slotPoweringDown(0);
+
             // Clear the stuck bus problem by power cycling the entire bus
             _busPowerController.powerCycleSlot(0);
-
-            // Wait here to allow power off to take effect
-            delay(200);
-
-            // Attempt to clear the bus-stuck issue by clocking the bus
-            _busStuckHandler.clearStuckByClocking();
-
-            // Check if still stuck
-            busIsStuck = _busStuckHandler.isStuck();
         }
     }
 
@@ -514,5 +488,5 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
     }
 #endif
 
-    return !busIsStuck;
+    return !_busStuckHandler.isStuck();
 }

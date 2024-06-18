@@ -502,7 +502,7 @@ void BusStatusMgr::slotPoweringDown(uint32_t slotNum)
     // Go through all devices and set status
     for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
     {
-        if (addrStatus.addrAndSlot.slotNum == slotNum)
+        if ((slotNum == 0) || (addrStatus.addrAndSlot.slotNum == slotNum))
         {
             addrStatus.isChange = addrStatus.isOnline;
             addrStatus.isOnline = false;

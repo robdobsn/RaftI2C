@@ -20,6 +20,3 @@ static const uint32_t I2C_BUS_ADDRESS_MIN = 4;
 static const uint32_t I2C_BUS_ADDRESS_MAX = 0x77;
 static const uint32_t I2C_BUS_MUX_BASE = 0x70;
 static const uint32_t I2C_BUS_MUX_MAX = 8;
-
-// Address type
-typedef uint8_t RaftI2CAddrType;

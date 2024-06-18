@@ -179,6 +179,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
         return false;
     }
 
+    // Run post-setup on the bus power controller
+    _busPowerController.postSetup();
+    
     // Ok
     _initOk = true;
 
