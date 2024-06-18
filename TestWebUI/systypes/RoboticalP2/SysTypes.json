@@ -174,11 +174,11 @@
                                 "defaultLevel": 1,
                                 "levelsExclOff": [
                                     {
-                                        "vPins": [9],
+                                        "vPins": [42],
                                         "on": [1]
                                     },
                                     {
-                                        "vPins": [42],
+                                        "vPins": [-1],
                                         "on": [1]
                                     }
                                 ]
