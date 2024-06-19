@@ -24,11 +24,14 @@ BusI2CTest::~BusI2CTest()
 
 void BusI2CTest::setup()
 {
-    // The following code is an example of how to use the config object to
-    // get a parameter from SysType (JSON) file for this system module
-    // Replace this with your own setup code
-    String configValue = config.getString("exampleGroup/exampleKey", "This Should Not Happen!");
-    LOG_I(MODULE_PREFIX, "%s", configValue.c_str());
+    int bus3V3En = config.getInt("bus3V3En", 0);
+    if (bus3V3En >= 0)
+    {
+        // Enable 3.3V bus
+        pinMode(bus3V3En, OUTPUT);
+        digitalWrite(bus3V3En, HIGH);
+    }
+    delay(200);
 }
 
 void BusI2CTest::loop()
@@ -43,4 +46,3 @@ void BusI2CTest::loop()
         // ...
     }
 }
-
