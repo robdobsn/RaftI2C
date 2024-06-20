@@ -11,9 +11,12 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
+#define WARN_ON_SLOT_NOT_FOUND
+
 // #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
+// #define DEBUG_POWER_CONTROL_SLOT_STABLE
 
 static const char* MODULE_PREFIX = "BusPowerCtrl";
 
@@ -288,20 +291,24 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
         pSlotRec = getSlotRecord(0);
         if (!pSlotRec)
         {
-            // TODO remove
+#ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
             LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d SLOT NOT FOUND! so saying yes", slotNum);
+#endif
             return true;
         }
         else
         {
-            // TODO remove
+#ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
             LOG_I(MODULE_PREFIX, "isSlotPowerStable DERFER TO SLOT 0 slotNum %d", slotNum);
+#endif
         }
     }
 
-    // TODO - remove
+#ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
+    // Debug
     LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d pwrCtrlState %d returning %d", 
                 slotNum, pSlotRec->pwrCtrlState, (pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V));
+#endif
 
     // Check if power is stable
     return (pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V);
@@ -422,6 +429,13 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels po
 {
     // Get slot record
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
+    if (!pSlotRec)
+    {
+#ifdef WARN_ON_SLOT_NOT_FOUND
+        LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d SLOT NOT FOUND", slotNum);
+#endif
+        return;
+    }
 
     // Compute pin action to set the voltage level
     switch(powerLevel)
