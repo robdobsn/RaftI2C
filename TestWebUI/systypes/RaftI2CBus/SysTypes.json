@@ -137,8 +137,8 @@
                 {
                     "name": "I2CA",
                     "type": "I2C",
-                    "sdaPin": 39,
-                    "sclPin": 40,
+                    "sdaPin": 18,
+                    "sclPin": 17,
                     "i2cFreq": 100000,
                     "mux": {
                         "enable": 1,
@@ -147,49 +147,42 @@
                         "rstPins": [2]
                     },
                     "pwr": {
-                       "ioExps":
+                        "ioExps":
                         [
                             {
                                 "dev": "PCA9535",
                                 "addr": "0x25",
-                                "muxAddr": "0x70",
-                                "muxChanIdx": 0,
+                                "muxAddr": "0x75",
+                                "muxChanIdx": 7,
                                 "muxRstPin": 2,
                                 "vPinBase": 100,
                                 "numPins": 16
                             }
                         ],
-                        "voltageLevels":
-                        [
-                            "off",
-                            "3V3",
-                            "5V"
-                        ],
-                        "slotGroups":
-                        [
-                            {
-                                "name": "MainBus",
-                                "startSlotNum": 0,
-                                "numSlots": 1,
-                                "defaultLevel": 1,
-                                "levelsExclOff": [
-                                    {
-                                        "vPins": [42],
-                                        "on": [1]
-                                    },
-                                    {
-                                        "vPins": [-1],
-                                        "on": [1]
-                                    }
-                                ]
-                            }
-                        ]
+                        "slotMap": 
+                        {
+                            "startSlot": 1,
+                            "numSlots": 6,
+                            "vLevels": [
+                                {
+                                    "vPins": [100,102,104,106,108,110],
+                                    "on": [1,1,1,1,1,1]
+                                },
+                                {
+                                    "vPins": [101,103,105,107,109,111],
+                                    "on": [1,1,1,1,1,1]
+                                }
+                            ]
+                        }
                     }
                 }
             ]
         }
     },
     "BusI2CTest": {
-        "bus3V3En": 42
+        "controlled3V3Pin": 1,
+        "exampleGroup": {
+            "exampleKey": "Welcome to Raft!"
+        }
     }
 }

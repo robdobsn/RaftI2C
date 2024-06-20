@@ -12,24 +12,25 @@ static const char *MODULE_PREFIX = "BusI2CTest";
 BusI2CTest::BusI2CTest(const char *pModuleName, RaftJsonIF& sysConfig)
     : RaftSysMod(pModuleName, sysConfig)
 {
-    // This code is executed when the system module is created
-    // ...
 }
 
 BusI2CTest::~BusI2CTest()
 {
-    // This code is executed when the system module is destroyed
-    // ...
 }
 
 void BusI2CTest::setup()
 {
-    int bus3V3En = config.getInt("bus3V3En", 0);
-    if (bus3V3En >= 0)
+    // Get controlled power pin
+    int controlled3V3Pin = config.getInt("controlled3V3Pin", -1);
+    if (controlled3V3Pin < 0)
     {
-        // Enable 3.3V bus
-        pinMode(bus3V3En, OUTPUT);
-        digitalWrite(bus3V3En, HIGH);
+        LOG_W(MODULE_PREFIX, "No controlled3V3Pin specified");
+    }
+    else
+    {
+        // Turn on power
+        pinMode(controlled3V3Pin, OUTPUT);
+        digitalWrite(controlled3V3Pin, HIGH);
     }
     delay(200);
 }
