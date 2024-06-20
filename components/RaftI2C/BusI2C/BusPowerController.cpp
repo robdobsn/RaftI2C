@@ -11,9 +11,9 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-#define DEBUG_POWER_CONTROL_SETUP
-#define DEBUG_POWER_CONTROL_STATES
-#define DEBUG_POWER_CONTROL_BIT_SETTINGS
+// #define DEBUG_POWER_CONTROL_SETUP
+// #define DEBUG_POWER_CONTROL_STATES
+// #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 
 static const char* MODULE_PREFIX = "BusPowerCtrl";
 

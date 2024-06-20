@@ -145,44 +145,12 @@
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
                         "rstPins": [2]
-                    },
-                    "pwr": {
-                        "ioExps":
-                        [
-                            {
-                                "dev": "PCA9535",
-                                "addr": "0x25",
-                                "muxAddr": "0x75",
-                                "muxChanIdx": 7,
-                                "muxRstPin": 2,
-                                "vPinBase": 100,
-                                "numPins": 16
-                            }
-                        ],
-                        "slotMap": 
-                        {
-                            "startSlot": 1,
-                            "numSlots": 6,
-                            "vLevels": [
-                                {
-                                    "vPins": [100,102,104,106,108,110],
-                                    "on": [1,1,1,1,1,1]
-                                },
-                                {
-                                    "vPins": [101,103,105,107,109,111],
-                                    "on": [1,1,1,1,1,1]
-                                }
-                            ]
-                        }
                     }
                 }
             ]
         }
     },
     "BusI2CTest": {
-        "controlled3V3Pin": 1,
-        "exampleGroup": {
-            "exampleKey": "Welcome to Raft!"
-        }
+        "controlled3V3Pin": 1
     }
 }

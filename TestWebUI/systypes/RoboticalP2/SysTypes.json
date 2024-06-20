@@ -145,51 +145,12 @@
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
                         "rstPins": [2]
-                    },
-                    "pwr": {
-                       "ioExps":
-                        [
-                            {
-                                "dev": "PCA9535",
-                                "addr": "0x25",
-                                "muxAddr": "0x70",
-                                "muxChanIdx": 0,
-                                "muxRstPin": 2,
-                                "vPinBase": 100,
-                                "numPins": 16
-                            }
-                        ],
-                        "voltageLevels":
-                        [
-                            "off",
-                            "3V3",
-                            "5V"
-                        ],
-                        "slotGroups":
-                        [
-                            {
-                                "name": "MainBus",
-                                "startSlotNum": 0,
-                                "numSlots": 1,
-                                "defaultLevel": 1,
-                                "levelsExclOff": [
-                                    {
-                                        "vPins": [42],
-                                        "on": [1]
-                                    },
-                                    {
-                                        "vPins": [-1],
-                                        "on": [1]
-                                    }
-                                ]
-                            }
-                        ]
                     }
                 }
             ]
         }
     },
     "BusI2CTest": {
-        "bus3V3En": 42
+        "controlled3V3Pin": 42
     }
 }
