@@ -49,7 +49,7 @@ private:
     // Scanning state
     enum ScanState {
         SCAN_STATE_IDLE,
-        SCAN_STATE_SCAN_EXTENDERS,
+        SCAN_STATE_SCAN_MULTIPLEXERS,
         SCAN_STATE_MAIN_BUS,
         SCAN_STATE_SCAN_FAST,
         SCAN_STATE_SCAN_SLOW
@@ -61,7 +61,7 @@ private:
         switch (scanState)
         {
             case SCAN_STATE_IDLE: return "IDLE";
-            case SCAN_STATE_SCAN_EXTENDERS: return "SCAN_EXTENDERS";
+            case SCAN_STATE_SCAN_MULTIPLEXERS: return "SCAN_EXTENDERS";
             case SCAN_STATE_MAIN_BUS: return "MAIN_BUS";
             case SCAN_STATE_SCAN_FAST: return "SCAN_FAST";
             case SCAN_STATE_SCAN_SLOW: return "SCAN_SLOW";
@@ -101,7 +101,7 @@ private:
 
     enum ScanIndexMode
     {
-        SCAN_INDEX_EXTENDERS_ONLY,
+        SCAN_INDEX_MULTIPLEXERS_ONLY,
         SCAN_INDEX_I2C_ADDRESSES,
         SCAN_INDEX_PRIORITY_LIST_INDEX,
     };
@@ -121,8 +121,15 @@ private:
     // Bus i2c request function (synchronous)
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Scan one address and slot
+    /// @param addr Address
+    /// @param slot Slot
+    /// @param failedToEnableSlot (out) Failed to enable slot
+    /// @return Access result code
+    RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr, uint32_t slot, bool& failedToEnableSlot);
+
     // Helpers
-    RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
     void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftI2CCentralIF::AccessResultCode accessResult);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +141,7 @@ private:
     /// @param onlyExtenderAddrs Only return extender addresses
     /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
     /// @return True if valid
-    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted, 
+    bool getAddrAndSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted, 
                 bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
