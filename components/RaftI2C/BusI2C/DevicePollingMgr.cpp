@@ -47,10 +47,10 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         // Get the address and slot
         if (pollInfo.pollReqs.size() == 0)
             return;
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pollInfo.pollReqs[0].getAddressUint32());
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pollInfo.pollReqs[0].getAddress());
 
 #ifdef DEBUG_POLL_REQUEST
-        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), pollInfo.pollReqs[0].getAddressUint32());
+        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), pollInfo.pollReqs[0].getAddress());
 #endif
 
         // Enable the slot
@@ -67,7 +67,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         {
             // Perform the polling
             std::vector<uint8_t> readData;
-            BusI2CRequestRec reqRec(busReqRec);
+            BusRequestInfo reqRec(busReqRec);
             auto rslt = _busI2CReqSyncFn(&reqRec, &readData);
 
 #ifdef DEBUG_POLL_RESULT
@@ -76,7 +76,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             String readDataHexStr;
             Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
             LOG_I(MODULE_PREFIX, "taskService poll %s writeData %s readData %s rslt %s", 
-                            reqRec.getAddrAndSlot().toString().c_str(),
+                            BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqRec.getAddress()).toString().c_str(),
                             writeDataHexStr.c_str(),
                             readDataHexStr.c_str(),
                             RaftI2CCentralIF::getAccessResultStr(rslt));

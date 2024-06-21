@@ -13,10 +13,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-// #define DEBUG_BUS_MUX_SETUP
+#define DEBUG_BUS_MUX_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
-// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+#define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
 // #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE_CLEAR
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
@@ -24,7 +24,8 @@
 // #define DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
 // #define DEBUG_BUS_MUX_RESET
 // #define DEBUG_BUS_MUX_RESET_MULT_LEVEL
-// #define DEBUG_BUS_MUX_RESET_CASCADE
+// #define DEBUG_CLEAR_CASCADED_MUX
+// #define DEBUG_FORCE_NO_RESET_PINS
 
 static const char* MODULE_PREFIX = "BusMux";
 
@@ -43,7 +44,7 @@ BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuc
 /// @brief Destructor
 BusMultiplexers::~BusMultiplexers()
 {
-    // Reset pins
+    // Remove reset pins
     for (auto resetPin : _resetPins)
         gpio_reset_pin((gpio_num_t) resetPin);
 }
@@ -53,42 +54,51 @@ BusMultiplexers::~BusMultiplexers()
 /// @param config Configuration
 void BusMultiplexers::setup(const RaftJsonIF& config)
 {
-    // Check if multiplexer functionality is enabled
+    // Get the enable flag
     _isEnabled = config.getBool("enable", true);
 
     // Get the bus multiplexer address range
-    _minAddr = config.getLong("minAddr", I2C_BUS_MUX_BASE);
-    _maxAddr = config.getLong("maxAddr", I2C_BUS_MUX_BASE+I2C_BUS_MUX_MAX-1);
+    _minAddr = config.getLong("minAddr", I2C_BUS_MUX_BASE_DEFAULT);
+    _maxAddr = config.getLong("maxAddr", I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX_DEFAULT-1);
 
-    // Check if enabled
-    if (_isEnabled)
+    // Check if mux is specified
+    if (!_isEnabled || (_minAddr < I2C_BUS_ADDRESS_MIN) || (_maxAddr > I2C_BUS_ADDRESS_MAX) || (_minAddr > _maxAddr))
     {
-        // Multiplexer reset pin(s)
-        _resetPins.clear();
-        std::vector<String> resetPinStrs;
-        config.getArrayElems("rstPins", resetPinStrs);
-        for (auto& resetPinStr : resetPinStrs)
-            if (resetPinStr.toInt() >= 0)
-                _resetPins.push_back(resetPinStr.toInt());
-        
-        // Add single reset pin if specified that way
-        int resetPin = config.getInt("rstPin", -1);
-        if (resetPin >= 0)
-            _resetPins.push_back(resetPin);
-
-        // Setup reset pins
-        for (auto resetPin : _resetPins)
-        {
-            gpio_config_t io_conf = {};
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_OUTPUT;
-            io_conf.pin_bit_mask = 1ULL << resetPin;
-            io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-            io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-            gpio_config(&io_conf);
-            gpio_set_level((gpio_num_t)resetPin, 1);
-        }
+        LOG_E(MODULE_PREFIX, "setup DISABLED (or invalid addr min 0x%02x max 0x%02x)", _minAddr, _maxAddr);
+        _isEnabled = false;
+        return;
     }
+    
+    // Multiplexer reset pin(s)
+    _resetPins.clear();
+
+    // Handle one or miultiple reset pins
+    std::vector<String> resetPinStrs;
+    config.getArrayElems("rstPins", resetPinStrs);
+    for (auto& resetPinStr : resetPinStrs)
+        if (resetPinStr.toInt() >= 0)
+            _resetPins.push_back(resetPinStr.toInt());
+    
+    // Add single reset pin if specified that way
+    int resetPin = config.getInt("rstPin", -1);
+    if (resetPin >= 0)
+        _resetPins.push_back(resetPin);
+
+    // Setup reset pins
+    for (auto resetPin : _resetPins)
+    {
+        gpio_config_t io_conf = {};
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_OUTPUT;
+        io_conf.pin_bit_mask = 1ULL << resetPin;
+        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+        gpio_config(&io_conf);
+        gpio_set_level((gpio_num_t)resetPin, 1);
+    }
+
+    // Get the clear-cascade-mux flag
+    _clearCascadeMux = config.getBool("clearCascadeMux", false);
 
     // Set the flag to indicate that the bus multiplexers need to be initialized
     for (auto &busMux : _busMuxRecs)
@@ -98,9 +108,8 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
     String resetPinStr;
     for (auto resetPin : _resetPins)
         resetPinStr += String(resetPin) + " ";
-    LOG_I(MODULE_PREFIX, "setup %s minAddr 0x%02x maxAddr 0x%02x numRecs %d resetPin(s) %s", 
-            _isEnabled ? "ENABLED" : "DISABLED", _minAddr, _maxAddr, _busMuxRecs.size(), 
-            resetPinStr.c_str());
+    LOG_I(MODULE_PREFIX, "setup OK minAddr 0x%02x maxAddr 0x%02x numRecs %d resetPin(s) %s", 
+            _minAddr, _maxAddr, _busMuxRecs.size(), resetPinStr.c_str());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -156,18 +165,9 @@ bool BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elem
                             addr, slotNum, muxIdx, _secondLevelMuxDetected, busMux.detectionCount);
 #endif
 
-                    // Attempt to clear all slots in muxes cascaded from this one
-                    for (uint32_t slotIdx = 0; slotIdx < I2C_BUS_MUX_SLOT_COUNT; slotIdx++)
-                    {
-                        uint32_t slotMask = 1 << slotIdx;
-                        // Write to bus multiplexer slot enables
-#ifdef DEBUG_BUS_MUX_RESET_CASCADE
-                        LOG_I(MODULE_PREFIX, "elemStateChange resp resetCascade muxIdx %d slotMask 0x%02x", 
-                                    muxIdx, slotMask);
-#endif
-                        writeSlotMaskToMux(muxIdx, slotMask, true, 0);
-                        resetCascadedMuxes(muxIdx);              
-                    }
+                    // Check if we need to clear cascaded muxes
+                    if (_clearCascadeMux)
+                        clearCascadedMuxes(muxIdx);
                 }
                 else
                 {
@@ -349,10 +349,9 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t 
         // Calculate the address
         uint32_t addr = _minAddr + muxIdx;
         // Write to bus multiplexer slot enables
-        BusI2CAddrAndSlot addrAndSlot(addr, 0);
         uint8_t writeData[1] = { uint8_t(slotMask) };
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                    addrAndSlot,
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    addr,
                     0, sizeof(writeData),
                     writeData,
                     0,
@@ -458,8 +457,14 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 /// @brief Disable all slots on bus multiplexers
 void BusMultiplexers::disableAllSlots(bool force)
 {
+    // Check if we should use reset pins
+    bool forceNoResetPins = false;
+#ifndef DEBUG_FORCE_NO_RESET_PINS
+    forceNoResetPins = true;
+#endif
+
     // Check if no reset pins specified
-    if (_resetPins.size() == 0)
+    if (forceNoResetPins || (_resetPins.size() == 0))
     {
         // No reset pins so just set all slots off
         for (uint32_t muxIdx = 0; muxIdx < _busMuxRecs.size(); muxIdx++)
@@ -543,26 +548,42 @@ void BusMultiplexers::disableAllSlots(bool force)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Reset cascaded muxes
 /// @param muxIdx Multiplexer index
-void BusMultiplexers::resetCascadedMuxes(uint32_t muxIdx)
+void BusMultiplexers::clearCascadedMuxes(uint32_t muxIdx)
 {
-    // Iterate over mux addresses
-    for (uint32_t addr = _minAddr; addr <= _maxAddr; addr++)
+    // Attempt to clear all slots in muxes cascaded from this one
+    for (uint32_t slotIdx = 0; slotIdx < I2C_BUS_MUX_SLOT_COUNT; slotIdx++)
     {
-        // Check if this is the same as the current mux (in which case we don't want to reset it)
-        if (addr == _minAddr + muxIdx)
-            continue;
+        uint32_t slotMask = 1 << slotIdx;
+
         // Write to bus multiplexer slot enables
-        BusI2CAddrAndSlot addrAndSlot(addr, 0);
-        uint8_t writeData[1] = { 0 };
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                    addrAndSlot,
-                    0, sizeof(writeData),
-                    writeData,
-                    0,
-                    0, 
-                    nullptr, 
-                    this);
-        _busI2CReqSyncFn(&reqRec, nullptr);        
+        writeSlotMaskToMux(muxIdx, slotMask, true, 0);
+
+        // Iterate over mux addresses
+        for (uint32_t addr = _minAddr; addr <= _maxAddr; addr++)
+        {
+            // Check if this is the same as the current mux (in which case we don't want to reset it)
+            if (addr == _minAddr + muxIdx)
+                continue;
+            // Write to bus multiplexer slot enables
+            uint8_t writeData[1] = { 0 };
+            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                        addr,
+                        0, sizeof(writeData),
+                        writeData,
+                        0,
+                        0, 
+                        nullptr, 
+                        this);
+
+#ifdef DEBUG_CLEAR_CASCADED_MUX
+            auto rslt = _busI2CReqSyncFn(&reqRec, nullptr);
+            LOG_I(MODULE_PREFIX, "%s rslt %s(%d) resetCascade muxIdx %d slotMask 0x%02x", 
+                    __func__, RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask);
+#else
+            _busI2CReqSyncFn(&reqRec, nullptr);
+#endif
+
+        }
     }
 }
 

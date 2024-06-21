@@ -73,9 +73,8 @@ void BusStuckHandler::clearStuckByClocking()
     for (int i = 0; i < I2C_BUS_STUCK_REPEAT_COUNT; i++)
     {
         // Attempt to clear bus stuck by clocking
-        BusI2CAddrAndSlot addrAndSlot(I2C_BUS_STUCK_CLEAR_ADDR, 0);
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                    addrAndSlot,
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    I2C_BUS_STUCK_CLEAR_ADDR,
                     0, 0,
                     nullptr,
                     0,

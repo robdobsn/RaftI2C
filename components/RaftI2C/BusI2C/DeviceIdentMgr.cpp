@@ -143,8 +143,8 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
 
         // Create a bus request to read the detection value
         // Create the poll request
-        BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                addrAndSlot,
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                addrAndSlot.addr,
                 0, 
                 detectionRec.writeData.size(), 
                 detectionRec.writeData.data(),
@@ -162,7 +162,10 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
         LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr@slotNum %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
                     rslt == RaftI2CCentralIF::ACCESS_RESULT_OK ? "OK" : "BUS ACCESS FAILED",
-                    addrAndSlot.toString().c_str(), writeStr.c_str(), rslt, readDataStr.c_str(), readData.size(), detectionRec.pauseAfterSendMs);
+                    addrAndSlot.toString().c_str(), 
+                    writeStr.c_str(), rslt, 
+                    readDataStr.c_str(), readData.size(), 
+                    detectionRec.pauseAfterSendMs);
 #endif
 
         // Check ok result
@@ -245,7 +248,7 @@ bool DeviceIdentMgr::processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, con
     for (auto& initBusRequest : initBusRequests)
     {
         std::vector<uint8_t> readData;
-        BusI2CRequestRec reqRec(initBusRequest);
+        BusRequestInfo reqRec(initBusRequest);
         _busI2CReqSyncFn(&reqRec, &readData);
 
         // Check for bar-access time after each request

@@ -15,7 +15,7 @@
 extern "C" void app_main(void)
 {
     RaftCoreApp raftCoreApp;
-    
+
     // Register SysMods from RaftSysMods library
     RegisterSysMods::registerSysMods(raftCoreApp.getSysManager());
 

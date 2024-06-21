@@ -9,6 +9,13 @@
 #include "RaftArduino.h"
 #include "RaftSysMod.h"
 
+// #define TURN_ON_COMPLEX_POWER_INITIALLY
+
+#ifdef TURN_ON_COMPLEX_POWER_INITIALLY
+#include "RaftBusSystem.h"
+#include "BusI2C.h"
+#endif
+
 class BusI2CTest : public RaftSysMod
 {
 public:
@@ -32,4 +39,12 @@ protected:
 private:
     // Example of how to control loop rate
     uint32_t _lastLoopMs = 0;
+
+#ifdef TURN_ON_COMPLEX_POWER_INITIALLY
+    // Setup flag for power control on bus
+    bool _busPowerInit = false;
+
+    // Helper
+    void setPower3V3OnAllSlots(RaftBus* pBus);
+#endif
 };

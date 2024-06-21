@@ -36,7 +36,7 @@ public:
     // Requests and responses
     bool addRequest(BusRequestInfo& busReqInfo);
     void processRequestQueue(bool isPaused);
-    void handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+    void handleResponse(const BusRequestInfo* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead);
 
     // Polling
@@ -60,7 +60,7 @@ private:
             pollReq.clear();
         }
         uint8_t suspendCount;
-        BusI2CRequestRec pollReq;
+        BusRequestInfo pollReq;
     };
 
     // Polling vector and mutex controlling access
@@ -74,7 +74,7 @@ private:
     static const int REQUEST_FIFO_SLOTS = 40;
     static const int REQUEST_FIFO_SLOTS_LOW_LOAD = 3;
     static const uint32_t ADD_REQ_TO_QUEUE_MAX_MS = 2;
-    ThreadSafeQueue<BusI2CRequestRec> _requestQueue;
+    ThreadSafeQueue<BusRequestInfo> _requestQueue;
 
     // Response FIFO
     static const int RESPONSE_FIFO_SLOTS = 40;

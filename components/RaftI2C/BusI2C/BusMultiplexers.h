@@ -135,11 +135,15 @@ private:
     BusI2CReqSyncFn _busI2CReqSyncFn;
 
     // Bus mux address range
-    BusElemAddrType _minAddr = I2C_BUS_MUX_BASE;
-    BusElemAddrType _maxAddr = I2C_BUS_MUX_BASE+I2C_BUS_MUX_MAX-1;
+    BusElemAddrType _minAddr = I2C_BUS_MUX_BASE_DEFAULT;
+    BusElemAddrType _maxAddr = I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX_DEFAULT-1;
 
     // Bus mux reset pin(s)
     std::vector<int8_t> _resetPins;
+
+    // Clear cascade mux
+    // When true, attempt to clear cascaded mux channels when any mux is discovered
+    bool _clearCascadeMux = false;
 
     // Bus multiplexer record
     class BusMux
@@ -206,7 +210,7 @@ private:
                 uint32_t slotMask, bool force, uint32_t recurseLevel);
 
     /// @brief Disable all slots on cascaded bus multiplexers
-    void resetCascadedMuxes(uint32_t muxIdx);
+    void clearCascadedMuxes(uint32_t muxIdx);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Attempt to clear bus stuck problem

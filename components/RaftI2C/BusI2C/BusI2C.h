@@ -10,7 +10,7 @@
 
 #include "RaftBus.h"
 #include "RaftI2CCentralIF.h"
-#include "BusI2CRequestRec.h"
+#include "BusRequestInfo.h"
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
 #include "BusMultiplexers.h"
@@ -292,7 +292,7 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
-    RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
+    RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
+    RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
     RaftI2CCentralIF::AccessResultCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
 };

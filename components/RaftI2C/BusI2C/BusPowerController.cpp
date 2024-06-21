@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-#define WARN_ON_SLOT_NOT_FOUND
+#define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
 
 // #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
@@ -260,9 +260,6 @@ void BusPowerController::setup(const RaftJsonIF& config)
 /// @return True if hardware initialized ok
 bool BusPowerController::postSetup()
 {
-    // TODO remove
-    LOG_I(MODULE_PREFIX, "postSetup");
-
     // Turn all power off
     powerOffAll();
 
@@ -431,8 +428,9 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels po
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     if (!pSlotRec)
     {
-#ifdef WARN_ON_SLOT_NOT_FOUND
-        LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d SLOT NOT FOUND", slotNum);
+#ifdef WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
+        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d slot is not power controlled", 
+                    slotNum, powerLevel);
 #endif
         return;
     }

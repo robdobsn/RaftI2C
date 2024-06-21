@@ -33,7 +33,10 @@ BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
 
 // Test configuration
 std::vector<BusI2CAddrAndSlot> testConfigOnlineAddrList;
-uint32_t busExtenderStatusChanMask[I2C_BUS_MUX_MAX] = {0};
+uint32_t busExtenderStatusChanMask[I2C_BUS_MUX_MAX_DEFAULT] = {0};
+
+// Bus multiplexer repeated online for detection
+static const uint32_t NUM_ONLINE_REPEATS_FOR_BUS_MUX = 3;
 
 // Callback for bus operating
 BusOperationStatusCB busOperationStatusCB = [](RaftBus& bus, BusOperationStatus busOperationStatus) {
@@ -62,11 +65,9 @@ BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusElemAddr
     }
 };
 
-BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData) {
-    // LOG_I(MODULE_PREFIX, "busReqSyncFn addr@slotNum %s pollListIdx %d", 
-    //                 pReqRec->getAddrAndSlot().toString().c_str(), pollListIdx);
+BusI2CReqSyncFn busReqSyncFn = [](const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) {
     
-    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
+    BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pReqRec->getAddress());
     uint32_t addr = addrAndSlot.addr;
     RaftI2CCentralIF::AccessResultCode reslt = RaftI2CCentralIF::ACCESS_RESULT_ACK_ERROR;
 
@@ -83,9 +84,9 @@ BusI2CReqSyncFn busReqSyncFn = [](const BusI2CRequestRec* pReqRec, std::vector<u
     if(inOnlineList)
     {
         // Check if this is an extender
-        if ((addr >= I2C_BUS_MUX_BASE) && (addr < I2C_BUS_MUX_BASE + I2C_BUS_MUX_MAX))
+        if ((addr >= I2C_BUS_MUX_BASE_DEFAULT) && (addr < I2C_BUS_MUX_BASE_DEFAULT + I2C_BUS_MUX_MAX_DEFAULT))
         {
-            uint32_t extenderIdx = addr - I2C_BUS_MUX_BASE;
+            uint32_t extenderIdx = addr - I2C_BUS_MUX_BASE_DEFAULT;
             // Check if data being written to extender
             if (pReqRec->getWriteDataLen() > 0)
             {
@@ -302,8 +303,11 @@ TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(11) == 0, "getNextSlotNum 11 not 0 when no extenders");
 
     // Add some bus multiplexers
-    busMultiplexers.elemStateChange(0x73, true); // SlotNum range = 25-32 (inclusive)
-    busMultiplexers.elemStateChange(0x75, true); // SlotNum range = 41-48 (inclusive)
+    for (int i = 0; i < NUM_ONLINE_REPEATS_FOR_BUS_MUX; i++)
+    {
+        busMultiplexers.elemStateChange(0x73, 0, true); // SlotNum range = 25-32 (inclusive)
+        busMultiplexers.elemStateChange(0x75, 0, true); // SlotNum range = 41-48 (inclusive)
+    }
 
     // Check next slot
     TEST_ASSERT_MESSAGE(busMultiplexers.getNextSlotNum(0) == 25, "getNextSlotNum 0 not 25");
@@ -413,7 +417,7 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     // Setup test
     BusI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
     BusI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 1};
+    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 1};
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -429,8 +433,8 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, extenderAddr1}), "online/offline elems not correct");
 
     // Add two further slotted addresses
-    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 2};
-    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 5};
+    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 2};
+    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.addr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 5};
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time
