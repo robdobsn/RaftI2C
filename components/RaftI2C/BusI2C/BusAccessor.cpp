@@ -141,10 +141,10 @@ void BusAccessor::processRequestQueue(bool isPaused)
     BusRequestInfo reqRec;
     if (_requestQueue.get(reqRec))
     {
+#ifdef DEBUG_REQ_QUEUE_COMMANDS
         // Address and slot
         auto addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqRec.getAddress());
         // Debug
-#ifdef DEBUG_REQ_QUEUE_COMMANDS
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
         LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", 
