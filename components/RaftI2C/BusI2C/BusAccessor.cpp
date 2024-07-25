@@ -329,7 +329,7 @@ bool BusAccessor::addRequest(BusRequestInfo& busReqInfo)
 bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 {
 #ifdef DEBUG_BUS_I2C_POLLING
-    LOG_I(MODULE_PREFIX, "addToPollingList elemAddr %x freqHz %.1f", busReqInfo.getAddressUint32(), busReqInfo.getPollFreqHz());
+    LOG_I(MODULE_PREFIX, "addToPollingList elemAddr %x freqHz %.1f", busReqInfo.getAddress(), busReqInfo.getPollFreqHz());
 #endif
 
     // We're going to mess with the polling list so obtain the semaphore
@@ -340,7 +340,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
         for (PollingVectorItem& pollItem : _pollingVector)
         {
             if (pollItem.pollReq.getAddrAndSlot() == 
-                        BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddressUint32()))
+                        BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddress()))
             {
                 // Replace request record
                 addedOk = true;

@@ -60,7 +60,7 @@ public:
         clear();
         _readReqLen = reqInfo.getReadReqLen();
         _reqBuf.assign(reqInfo.getWriteData(), reqInfo.getWriteData()+reqInfo.getWriteDataLen());
-        _addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqInfo.getAddressUint32());
+        _addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqInfo.getAddress());
         _cmdId = reqInfo.getCmdId();
         _pCallbackData = reqInfo.getCallbackParam();
         _busReqCallback = reqInfo.getCallback();
