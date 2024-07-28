@@ -1,6 +1,6 @@
 {
   "name": "RaftI2C",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "I2C for the Raft ESP32 framework",
   "keywords": "esp32, esp32s3, framework, I2C",
   "repository":
@@ -26,7 +26,6 @@
     "includeDir": "components/core",
     "libLDFMode": "deep+",
     "libArchive": false,
-    "extraScript": "lib_script.py",
     "flags": [
       "-Icomponents/RafdI2C/I2CCentral"
     ]
