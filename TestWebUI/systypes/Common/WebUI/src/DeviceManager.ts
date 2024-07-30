@@ -8,7 +8,7 @@ import SettingsManager from "./SettingsManager";
 
 let testingDeviceTypeRecsConditionalLoadPromise: Promise<any> | null = null;
 if (process.env.TEST_DATA) {
-    testingDeviceTypeRecsConditionalLoadPromise = import('../../../../../DeviceTypeRecords/DeviceTypeRecords.json');
+    testingDeviceTypeRecsConditionalLoadPromise = import('./TestDevTypeRecs.json');
 }
 
 export class DeviceManager {
