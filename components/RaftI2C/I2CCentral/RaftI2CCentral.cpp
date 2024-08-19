@@ -40,8 +40,8 @@ static const char *MODULE_PREFIX = "RaftI2CCentral";
 // #define DEBUG_TIMEOUT_CALCS
 // #define DEBUG_I2C_COMMANDS
 // #define DEBUG_ALL_REGS
-// #define DEBUG_ISR_USING_GPIO_NUM 1
-// #define DEBUG_BUS_NOT_READY_WITH_GPIO_NUM 18
+// #define DEBUG_ISR_USING_GPIO_NUM 9
+// #define DEBUG_BUS_NOT_READY_WITH_GPIO_NUM 7
 
 // I2C operation mode command (different for ESP32 and ESP32S3/C3)
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -73,6 +73,7 @@ RaftI2CCentral::RaftI2CCentral()
     // Mutex for critical section to access I2C FIFO
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 3, 0)
     spinlock_initialize(&_i2cAccessMutex);
+    // LOG_I(MODULE_PREFIX, "------------------------ spinlock initialized");
 #else
     vPortCPUInitializeMutex(&_i2cAccessMutex);
 #endif
@@ -339,7 +340,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
     _interruptEnFlags = INTERRUPT_BASE_ENABLES & ~interruptsToDisable;
 
 #ifdef DEBUG_I2C_COMMANDS
-    LOG_I(MODULE_PREFIX, "access numWriteCmds %d cmdIdx %d numReadCmds %d numRStarts+2ndAddr %d restartReqd %d\n",
+    LOG_I(MODULE_PREFIX, "access numWriteCmds %d cmdIdx %d numReadCmds %d numRStarts+2ndAddr %d restartReqd %d",
           writeCommands, cmdIdx, readCommands, rstartAndSecondAddrCommands, _restartAddrPlusRWRequired);
 #endif
 
@@ -454,7 +455,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
     // Debug
 #ifdef DEBUG_RICI2C_ACCESS
     LOG_I(MODULE_PREFIX, "access addr %02x %s", address, getAccessResultStr(_accessResultCode));
-    debugShowStatus("access after: ", address);
+    debugShowStatus("access end: ", address);
 #endif
 
     return _accessResultCode;
@@ -1228,13 +1229,20 @@ void RaftI2CCentral::debugShowAllRegs(const char *prefix, i2c_dev_t* pDev)
     uint32_t* pRegs = (uint32_t*)pDev;
     uint32_t numRegs = sizeof(i2c_dev_t) / sizeof(uint32_t);
     String regsStr = "";
+    uint32_t startReg = 0;
     for (uint32_t i = 0; i < numRegs; i++)
     {
         char regStr[20];
         snprintf(regStr, sizeof(regStr), "%08lx ", (unsigned long)pRegs[i]);
         regsStr += regStr;
+        if ((i % 8 == 7) || (i == numRegs - 1))
+        {
+            LOG_I(MODULE_PREFIX, "%sRegs %3d..%3d %s", prefix, startReg, i, regsStr.c_str());
+            regsStr = "";
+            startReg = i + 1;
+        }
+
     }
-    LOG_I(MODULE_PREFIX, "%s %s", prefix, regsStr.c_str());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1243,7 +1251,7 @@ void RaftI2CCentral::debugShowAllRegs(const char *prefix, i2c_dev_t* pDev)
 
 void RaftI2CCentral::debugShowStatus(const char *prefix, uint32_t addr)
 {
-    LOG_I(MODULE_PREFIX, "%s addr %02x INTRAW (%08x) %s MAIN (%08x) %s FIFO (%08x) %s Stats %s ___",
+    LOG_I(MODULE_PREFIX, "%s addr 0x%02x INTRAW (0x%08x) %s MAIN (0x%08x) %s FIFO (0x%08x) %s Stats %s",
           prefix, addr,
           I2C_DEVICE.int_raw.val, debugINTFlagStr("", I2C_DEVICE.int_raw.val).c_str(),
           I2C_DEVICE.I2C_STATUS_REGISTER_NAME.val, debugMainStatusStr("", I2C_DEVICE.I2C_STATUS_REGISTER_NAME.val).c_str(),
@@ -1252,7 +1260,7 @@ void RaftI2CCentral::debugShowStatus(const char *prefix, uint32_t addr)
     String cmdRegsStr;
     Raft::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME.val)),
                                I2C_ENGINE_CMD_QUEUE_SIZE, cmdRegsStr, " ");
-    LOG_I(MODULE_PREFIX, "___Cmds %s", cmdRegsStr.c_str());
+    LOG_I(MODULE_PREFIX, "%s Cmds %s", prefix, cmdRegsStr.c_str());
     // String memStr;
     // Raft::getHexStrFromUint32(const_cast<uint32_t *>(&(I2C_DEVICE.I2C_TX_FIFO_RAM_ADDR_0_NAME)),
     //                            I2C_ENGINE_FIFO_SIZE, memStr, " ");
