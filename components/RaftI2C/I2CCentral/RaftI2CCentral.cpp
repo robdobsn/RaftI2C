@@ -426,9 +426,10 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
     // Debug
 #ifdef DEBUG_TIMING
     uint64_t nowUs = micros();
-    LOG_I(MODULE_PREFIX, "access timing now %lld elapsedUs %lld maxExpectedUs %lld startUs %lld accessResult %s linesHeld %d",
-          nowUs, nowUs - startUs, maxExpectedUs, startUs,
-          getAccessResultStr(_accessResultCode), checkI2CLinesOk());
+    String errorMsg;
+    bool linesOk = checkI2CLinesOk(errorMsg);
+    LOG_I(MODULE_PREFIX, "access timing now %lld elapsedUs %lld maxExpectedUs %lld startUs %lld accessResult %s linesOk %d linesHeld %d",
+          nowUs, nowUs - startUs, maxExpectedUs, startUs, getAccessResultStr(_accessResultCode), linesOk, errorMsg.c_str());
 #endif
 
 #if defined(DEBUG_RAFT_I2C_CENTRAL_ISR) || defined(DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL)
