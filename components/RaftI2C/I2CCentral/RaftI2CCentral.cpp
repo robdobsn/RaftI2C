@@ -102,23 +102,6 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     _busFrequency = busFrequency;
     _busFilteringLevel = busFilteringLevel;
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-    // Enable peripheral on ESP32 S3
-    periph_module_enable((i2cPort == 0) ? PERIPH_I2C0_MODULE : PERIPH_I2C1_MODULE);
-
-    // Enable clock to I2C peripheral
-    I2C_DEVICE.clk_conf.sclk_active = 1;
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    // Enable clock to I2C peripheral
-    I2C_DEVICE.clk_conf.sclk_active = 1;
-#endif
-
-    // Setup interrupts on the required port
-    initInterrupts();
-
-    // Use re-init sequence as we have to do this on a lockup too
-    reinitI2CModule();
-
     // Attach SDA and SCL
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     int sda_out_sig = i2c_periph_signal[_i2cPort].sda_out_sig;
@@ -175,6 +158,26 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
 #endif
     }
 #endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    // Enable peripheral on ESP32 S3
+    periph_module_enable((i2cPort == 0) ? PERIPH_I2C0_MODULE : PERIPH_I2C1_MODULE);
+
+    // Enable clock to I2C peripheral
+    I2C_DEVICE.clk_conf.sclk_active = 1;
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    periph_module_enable(i2c_periph_signal[0].module);
+    periph_module_reset(i2c_periph_signal[0].module);
+    // i2c_hal_init(I2C_DEVICE, 0);    // Enable clock to I2C peripheral
+    I2C_DEVICE.clk_conf.sclk_active = 1;
+    SET_PERI_REG_MASK(RTC_CNTL_CLK_CONF_REG, RTC_CNTL_DIG_CLK8M_EN_M);
+#endif
+
+    // Setup interrupts on the required port
+    initInterrupts();
+
+    // Use re-init sequence as we have to do this on a lockup too
+    reinitI2CModule();
 
     // Enable bus filtering if required
     initBusFiltering();
@@ -1227,6 +1230,7 @@ String RaftI2CCentral::debugINTFlagStr(const char *prefix, uint32_t statusFlags)
 void RaftI2CCentral::debugShowAllRegs(const char *prefix, i2c_dev_t* pDev)
 {
     // Debug dump all I2C registers
+    LOG_I(MODULE_PREFIX, "%sRegs %p", prefix, pDev);
     uint32_t* pRegs = (uint32_t*)pDev;
     uint32_t numRegs = sizeof(i2c_dev_t) / sizeof(uint32_t);
     String regsStr = "";
