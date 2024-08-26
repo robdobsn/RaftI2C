@@ -150,4 +150,6 @@ private:
     /// @return Slot number
     uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool addressesOnSlotDone);
 
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusScanner";    
 };

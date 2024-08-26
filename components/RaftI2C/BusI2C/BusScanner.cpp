@@ -22,8 +22,6 @@
 // #define DEBUG_LIMIT_SCAN_ADDRS_TO_LIST 0x6a, 0x70
 // #define DEBUG_SCAN_MODE
 
-static const char* MODULE_PREFIX = "BusScanner";
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& busMultiplexers, 

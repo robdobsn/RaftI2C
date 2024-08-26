@@ -13,8 +13,6 @@
 
 // #define DEBUG_BUS_STUCK_HANDLER
 
-static const char* MODULE_PREFIX = "BusStuck";
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusStuckHandler::BusStuckHandler(BusI2CReqSyncFn busI2CReqSyncFn) :

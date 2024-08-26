@@ -8,8 +8,6 @@
 
 #include "BusI2CScheduler.h"
 
-static const char* MODULE_PREFIX = "BusI2CSched";
-
 // #define DEBUG_POLLING_STATS
 // #define DEBUG_POLLING_NEXT
 

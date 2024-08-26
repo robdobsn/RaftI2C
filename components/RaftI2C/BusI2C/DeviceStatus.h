@@ -57,4 +57,7 @@ public:
 
     // Data aggregator
     PollDataAggregator dataAggregator;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CDevStat";    
 };

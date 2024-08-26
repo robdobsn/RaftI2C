@@ -102,4 +102,7 @@ private:
     // Helpers
     bool addToPollingList(BusRequestInfo& busReqInfo);
     bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusAccessor";    
 };

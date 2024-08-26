@@ -11,8 +11,6 @@
 #include "BusI2CESPIDF.h"
 #include "RaftArduino.h"
 
-static const char* MODULE_PREFIX = "BusI2CESPIDF";
-
 BusI2CESPIDF::BusI2CESPIDF()
 {
     _busLockDetectCount = 0;

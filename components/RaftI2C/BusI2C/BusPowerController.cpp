@@ -18,8 +18,6 @@
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 // #define DEBUG_POWER_CONTROL_SLOT_STABLE
 
-static const char* MODULE_PREFIX = "BusPowerCtrl";
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusPowerController::BusPowerController(BusI2CReqSyncFn busI2CReqSyncFn)
@@ -38,6 +36,28 @@ BusPowerController::~BusPowerController()
 /// @param config Configuration
 void BusPowerController::setup(const RaftJsonIF& config)
 {
+    // Check if already setup
+    if (_powerControlEnabled)
+        return;
+
+    // Check voltage level names are present (otherwise power control is disabled)
+    config.getArrayElems("voltageLevels", _voltageLevelNames);
+
+    // Check voltageLevels exists
+    if (_voltageLevelNames.size() == 0)
+    {
+        LOG_I(MODULE_PREFIX, "No config voltageLevels found - I2C power control disabled");
+        return;
+    }
+
+    // Check number of levels
+    if (_voltageLevelNames.size() != POWER_CONTROL_NUM_LEVELS)
+    {
+        LOG_I(MODULE_PREFIX, "%s voltageLevels size %d INVALID (should be %d) - I2C power control disabled", __func__, 
+                    _voltageLevelNames.size(), POWER_CONTROL_NUM_LEVELS);
+        return;
+    }
+
     //////////////////////////////////////////////////////////////////////////
     // IO Expanders
 
@@ -88,18 +108,6 @@ void BusPowerController::setup(const RaftJsonIF& config)
 
         // Create a record for this IO expander
         _ioExpanderRecs.push_back(IOExpanderRec(ioExpDeviceAddr, ioExpMuxAddr, ioExpMuxChanIdx, ioExpMuxResetPin, virtualPinBase, numPins));
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Voltage level names
-    config.getArrayElems("voltageLevels", _voltageLevelNames);
-
-    // Check number of levels
-    if (_voltageLevelNames.size() != POWER_CONTROL_NUM_LEVELS)
-    {
-        LOG_W(MODULE_PREFIX, "%s voltageLevels size %d INVALID (should be %d)", __func__, 
-                    _voltageLevelNames.size(), POWER_CONTROL_NUM_LEVELS);
-        return;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -208,6 +216,9 @@ void BusPowerController::setup(const RaftJsonIF& config)
         _slotPowerCtrlGroups.push_back(SlotPowerControlGroup(groupName, startSlotNum, defaultLevelEnum, slotRecs));
     }
 
+    // Power control is enabled
+    _powerControlEnabled = true;
+
     // Debug
 #ifdef DEBUG_POWER_CONTROL_SETUP
 
@@ -260,6 +271,10 @@ void BusPowerController::setup(const RaftJsonIF& config)
 /// @return True if hardware initialized ok
 bool BusPowerController::postSetup()
 {
+    // Check if power control is enabled
+    if (!_powerControlEnabled)
+        return false;
+
     // Turn all power off
     powerOffAll();
 
@@ -280,6 +295,10 @@ void BusPowerController::loop()
 /// @return True if power is stable
 bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 {
+    // Check if power control is enabled
+    if (!_powerControlEnabled)
+        return true;
+
     // Get the slot record - if it doesn't exist assume power is stable
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     if (!pSlotRec)
@@ -413,6 +432,10 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 /// @return True if slot is power controlled
 bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
 {
+    // Enaure hardware initialized
+    if (!_hardwareInitialized)
+        return false;
+
     // Get slot record
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     return (pSlotRec != nullptr);

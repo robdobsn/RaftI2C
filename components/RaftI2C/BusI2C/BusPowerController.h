@@ -48,6 +48,9 @@ private:
     // Bus access function
     BusI2CReqSyncFn _busI2CReqSyncFn;
 
+    // Power control enabled
+    bool _powerControlEnabled = false;
+    
     // Hardware is initialized
     bool _hardwareInitialized = false;
 
@@ -248,4 +251,7 @@ private:
 
     /// @brief Turn all power off
     void powerOffAll();
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusPwrCtrl";        
 };

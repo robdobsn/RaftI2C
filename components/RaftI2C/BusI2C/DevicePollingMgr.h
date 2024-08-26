@@ -66,4 +66,7 @@ private:
     // Poll data result
     std::vector<uint8_t> _pollDataResult;
     uint8_t* _pPollDataResult = nullptr;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CDevPollMgr";    
 };

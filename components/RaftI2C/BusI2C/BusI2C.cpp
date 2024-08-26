@@ -14,8 +14,6 @@
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 
-static const char* MODULE_PREFIX = "BusI2C";
-
 #if defined(I2C_USE_RAFT_I2C)
 #include "RaftI2CCentral.h"
 #elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
@@ -35,6 +33,7 @@ static const char* MODULE_PREFIX = "BusI2C";
 // #define DEBUG_I2C_ASYNC_SEND_HELPER
 // #define DEBUG_I2C_SYNC_SEND_HELPER
 // #define DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES 32
+// #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x6a }
 // #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x6a, 0x25, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77 }
 // #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x48, 0x49, 0x26, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77 }
 // #define DEBUG_BUS_HIATUS

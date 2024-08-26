@@ -218,4 +218,7 @@ private:
     /// @param slotNum Slot number (1-based) (valid if after slot set)
     /// @return True if succeeded in clearing the bus stuck problem
     bool attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slotNum);
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusMux";    
 };

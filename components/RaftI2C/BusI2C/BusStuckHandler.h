@@ -44,4 +44,7 @@ private:
 
     // Bus I2C Request Sync function
     BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusStuck";    
 };

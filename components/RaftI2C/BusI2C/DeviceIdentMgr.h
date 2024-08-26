@@ -72,6 +72,11 @@ public:
                     uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get debug JSON
+    /// @return JSON string
+    virtual String getDebugJSON(bool includeBraces) const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
     /// @param addrAndSlot address and slot
     /// @param deviceStatus (out) device status
@@ -127,5 +132,8 @@ private:
     uint32_t decodePollResponses(uint16_t deviceTypeIndex, 
                     const uint8_t* pPollBuf, uint32_t pollBufLen, 
                     void* pStructOut, uint32_t structOutSize, 
-                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;                    
+                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CDevIdentMgr";
 };

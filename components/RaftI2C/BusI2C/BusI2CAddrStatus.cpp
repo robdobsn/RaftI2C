@@ -57,3 +57,16 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
     }
     return false;
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get JSON for device status
+/// @return JSON string
+String BusI2CAddrStatus::getJson() const
+{
+    // Create JSON
+    String jsonStr = "{";
+    jsonStr += "\"a\":\"0x" + String(addrAndSlot.addr,16) + "@" + String(addrAndSlot.slotNum) + "\"";
+    jsonStr += ",\"s\":\"" + String(isOnline ? "O" : "X") + String(wasOnceOnline ? "W" : "X") + String(isNewlyIdentified ? "N" : "X") + "\"";
+    jsonStr += "}";
+    return jsonStr;
+}

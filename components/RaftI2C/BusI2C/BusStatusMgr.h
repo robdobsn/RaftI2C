@@ -122,6 +122,11 @@ public:
     /// @brief Inform that the bus is stuck
     void informBusStuck();
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get debug JSON
+    /// @return JSON string
+    String getDebugJSON(bool includeBraces) const;
+
     // Max failures before declaring a bus element offline
     static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
 
@@ -182,4 +187,7 @@ private:
     // Addresses found online on main bus at any time
     uint32_t _mainBusAddrBits[(I2C_BUS_ADDRESS_MAX+31)/32] = {0};
     static const uint32_t SIZE_OF_MAIN_BUS_ADDR_BITS_ARRAY = sizeof(_mainBusAddrBits)/sizeof(_mainBusAddrBits[0]);
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusStMgr";    
 };

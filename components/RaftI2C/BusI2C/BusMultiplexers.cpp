@@ -27,8 +27,6 @@
 // #define DEBUG_CLEAR_CASCADED_MUX
 // #define DEBUG_FORCE_NO_RESET_PINS
 
-static const char* MODULE_PREFIX = "BusMux";
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 

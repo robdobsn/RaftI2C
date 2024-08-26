@@ -21,8 +21,6 @@
 // #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
 
-static const char* MODULE_PREFIX = "BusStatusMgr";
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -679,4 +677,30 @@ uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline,
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get debug JSON
+/// @return JSON string
+String BusStatusMgr::getDebugJSON(bool includeBraces) const
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return "{}";
+
+    // Create JSON
+    String jsonStr;
+    for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    {
+        if (jsonStr.length() > 0)
+            jsonStr += ",";
+        jsonStr += addrStatus.getJson();
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    jsonStr = "\"o\":" + String(_busOperationStatus ? 1 : 0) + ",\"d\":[" + jsonStr + "]";
+    if (includeBraces)
+        jsonStr = "{" + jsonStr + "}";
+    return jsonStr;
 }

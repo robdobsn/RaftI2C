@@ -10,10 +10,6 @@
 
 // #define DEBUG_DEVICE_STATUS
 
-#ifdef DEBUG_DEVICE_STATUS
-static const char* MODULE_PREFIX = "DeviceStatus";
-#endif
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get pending ident poll requests 
 /// @param timeNowUs time in us (passed in to aid testing)

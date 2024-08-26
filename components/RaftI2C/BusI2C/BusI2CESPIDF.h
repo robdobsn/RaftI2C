@@ -41,4 +41,7 @@ private:
     uint32_t _busLockDetectCount = 0;
     static const uint32_t MAX_BUS_LOCK_DETECT_COUNT = 3;
     static const uint32_t BUS_LOCK_DETECT_MAX_MS = 500;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusESPIDF";
 };
