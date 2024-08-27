@@ -175,6 +175,10 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
             .device_address = (uint16_t)address,
             .scl_speed_hz = _busFrequency,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0)
+            .scl_wait_us = 0,
+            .flags = 0
+#endif
         };
         if (i2c_master_bus_add_device(_i2cMasterBusHandle, &dev_cfg, &devHandle) != ESP_OK)
         {
