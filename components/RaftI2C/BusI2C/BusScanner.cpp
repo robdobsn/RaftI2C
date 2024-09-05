@@ -50,7 +50,7 @@ void BusScanner::setup(const RaftJsonIF& config)
     LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
 
     // Get scan priority lists
-    DeviceTypeRecords::getScanPriorityLists(_scanPriorityLists);
+    deviceTypeRecords.getScanPriorityLists(_scanPriorityLists);
 
     // Ensure there is at least one scan priority list
     if (_scanPriorityLists.size() == 0)

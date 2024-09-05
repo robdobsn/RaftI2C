@@ -73,30 +73,31 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
         // Get JSON definition for device
-        const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIdx);
-        if (!pDevTypeRec)
+        DeviceTypeRecord devTypeRec;
+        if (!deviceTypeRecords.getDeviceInfo(deviceTypeIdx, devTypeRec))
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s addr@slotNum %s", 
-                    pDevTypeRec->deviceType, addrAndSlot.toString().c_str());
+                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME",
+                    addrAndSlot.toString().c_str());
 #endif
 
         // Check if the detection value(s) match responses from the device
         // Generate a bus request to read the detection value
-        if (checkDeviceTypeMatch(addrAndSlot, pDevTypeRec))
+        if (checkDeviceTypeMatch(addrAndSlot, &devTypeRec))
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", pDevTypeRec->devInfoJson);
+            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
 #endif
             // Initialise the device if required
-            processDeviceInit(addrAndSlot, pDevTypeRec);
+            processDeviceInit(addrAndSlot, &devTypeRec);
 
             // Set device type index
             deviceStatus.deviceTypeIndex = deviceTypeIdx;
 
             // Get polling info
-            deviceTypeRecords.getPollInfo(addrAndSlot.toCompositeAddrAndSlot(), pDevTypeRec, deviceStatus.deviceIdentPolling);
+            deviceTypeRecords.getPollInfo(addrAndSlot.toCompositeAddrAndSlot(), &devTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 
@@ -112,7 +113,7 @@ void DeviceIdentMgr::identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, Device
         else
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", pDevTypeRec->devInfoJson);
+            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
 #endif
         }
     }
@@ -265,12 +266,12 @@ String DeviceIdentMgr::deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
     // Get device type info
-    const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
-    if (!pDevTypeRec)
+    DeviceTypeRecord devTypeRec;
+    if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
         return "";
 
     // Get the poll response JSON
-    return deviceTypeRecords.deviceStatusToJson(addrAndSlot.toCompositeAddrAndSlot(), isOnline, pDevTypeRec, devicePollResponseData);
+    return deviceTypeRecords.deviceStatusToJson(addrAndSlot.toCompositeAddrAndSlot(), isOnline, &devTypeRec, devicePollResponseData);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -379,14 +380,14 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
     // Get device type info
-    const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getDeviceInfo(deviceTypeIndex);
-    if (!pDevTypeRec)
+    DeviceTypeRecord devTypeRec;
+    if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
         return 0;
 
     // Check the decode method is present
-    if (!pDevTypeRec->pollResultDecodeFn)
+    if (!devTypeRec.pollResultDecodeFn)
         return 0;
 
     // Decode the poll response
-    return pDevTypeRec->pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
+    return devTypeRec.pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
 }
