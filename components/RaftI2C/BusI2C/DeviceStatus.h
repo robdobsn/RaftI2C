@@ -40,7 +40,7 @@ public:
     // Store poll results
     bool pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, const std::vector<uint8_t>& pollResult)
     {
-        return dataAggregator.put(pollResult);
+        return dataAggregator.put(timeNowUs, pollResult);
     }
 
     // Get device type index

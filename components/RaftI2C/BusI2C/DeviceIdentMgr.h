@@ -77,6 +77,18 @@ public:
     virtual String getDebugJSON(bool includeBraces) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Register for device data notifications
+    /// @param addrAndSlot address
+    /// @param dataChangeCB Callback for data change
+    /// @param minTimeBetweenReportsMs Minimum time between reports (ms)
+    /// @param pCallbackInfo Callback info (passed to the callback)
+    virtual void registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB, 
+                uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo) override final
+    {
+        _busStatusMgr.registerForDeviceData(address, dataChangeCB, minTimeBetweenReportsMs, pCallbackInfo);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
     /// @param addrAndSlot address and slot
     /// @param deviceStatus (out) device status
