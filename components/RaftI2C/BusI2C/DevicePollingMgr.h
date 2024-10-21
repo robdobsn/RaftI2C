@@ -60,7 +60,7 @@ private:
     BusMultiplexers& _busMultiplexers;
 
     // I2C request sync function
-    BusReqSyncFn _busI2CReqSyncFn;
+    BusReqSyncFn _busReqSyncFn;
 
     // Poll data result
     std::vector<uint8_t> _pollDataResult;

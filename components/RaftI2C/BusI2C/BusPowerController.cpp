@@ -21,7 +21,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusPowerController::BusPowerController(BusReqSyncFn busI2CReqSyncFn)
-        : _busI2CReqSyncFn(busI2CReqSyncFn)
+        : _busReqSyncFn(busI2CReqSyncFn)
 {
 }
 
@@ -572,7 +572,7 @@ void BusPowerController::actionI2CIOStateChanges(bool force)
     // for (IOExpanderRec& pwrCtrlRec : _ioExpanderRecs)
     // {
     //     // Update power control registers
-    //     pwrCtrlRec.update(force, _busI2CReqSyncFn);
+    //     pwrCtrlRec.update(force, _busReqSyncFn);
     // }
 }
 

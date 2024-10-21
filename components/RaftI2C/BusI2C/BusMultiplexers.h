@@ -11,6 +11,7 @@
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "BusStatusMgr.h"
+#include "BusI2CElemTracker.h"
 #include "RaftJsonIF.h"
 #include "driver/gpio.h"
 
@@ -19,7 +20,7 @@ class BusMultiplexers
 public:
     // Constructor and destructor
     BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-            BusStatusMgr& busStatusMgr, BusReqSyncFn busI2CReqSyncFn);
+        BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusReqSyncFn busI2CReqSyncFn);
     virtual ~BusMultiplexers();
 
     // Setup
@@ -130,8 +131,11 @@ private:
     // Bus status manager
     BusStatusMgr& _busStatusMgr;
 
+    // Bus element tracker
+    BusI2CElemTracker& _busElemTracker;
+
     // Bus access function
-    BusReqSyncFn _busI2CReqSyncFn;
+    BusReqSyncFn _busReqSyncFn;
 
     // Bus mux address range
     BusElemAddrType _minAddr = I2C_BUS_MUX_BASE_DEFAULT;

@@ -7,6 +7,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "DevicePollingMgr.h"
+#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_POLL_REQUEST
 // #define DEBUG_POLL_RESULT
@@ -18,7 +19,7 @@
 DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
     _busMultiplexers(BusMultiplexers),
-    _busI2CReqSyncFn(busI2CReqSyncFn)
+    _busReqSyncFn(busI2CReqSyncFn)
 {
 }
 
@@ -43,10 +44,11 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         // Get the address and slot
         if (pollInfo.pollReqs.size() == 0)
             return;
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pollInfo.pollReqs[0].getAddress());
+        BusElemAddrType address = pollInfo.pollReqs[0].getAddress();
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(address);
 
 #ifdef DEBUG_POLL_REQUEST
-        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), pollInfo.pollReqs[0].getAddress());
+        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), address);
 #endif
 
         // Enable the slot
@@ -64,15 +66,16 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             // Perform the polling
             std::vector<uint8_t> readData;
             BusRequestInfo reqRec(busReqRec);
-            auto rslt = _busI2CReqSyncFn(&reqRec, &readData);
+            auto rslt = _busReqSyncFn(&reqRec, &readData);
 
 #ifdef DEBUG_POLL_RESULT
             String writeDataHexStr;
             Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
             String readDataHexStr;
             Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
-            LOG_I(MODULE_PREFIX, "taskService poll %s writeData %s readData %s rslt %s", 
-                            BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqRec.getAddress()).toString().c_str(),
+            LOG_I(MODULE_PREFIX, "taskService poll addr %s (%04x) writeData %s readData %s rslt %s", 
+                            addrAndSlot.toString().c_str(),
+                            address,
                             writeDataHexStr.c_str(),
                             readDataHexStr.c_str(),
                             Raft::getRetCodeStr(rslt));
@@ -90,7 +93,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(timeNowUs, pollInfo, addrAndSlot, _pollDataResult);
+            _busStatusMgr.pollResultStore(timeNowUs, pollInfo, address, _pollDataResult);
 
         // Restore the bus multiplexers if necessary
         _busMultiplexers.disableAllSlots(false);

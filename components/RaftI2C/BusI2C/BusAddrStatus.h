@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// I2C Address Status
+// Bus Address Status
 //
 // Rob Dobson 2024
 //
@@ -9,16 +9,20 @@
 #pragma once
 
 #include "RaftDeviceConsts.h"
-#include "BusI2CConsts.h"
 #include "DeviceStatus.h"
-#include "BusI2CAddrAndSlot.h"
 
-// I2C address status
-class BusI2CAddrStatus
+// Bus address status
+class BusAddrStatus
 {
 public:
     // Address and slot
-    BusI2CAddrAndSlot addrAndSlot;
+    BusElemAddrType address = 0;
+
+    // Max failures before declaring a bus element offline
+    static const uint32_t ADDR_RESP_COUNT_FAIL_MAX_DEFAULT = 3;
+
+    // Max successes before declaring a bus element online
+    static const uint32_t ADDR_RESP_COUNT_OK_MAX_DEFAULT = 2;
 
     // Online/offline count
     int8_t count = 0;
@@ -46,7 +50,9 @@ public:
     const void* pCallbackInfo = nullptr;
 
     // Handle responding
-    bool handleResponding(bool isResponding, bool &flagSpuriousRecord);
+    bool handleResponding(bool isResponding, bool &flagSpuriousRecord, 
+            uint32_t okMax = ADDR_RESP_COUNT_OK_MAX_DEFAULT, 
+            uint32_t failMax = ADDR_RESP_COUNT_FAIL_MAX_DEFAULT);
     
     // Register for data change
     void registerForDataChange(RaftDeviceDataChangeCB dataChangeCB, uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo)

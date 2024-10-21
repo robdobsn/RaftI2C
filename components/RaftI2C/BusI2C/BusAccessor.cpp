@@ -141,17 +141,17 @@ void BusAccessor::processRequestQueue(bool isPaused)
     {
 #ifdef DEBUG_REQ_QUEUE_COMMANDS
         // Address and slot
-        auto addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqRec.getAddress());
+        BusElemAddrType address = reqRec.getAddress();
         // Debug
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
         LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", 
-                    addrAndSlot.toString().c_str(), writeDataStr.c_str());
+                    BusI2CAddrAndSlot::toString(address).c_str(), writeDataStr.c_str());
 #endif
 
         // Debug one address only
 #ifdef DEBUG_REQ_QUEUE_ONE_ADDR
-        if (addrAndSlot.addr != DEBUG_REQ_QUEUE_ONE_ADDR)
+        if (BusI2CAddrAndSlot::getI2CAddr(address) != DEBUG_REQ_QUEUE_ONE_ADDR)
             return;
 #endif
 
@@ -208,11 +208,11 @@ void BusAccessor::processPolling()
             {
                 // Debug poll timing
 #ifdef DEBUG_POLL_TIME_FOR_ADDR
-                BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pReqRec->getAddress());
-                if (pReqRec->isPolling() && (addrAndSlot.addr == DEBUG_POLL_TIME_FOR_ADDR))
+                BusElemAddrType address = pReqRec->getAddress();
+                if (pReqRec->isPolling() && (BusI2CAddrAndSlot::getI2CAddr(address) == DEBUG_POLL_TIME_FOR_ADDR))
                 {
                     LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slotNum %s elapsed %ld", 
-                                addrAndSlot.toString().c_str(), 
+                                BusI2CAddrAndSlot::toString(address).c_str(), 
                                 Raft::timeElapsed(millis(), _debugLastPollTimeMs));
                     _debugLastPollTimeMs = millis();
                 }
@@ -401,7 +401,7 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
     String writeDataStr;
     Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
     LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slotNum %s writeData %s readLen %d delayMs %d", 
-                BusI2CAddrAndSlot::fromCompositeAddrAndSlot(reqRec.getAddress()).toString().c_str(),
+                BusI2CAddrAndSlot::fromBusElemAddrType(reqRec.getAddress()).toString().c_str(),
                 writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
 #endif
 

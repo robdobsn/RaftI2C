@@ -1,20 +1,22 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// I2C Address Status
+// Bus Address Status
 //
 // Rob Dobson 2024
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "BusI2CAddrStatus.h"
+#include "BusAddrStatus.h"
 #include "BusStatusMgr.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Handle device responding information
 /// @param isResponding true if device is responding
 /// @param flagSpuriousRecord (out) true if this is a spurious record
+/// @param okMax max number of successful responses before declaring online
+/// @param failMax max number of failed responses before declaring offline
 /// @return true if status has changed
-bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRecord)
+bool BusAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRecord, uint32_t okMax, uint32_t failMax)
 {
     // Handle is responding or not
     if (isResponding)
@@ -23,8 +25,8 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
         if (!isOnline)
         {
             // Check if we've reached the threshold for online
-            count = (count < BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX) ? count + 1 : count;
-            if (count >= BusStatusMgr::I2C_ADDR_RESP_COUNT_OK_MAX)
+            count = (count < okMax) ? count + 1 : count;
+            if (count >= okMax)
             {
                 // Now online
                 isChange = !isChange;
@@ -41,8 +43,8 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
         if (isOnline || !wasOnceOnline)
         {
             // Count down to offline/spurious threshold
-            count = (count < -BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX) ? count : count - 1;
-            if (count <= -BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX)
+            count = (count < -failMax) ? count : count - 1;
+            if (count <= -failMax)
             {
                 // Now offline/spurious
                 count = 0;
@@ -61,12 +63,16 @@ bool BusI2CAddrStatus::handleResponding(bool isResponding, bool &flagSpuriousRec
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for device status
 /// @return JSON string
-String BusI2CAddrStatus::getJson() const
+String BusAddrStatus::getJson() const
 {
     // Create JSON
-    String jsonStr = "{";
-    jsonStr += "\"a\":\"0x" + String(addrAndSlot.addr,16) + "@" + String(addrAndSlot.slotNum) + "\"";
-    jsonStr += ",\"s\":\"" + String(isOnline ? "O" : "X") + String(wasOnceOnline ? "W" : "X") + String(isNewlyIdentified ? "N" : "X") + "\"";
-    jsonStr += "}";
+    char jsonStr[128];
+    snprintf(jsonStr, sizeof(jsonStr), 
+        "{\"a\":\"0x%04X\",\"s\":\"%c%c%c\"}", 
+        (int)address, 
+        isOnline ? 'O' : 'X', 
+        wasOnceOnline ? 'W' : 'X', 
+        isNewlyIdentified ? 'N' : 'X'
+    );
     return jsonStr;
 }

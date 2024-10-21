@@ -17,7 +17,7 @@ class BusStuckHandler
 {
 public:
     // Constructor and destructor
-    BusStuckHandler(BusReqSyncFn busI2CReqSyncFn);
+    BusStuckHandler(BusReqSyncFn busReqSyncFn);
     virtual ~BusStuckHandler();
 
     // Setup
@@ -43,7 +43,7 @@ private:
     gpio_num_t _sclPin = GPIO_NUM_NC;
 
     // Bus I2C Request Sync function
-    BusReqSyncFn _busI2CReqSyncFn = nullptr;
+    BusReqSyncFn _busReqSyncFn = nullptr;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CBusStuck";    

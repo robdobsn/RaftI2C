@@ -8,6 +8,7 @@
 
 #include "BusMultiplexers.h"
 #include "RaftJsonPrefixed.h"
+#include "BusI2CElemTracker.h"
 #include "RaftJson.h"
 #include "RaftUtils.h"
 #include "freertos/FreeRTOS.h"
@@ -30,9 +31,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-        BusStatusMgr& BusStatusMgr, BusReqSyncFn busI2CReqSyncFn) :
+        BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusReqSyncFn busI2CReqSyncFn) :
     _busPowerController(busPowerController), _busStuckHandler(busStuckHandler),
-    _busStatusMgr(BusStatusMgr), _busI2CReqSyncFn(busI2CReqSyncFn)
+    _busStatusMgr(busStatusMgr), _busElemTracker(busElemTracker), _busReqSyncFn(busI2CReqSyncFn)
 {
     // Init bus multiplexer records
     initBusMuxRecs();
@@ -356,7 +357,7 @@ RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx,
                     0, 
                     nullptr, 
                     this);
-        rslt = _busI2CReqSyncFn(&reqRec, nullptr);
+        rslt = _busReqSyncFn(&reqRec, nullptr);
         busMux.curBitMask = slotMask;
         // Store the resulting mask information if the operation was successful
         if (rslt != RAFT_OK)
@@ -574,11 +575,11 @@ void BusMultiplexers::clearCascadedMuxes(uint32_t muxIdx)
                         this);
 
 #ifdef DEBUG_CLEAR_CASCADED_MUX
-            auto rslt = _busI2CReqSyncFn(&reqRec, nullptr);
+            auto rslt = _busReqSyncFn(&reqRec, nullptr);
             LOG_I(MODULE_PREFIX, "%s rslt %s(%d) resetCascade muxIdx %d slotMask 0x%02x", 
                     __func__, Raft::getRetCodeStr(rslt), rslt, muxIdx, slotMask);
 #else
-            _busI2CReqSyncFn(&reqRec, nullptr);
+            _busReqSyncFn(&reqRec, nullptr);
 #endif
 
         }
@@ -678,12 +679,14 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
     {
         // Clear the stuck bus problem by initially disabling all slots 
         disableAllSlots(true);
-        
+
         // Check if failure occurred after the slot was set
         if (failAfterSlotSet && _busPowerController.isSlotPowerControlled(slotNum))
         {
             // Inform the bus status manager that a slot is powering down
-            _busStatusMgr.slotPoweringDown(slotNum);
+            std::vector<BusElemAddrType> listOfAddr;
+            _busElemTracker.getAddrList(slotNum, listOfAddr);
+            _busStatusMgr.goingOffline(listOfAddr);
 
             // Start power cycling the slot
             _busPowerController.powerCycleSlot(slotNum);
@@ -691,7 +694,9 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
         else
         {
             // Inform the bus status manager that the bus is powering down
-            _busStatusMgr.slotPoweringDown(0);
+            std::vector<BusElemAddrType> listOfAddr;
+            _busElemTracker.getAddrList(0, listOfAddr);
+            _busStatusMgr.goingOffline(listOfAddr);
 
             // Clear the stuck bus problem by power cycling the entire bus
             _busPowerController.powerCycleSlot(0);

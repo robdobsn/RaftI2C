@@ -10,6 +10,7 @@
 #include "BusScanner.h"
 #include "BusRequestInfo.h"
 #include "DeviceTypeRecords.h"
+#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_ELEM_STATUS_UPDATE
 // #define DEBUG_MOVE_TO_NORMAL_SCANNING
@@ -24,12 +25,13 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& busMultiplexers, 
+BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusMultiplexers& busMultiplexers, 
                 DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
+    _busElemTracker(busElemTracker),
     _busMultiplexers(busMultiplexers),
     _deviceIdentMgr(deviceIdentMgr),
-    _busI2CReqSyncFn(busI2CReqSyncFn)
+    _busReqSyncFn(busI2CReqSyncFn)
 {
 }
 
@@ -166,8 +168,9 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                 }
 
                 // Only scan the main bus for addresses already known to be on the main bus - otherwise
-                // they will incorrectly appear multiple times on slots
-                if ((slotNum != 0) && _busStatusMgr.isAddrFoundOnMainBus(addr))
+                // they will incorrectly appear multiple times on slots because main bus devices
+                // will respond on all slots
+                if ((slotNum != 0) && _busElemTracker.isAddrFoundOnMainBus(addr))
                     continue;
 
                 // Avoid scanning a bus multiplexer address on the wrong slot
@@ -529,7 +532,7 @@ RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& fa
                 0,
                 nullptr, 
                 this);
-    return _busI2CReqSyncFn(&reqRec, nullptr);
+    return _busReqSyncFn(&reqRec, nullptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -537,12 +540,18 @@ RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& fa
 /// @param addr Address
 /// @param slot Slot
 /// @param accessResult Access result code
-void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftRetCode accessResult)
+void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode accessResult)
 {
     // Update bus element state
+    BusElemAddrType address = BusI2CAddrAndSlot(i2cAddr, slot).toBusElemAddrType();
     bool isOnline = false;
-    bool isChange = _busStatusMgr.updateBusElemState(BusI2CAddrAndSlot(addr, slot), 
-                    accessResult == RAFT_OK, isOnline);
+    bool isChange = _busStatusMgr.updateBusElemState(address, accessResult == RAFT_OK, isOnline);
+
+    //If this is a change to online then update the bus element tracker
+    if (isOnline && isChange)
+    {
+        _busElemTracker.setElemFound(i2cAddr, slot);
+    }
 
 #ifdef DEBUG_BUS_SCANNER
     LOG_I(MODULE_PREFIX, "updateBusElemState addr %02x slot %d accessResult %d isOnline %d isChange %d", 
@@ -554,9 +563,9 @@ void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftRetCode ac
     {
         // Attempt to identify the device
         DeviceStatus deviceStatus;
-        _deviceIdentMgr.identifyDevice(BusI2CAddrAndSlot(addr, slot), deviceStatus);
+        _deviceIdentMgr.identifyDevice(address, deviceStatus);
 
         // Set device status into bus status manager for this address
-        _busStatusMgr.setBusElemDeviceStatus(BusI2CAddrAndSlot(addr, slot), deviceStatus);
+        _busStatusMgr.setBusElemDeviceStatus(address, deviceStatus);
     }
 }

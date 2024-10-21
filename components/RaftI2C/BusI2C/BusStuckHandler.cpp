@@ -15,8 +15,8 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusStuckHandler::BusStuckHandler(BusReqSyncFn busI2CReqSyncFn) :
-    _busI2CReqSyncFn(busI2CReqSyncFn)
+BusStuckHandler::BusStuckHandler(BusReqSyncFn busReqSyncFn) :
+    _busReqSyncFn(busReqSyncFn)
 {
 }
 
@@ -79,6 +79,6 @@ void BusStuckHandler::clearStuckByClocking()
                     0, 
                     nullptr, 
                     this);
-        _busI2CReqSyncFn(&reqRec, nullptr);
+        _busReqSyncFn(&reqRec, nullptr);
     }
 }

@@ -19,6 +19,7 @@
 #include "DevicePollingMgr.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
+#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -183,9 +184,9 @@ public:
     /// @brief Convert bus address to string
     /// @param addr - address
     /// @return address as a string
-    virtual String addrToString(uint32_t addr) const override final
+    virtual String addrToString(BusElemAddrType addr) const override final
     {
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr);
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(addr);
         return addrAndSlot.toString();
     }
 
@@ -193,11 +194,11 @@ public:
     /// @brief Convert string to bus address
     /// @param addrStr - address as a string
     /// @return address
-    virtual uint32_t stringToAddr(const String& addrStr) const override final
+    virtual BusElemAddrType stringToAddr(const String& addrStr) const override final
     {
         BusI2CAddrAndSlot addrAndSlot;
         addrAndSlot.fromString(addrStr);
-        return addrAndSlot.toCompositeAddrAndSlot();
+        return addrAndSlot.toBusElemAddrType();
     }
 
     // Yield value on each bus processing loop
@@ -259,6 +260,9 @@ private:
     // Bus status
     BusStatusMgr _busStatusMgr;
 
+    // Bus elem tracker
+    BusI2CElemTracker _busElemTracker;
+
     // Bus power controller
     BusPowerController _busPowerController;
     
@@ -294,7 +298,7 @@ private:
     // Helpers
     RaftRetCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
     RaftRetCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
-    RaftRetCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
+    RaftRetCode checkAddrValidAndNotBarred(BusElemAddrType address);
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CBusI2C";    

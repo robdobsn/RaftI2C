@@ -46,7 +46,7 @@ public:
 
 private:
     // Bus access function
-    BusReqSyncFn _busI2CReqSyncFn;
+    BusReqSyncFn _busReqSyncFn;
 
     // Power control enabled
     bool _powerControlEnabled = false;

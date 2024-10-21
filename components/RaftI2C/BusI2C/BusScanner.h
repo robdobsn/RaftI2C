@@ -12,6 +12,7 @@
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
+#include "BusI2CElemTracker.h"
 #include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
 #include "DeviceIdentMgr.h"
@@ -21,7 +22,7 @@
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers,
+    BusScanner(BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusMultiplexers& BusMultiplexers,
                 DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
@@ -70,7 +71,7 @@ private:
 
     // Scanning state repeat count
     uint16_t _scanStateRepeatCount = 0;
-    uint16_t _scanStateRepeatMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+    uint16_t _scanStateRepeatMax = BusAddrStatus::ADDR_RESP_COUNT_FAIL_MAX_DEFAULT+1;
 
     // Scanning
     uint32_t _scanLastMs = 0;
@@ -104,6 +105,9 @@ private:
     // Status manager
     BusStatusMgr& _busStatusMgr;
 
+    // Bus element tracker (keeps track of whether element found on the main bus or on an extender)
+    BusI2CElemTracker& _busElemTracker;
+
     // Bus multiplexers
     BusMultiplexers& _busMultiplexers;
 
@@ -111,11 +115,11 @@ private:
     DeviceIdentMgr& _deviceIdentMgr;
 
     // Bus i2c request function (synchronous)
-    BusReqSyncFn _busI2CReqSyncFn = nullptr;
+    BusReqSyncFn _busReqSyncFn = nullptr;
 
     /// @brief Set scan mode
     /// @param scanMode Scan mode
-    void setScanMode(BusScanMode scanMode, uint32_t maxRepeat = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1);
+    void setScanMode(BusScanMode scanMode, uint32_t maxRepeat = BusAddrStatus::ADDR_RESP_COUNT_FAIL_MAX_DEFAULT+1);
 
     /// @brief Scan one address and slot
     /// @param addr Address
