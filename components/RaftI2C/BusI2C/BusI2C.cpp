@@ -54,7 +54,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busMultiplexers(_busPowerController, _busStuckHandler, _busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _deviceIdentMgr(_busStatusMgr, _busMultiplexers,
+        _deviceIdentMgr(_busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _busScanner(_busStatusMgr, _busMultiplexers, _deviceIdentMgr,
@@ -450,18 +450,18 @@ void BusI2C::i2cWorkerTask()
 /// @return result code
 /// @note This is called from the worker task/thread and does not set the bus extender so if a slotted address
 ///       is used then the bus extender must be set before calling this function
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
+RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
 {
     // Check valid
     if (!_pI2CCentral)
-        return RaftI2CCentralIF::ACCESS_RESULT_NOT_INIT;
+        return RAFT_BUS_NOT_INIT;
 
     // Get address
     BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pReqRec->getAddress());
 
     // Check address is within valid range
-    RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
-    bool addrOk = checkAddrValidAndNotBarred(addrAndSlot) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+    RaftRetCode rsltCode = RAFT_BUS_NOT_INIT;
+    bool addrOk = checkAddrValidAndNotBarred(addrAndSlot) == RAFT_OK;
     if (addrOk)
     {
         // Buffer for read
@@ -493,12 +493,12 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusRequestInfo* pRe
     String writeDataHexStr;
     Raft::getHexStrFromBytes(pReqRec->getWriteData(), Raft::clamp(pReqRec->getWriteDataLen(), 0, DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
     LOG_I(MODULE_PREFIX, "I2CSendSync %s addr 0x%02x writeLen %d readLen %d reqType %d writeData %s",
-                    addrOk ? RaftI2CCentralIF::getAccessResultStr(rsltCode) : "INVALID ADDR",
+                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR",
                     addrAndSlot.addr, pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType(), writeDataHexStr.c_str());
 #else
     LOG_I(MODULE_PREFIX, "I2CSendSync %saddr 0x%02x writeLen %d readLen %d reqType %d",
-                    addrOk ? RaftI2CCentralIF::getAccessResultStr(rsltCode) : "INVALID ADDR ",
+                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR ",
                     addrAndSlot.addr, pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType());
 #endif
@@ -515,7 +515,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusRequestInfo* pRe
 /// @param pReqRec - contains the request details including address, write data, read data length, etc
 /// @param pollListIdx - index into the polling list - used to reference back to the response queue
 /// @return result code
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx)
+RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx)
 {
     // Check address is within valid range and not barred
     BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(pReqRec->getAddress());
@@ -527,12 +527,12 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusRequestInfo* pR
 #endif
 
     auto rslt = checkAddrValidAndNotBarred(addrAndSlot);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    if (rslt != RAFT_OK)
         return rslt;
 
     // Check if a bus mux slot is specified
     rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    if (rslt != RAFT_OK)
         return rslt;
 
     // Buffer for read and address
@@ -543,7 +543,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusRequestInfo* pR
 
     // Access the bus
     uint32_t numBytesRead = 0;
-    rslt = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
+    rslt = RAFT_BUS_NOT_INIT;
     if (!_pI2CCentral)
         return rslt;
     rslt = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
@@ -572,14 +572,14 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusRequestInfo* pR
 /// @brief Check address is valid and not barred
 /// @param addrAndSlot - address to check
 /// @return result code
-RaftI2CCentralIF::AccessResultCode BusI2C::checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot)
+RaftRetCode BusI2C::checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot)
 {
     if ((addrAndSlot.addr < I2C_BUS_ADDRESS_MIN) || (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX))
     {
 #ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
         LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", addrAndSlot.addr);
 #endif
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     }
 
 #ifdef ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US
@@ -592,9 +592,9 @@ RaftI2CCentralIF::AccessResultCode BusI2C::checkAddrValidAndNotBarred(BusI2CAddr
 
     // Check if this address is barred for a period
     if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
-        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
+        return RAFT_BUS_BARRED;
 
-    return RaftI2CCentralIF::ACCESS_RESULT_OK;
+    return RAFT_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

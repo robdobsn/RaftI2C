@@ -75,7 +75,7 @@ bool BusI2CESPIDF::isBusy()
 }
 
 // Access the bus
-RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
+RaftRetCode BusI2CESPIDF::access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                 uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead)
 {
     // Send the command
@@ -120,7 +120,7 @@ RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint32_t address, const 
     {
         _busLockDetectCount = 0;
     }
-    return ret == ESP_OK ? RaftI2CCentralIF::ACCESS_RESULT_OK : RaftI2CCentralIF::ACCESS_RESULT_SW_TIME_OUT;
+    return ret == ESP_OK ? RAFT_OK : RAFT_BUS_SW_TIME_OUT;
 }
 
 // Check if bus operating ok

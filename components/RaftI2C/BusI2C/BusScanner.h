@@ -14,7 +14,6 @@
 #include "BusStatusMgr.h"
 #include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
-#include "BusI2CRequestRec.h"
 #include "DeviceIdentMgr.h"
 
 // #define DEBUG_SCANNING_SWEEP_TIME
@@ -23,7 +22,7 @@ class BusScanner {
 
 public:
     BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers,
-                DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+                DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void loop();
@@ -112,7 +111,7 @@ private:
     DeviceIdentMgr& _deviceIdentMgr;
 
     // Bus i2c request function (synchronous)
-    BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+    BusReqSyncFn _busI2CReqSyncFn = nullptr;
 
     /// @brief Set scan mode
     /// @param scanMode Scan mode
@@ -123,10 +122,10 @@ private:
     /// @param slot Slot
     /// @param failedToEnableSlot (out) Failed to enable slot
     /// @return Access result code
-    RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr, uint32_t slot, bool& failedToEnableSlot);
+    RaftRetCode scanOneAddress(uint32_t addr, uint32_t slot, bool& failedToEnableSlot);
 
     // Helpers
-    void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftI2CCentralIF::AccessResultCode accessResult);
+    void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftRetCode accessResult);
 
     /// @brief Set current address and get slot to scan next (based on scan mode)
     /// @param addr (out) Address

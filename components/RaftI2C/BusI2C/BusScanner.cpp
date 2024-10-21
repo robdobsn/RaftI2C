@@ -25,7 +25,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& busMultiplexers, 
-                DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+                DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
     _busMultiplexers(busMultiplexers),
     _deviceIdentMgr(deviceIdentMgr),
@@ -182,7 +182,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                 auto rslt = scanOneAddress(addr, slotNum, failedToEnableSlot);
                 if (!failedToEnableSlot)
                 {
-                    if (_busMultiplexers.elemStateChange(addr, slotNum, rslt == RaftI2CCentralIF::ACCESS_RESULT_OK))
+                    if (_busMultiplexers.elemStateChange(addr, slotNum, rslt == RAFT_OK))
                     {
                         // We get here if there is a change to a mux state (new mux, online/offline, etc)
                         // so we need to move back to scanning muliplexers
@@ -190,7 +190,7 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                     }
                     updateBusElemState(addr, slotNum, rslt);
                 }
-                else if (rslt == RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK)
+                else if (rslt == RAFT_BUS_STUCK)
                 {
                     // Update state for all elements to offline and indicate that the bus is failing
                     _busStatusMgr.informBusStuck();
@@ -509,11 +509,11 @@ void BusScanner::requestScan(bool enableSlowScan, bool requestFastScan)
 /// @param slotNum SlotNum (1-based)
 /// @param failedToEnableSlot (out) Failed to enable slot
 /// @return Access result code
-RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& failedToEnableSlot)
+RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& failedToEnableSlot)
 {
     // Enable the slot (if there is one)
     auto rslt = _busMultiplexers.enableOneSlot(slotNum);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    if (rslt != RAFT_OK)
     {
         failedToEnableSlot = true;
         return rslt;
@@ -537,12 +537,12 @@ RaftI2CCentralIF::AccessResultCode BusScanner::scanOneAddress(uint32_t addr, uin
 /// @param addr Address
 /// @param slot Slot
 /// @param accessResult Access result code
-void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftI2CCentralIF::AccessResultCode accessResult)
+void BusScanner::updateBusElemState(uint32_t addr, uint32_t slot, RaftRetCode accessResult)
 {
     // Update bus element state
     bool isOnline = false;
     bool isChange = _busStatusMgr.updateBusElemState(BusI2CAddrAndSlot(addr, slot), 
-                    accessResult == RaftI2CCentralIF::ACCESS_RESULT_OK, isOnline);
+                    accessResult == RAFT_OK, isOnline);
 
 #ifdef DEBUG_BUS_SCANNER
     LOG_I(MODULE_PREFIX, "updateBusElemState addr %02x slot %d accessResult %d isOnline %d isChange %d", 

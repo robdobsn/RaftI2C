@@ -16,13 +16,12 @@
 #include "BusI2CScheduler.h"
 #include "ThreadSafeQueue.h"
 #include "BusRequestResult.h"
-#include "BusI2CRequestRec.h"
 #include "RaftI2CCentralIF.h"
 
 class BusAccessor {
 public:
     // Constructor and destructor
-    BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn);
+    BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn);
     ~BusAccessor();
 
     // Setup and loop
@@ -36,7 +35,7 @@ public:
     // Requests and responses
     bool addRequest(BusRequestInfo& busReqInfo);
     void processRequestQueue(bool isPaused);
-    void handleResponse(const BusRequestInfo* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+    void handleResponse(const BusRequestInfo* pReqRec, RaftRetCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead);
 
     // Polling
@@ -91,7 +90,7 @@ private:
     BusI2CScheduler _scheduler;
 
     // Bus i2c request function
-    BusI2CReqAsyncFn _busI2CReqAsyncFn = nullptr;
+    BusReqAsyncFn _busI2CReqAsyncFn = nullptr;
 
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;

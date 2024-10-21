@@ -15,7 +15,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusStuckHandler::BusStuckHandler(BusI2CReqSyncFn busI2CReqSyncFn) :
+BusStuckHandler::BusStuckHandler(BusReqSyncFn busI2CReqSyncFn) :
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }

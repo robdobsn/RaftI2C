@@ -30,7 +30,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
 BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-        BusStatusMgr& BusStatusMgr, BusI2CReqSyncFn busI2CReqSyncFn) :
+        BusStatusMgr& BusStatusMgr, BusReqSyncFn busI2CReqSyncFn) :
     _busPowerController(busPowerController), _busStuckHandler(busStuckHandler),
     _busStatusMgr(BusStatusMgr), _busI2CReqSyncFn(busI2CReqSyncFn)
 {
@@ -264,16 +264,16 @@ bool BusMultiplexers::elemStateChange(uint32_t addr, uint32_t slotNum, bool elem
 /// @param force Force enable/disable (even if status indicates it is not necessary)
 /// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
 /// @return Result code
-RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxIdx, 
+RaftRetCode BusMultiplexers::setSlotEnables(uint32_t muxIdx, 
             uint32_t slotMask, bool force, uint32_t recurseLevel)
 {
     // Check valid
     if (muxIdx >= _busMuxRecs.size())
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     BusMux& busMux = _busMuxRecs[muxIdx];
     // Check if this slot relies on another slot
     if (recurseLevel > MAX_RECURSE_LEVEL_MUX_CONNECTIONS)
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     if (busMux.muxConnSlotNum > 0)
     {
 #ifdef DEBUG_MULTI_LEVEL_MUX_CONNECTIONS
@@ -304,11 +304,11 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxI
             LOG_I(MODULE_PREFIX, "setSlotEnables MULTI_LEVEL muxIdx %d muxConnSlotNum %d slotMask 0x%02x force %d recurseLevel %d muxAndSlotOk %d muxOnline %d muxPowerStable %d", 
                     muxIdx, busMux.muxConnSlotNum, slotMask, force, recurseLevel, muxAndSlotOk, muxOnline, muxPowerStable);
 #endif
-            return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+            return RAFT_BUS_INVALID;
         }
         // Recursively set the slot enables
-        RaftI2CCentralIF::AccessResultCode rslt = setSlotEnables(muxConnMuxIdx, slotMask, force, recurseLevel+1);
-        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        RaftRetCode rslt = setSlotEnables(muxConnMuxIdx, slotMask, force, recurseLevel+1);
+        if (rslt != RAFT_OK)
             return rslt;
     }
     // Write to the mux register
@@ -322,7 +322,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::setSlotEnables(uint32_t muxI
 /// @param force Force enable/disable (even if status indicates it is not necessary)
 /// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
 /// @return Result code
-RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx, 
+RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx, 
             uint32_t slotMask, bool force, uint32_t recurseLevel)
 {
     // Check if slot initialized
@@ -341,7 +341,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t 
             writeNeeded = false;
     }
     // Handle write to mux register if needed
-    RaftI2CCentralIF::AccessResultCode rslt = RaftI2CCentralIF::ACCESS_RESULT_OK;
+    RaftRetCode rslt = RAFT_OK;
     if (writeNeeded)
     {
         // Calculate the address
@@ -359,12 +359,12 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t 
         rslt = _busI2CReqSyncFn(&reqRec, nullptr);
         busMux.curBitMask = slotMask;
         // Store the resulting mask information if the operation was successful
-        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        if (rslt != RAFT_OK)
             busMux.maskWrittenOk = false;
     }
 #ifdef DEBUG_SET_SLOT_ENABLES
         LOG_I(MODULE_PREFIX, "writeSlotMaskToMux rslt %s(%d) muxIdx %d slotMask 0x%02x force %d recurseLevel %d isInit %d writeNeeded %d", 
-                RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask, force, recurseLevel, isInit, writeNeeded);
+                Raft::getRetCodeStr(rslt), rslt, muxIdx, slotMask, force, recurseLevel, isInit, writeNeeded);
 #endif
     return rslt;
 }
@@ -374,7 +374,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::writeSlotMaskToMux(uint32_t 
 /// @param slotNum Slot number (1-based) - may be 0 for main bus
 /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or 
 ///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
-RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
+RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
 {
     // If the bus is stuck at this point it implies that a main bus issue has occurred or there is an issue with the last slot
     // that was enabled (if it was definitely a single-slot issue it would have been detected after the slot was first enabled).
@@ -393,14 +393,14 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 
         // Check if still stuck
         if (_busStuckHandler.isStuck())
-            return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
+            return RAFT_BUS_STUCK;
     }
 
     // Check if main bus is specified
     if (slotNum == 0)
     {
         disableAllSlots(false);
-        return RaftI2CCentralIF::ACCESS_RESULT_OK;
+        return RAFT_OK;
     }
     // Get the bus multiplexer index and slot index
     uint32_t slotIdx = 0;
@@ -410,7 +410,7 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 #ifdef DEBUG_SLOT_INDEX_INVALID
         LOG_I(MODULE_PREFIX, "enableOneSlot slotNum %d invalid", slotNum);
 #endif
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     }
 
     // Check if the slot has stable power
@@ -419,12 +419,12 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 #ifdef DEBUG_POWER_STABILITY
         LOG_I(MODULE_PREFIX, "enableOneSlot slotNum %d power not stable", slotNum);
 #endif
-        return RaftI2CCentralIF::ACCESS_RESULT_SLOT_POWER_UNSTABLE;
+        return RAFT_BUS_SLOT_POWER_UNSTABLE;
     }
 
     // Enable the slot
     uint32_t mask = 1 << slotIdx;
-    bool slotSetOk = setSlotEnables(muxIdx, mask, false) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+    bool slotSetOk = setSlotEnables(muxIdx, mask, false) == RAFT_OK;
 
     // Check if bus is now stuck - if we have an issue at this point it is probably due to a single slot because
     // the earlier bus stuck check would have been true if it was a wider issue. So initially try to clear the
@@ -445,10 +445,10 @@ RaftI2CCentralIF::AccessResultCode BusMultiplexers::enableOneSlot(uint32_t slotN
 
     // Check for bus still stuck
     if (_busStuckHandler.isStuck())
-        return RaftI2CCentralIF::ACCESS_RESULT_BUS_STUCK;
+        return RAFT_BUS_STUCK;
 
     // Return result
-    return slotSetOk ? RaftI2CCentralIF::ACCESS_RESULT_OK : RaftI2CCentralIF::ACCESS_RESULT_ACK_ERROR;
+    return slotSetOk ? RAFT_OK : RAFT_BUS_ACK_ERROR;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -494,7 +494,7 @@ void BusMultiplexers::disableAllSlots(bool force)
                     LOG_I(MODULE_PREFIX, "disableAllSlots MULTI_LEVEL muxIdx %d muxConnSlotNum %d", 
                             muxIdx, busMux.muxConnSlotNum);
 #endif
-                    if (writeSlotMaskToMux(muxIdx, 0, force, 0) == RaftI2CCentralIF::ACCESS_RESULT_OK)
+                    if (writeSlotMaskToMux(muxIdx, 0, force, 0) == RAFT_OK)
                     {
                         busMux.curBitMask = 0;
                         busMux.maskWrittenOk = true;
@@ -576,7 +576,7 @@ void BusMultiplexers::clearCascadedMuxes(uint32_t muxIdx)
 #ifdef DEBUG_CLEAR_CASCADED_MUX
             auto rslt = _busI2CReqSyncFn(&reqRec, nullptr);
             LOG_I(MODULE_PREFIX, "%s rslt %s(%d) resetCascade muxIdx %d slotMask 0x%02x", 
-                    __func__, RaftI2CCentralIF::getAccessResultStr(rslt), rslt, muxIdx, slotMask);
+                    __func__, Raft::getRetCodeStr(rslt), rslt, muxIdx, slotMask);
 #else
             _busI2CReqSyncFn(&reqRec, nullptr);
 #endif

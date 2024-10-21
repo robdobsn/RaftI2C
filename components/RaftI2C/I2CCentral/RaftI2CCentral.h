@@ -36,7 +36,7 @@ public:
     virtual bool isBusy() override final;
 
     // Access the bus
-    virtual AccessResultCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual RaftRetCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) override final;
 
     // Check if bus operating ok
@@ -71,7 +71,7 @@ private:
 
     // Access result code
     volatile bool _accessNackDetected = false;
-    volatile AccessResultCode _accessResultCode = ACCESS_RESULT_PENDING;
+    volatile RaftRetCode _accessResultCode = RAFT_BUS_PENDING;
 
     // Interrupt handle, clear and enable flags
     intr_handle_t _i2cISRHandle = nullptr;

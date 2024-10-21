@@ -20,7 +20,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusPowerController::BusPowerController(BusI2CReqSyncFn busI2CReqSyncFn)
+BusPowerController::BusPowerController(BusReqSyncFn busI2CReqSyncFn)
         : _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }
@@ -578,7 +578,7 @@ void BusPowerController::actionI2CIOStateChanges(bool force)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Update power control registers for all slots
-void BusPowerController::IOExpanderRec::update(bool force, BusI2CReqSyncFn busI2CReqSyncFn)
+void BusPowerController::IOExpanderRec::update(bool force, BusReqSyncFn busI2CReqSyncFn)
 {
 //     // Check if io expander is dirty
 //     if (force || ioRegDirty)
@@ -623,7 +623,7 @@ void BusPowerController::IOExpanderRec::update(bool force, BusI2CReqSyncFn busI2
 //                     0, 
 //                     nullptr, 
 //                     this);
-//         bool rsltOk = busI2CReqSyncFn(&reqRec, nullptr) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+//         bool rsltOk = busI2CReqSyncFn(&reqRec, nullptr) == RAFT_OK;
 
 //         // Write the configuration register
 //         uint8_t configPortData[3] = { PCA9535_CONFIG_PORT_0, 
@@ -637,7 +637,7 @@ void BusPowerController::IOExpanderRec::update(bool force, BusI2CReqSyncFn busI2
 //                     0, 
 //                     nullptr, 
 //                     this);
-//         rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RaftI2CCentralIF::ACCESS_RESULT_OK;
+//         rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RAFT_OK;
 
 //         // Clear multiplexer
 //         if (muxAddr != 0)

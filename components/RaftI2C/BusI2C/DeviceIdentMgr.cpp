@@ -19,9 +19,8 @@
 // Consructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusMultiplexers& busMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn) :
+DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(BusStatusMgr),
-    _busMultiplexers(busMultiplexers),
     _busI2CReqSyncFn(busI2CReqSyncFn)
 {
 }
@@ -152,7 +151,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
                 nullptr, 
                 this);
         std::vector<uint8_t> readData;
-        RaftI2CCentralIF::AccessResultCode rslt = _busI2CReqSyncFn(&reqRec, &readData);
+        RaftRetCode rslt = _busI2CReqSyncFn(&reqRec, &readData);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         String writeStr;
@@ -160,7 +159,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
         LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr@slotNum %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
-                    rslt == RaftI2CCentralIF::ACCESS_RESULT_OK ? "OK" : "BUS ACCESS FAILED",
+                    rslt == RAFT_OK ? "OK" : "BUS ACCESS FAILED",
                     addrAndSlot.toString().c_str(), 
                     writeStr.c_str(), rslt, 
                     readDataStr.c_str(), readData.size(), 
@@ -168,7 +167,7 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, 
 #endif
 
         // Check ok result
-        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        if (rslt != RAFT_OK)
             return false;
 
         // Iterate through check values to see if one of them matches

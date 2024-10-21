@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "RaftArduino.h"
+#include "RaftCore.h"
 #include "esp_attr.h"
 
 class RaftI2CCentralIF
@@ -32,26 +32,8 @@ public:
     // Busy
     virtual bool isBusy() = 0;
 
-    // Access result code
-    enum AccessResultCode
-    {
-        ACCESS_RESULT_PENDING,
-        ACCESS_RESULT_OK,
-        ACCESS_RESULT_HW_TIME_OUT,
-        ACCESS_RESULT_ACK_ERROR,
-        ACCESS_RESULT_ARB_LOST,
-        ACCESS_RESULT_SW_TIME_OUT,
-        ACCESS_RESULT_INVALID,
-        ACCESS_RESULT_NOT_READY,
-        ACCESS_RESULT_INCOMPLETE,
-        ACCESS_RESULT_BARRED,
-        ACCESS_RESULT_NOT_INIT,
-        ACCESS_RESULT_BUS_STUCK,
-        ACCESS_RESULT_SLOT_POWER_UNSTABLE
-    };
-
     // Access the bus
-    virtual AccessResultCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual RaftRetCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) = 0;
 
     // Check if bus operating ok
@@ -139,29 +121,7 @@ public:
 
     // Consts
     static const uint32_t DEFAULT_BUS_FILTER_LEVEL = 7;
-
-    // Debug access result
-    static const char* getAccessResultStr(AccessResultCode accessResultCode)
-    {
-        switch(accessResultCode)
-        {
-        case ACCESS_RESULT_PENDING: return "pending";
-        case ACCESS_RESULT_OK: return "ok";
-        case ACCESS_RESULT_HW_TIME_OUT: return "hwTimeOut";
-        case ACCESS_RESULT_ACK_ERROR: return "ackError";
-        case ACCESS_RESULT_ARB_LOST: return "arbLost";
-        case ACCESS_RESULT_SW_TIME_OUT: return "swTimeOut";
-        case ACCESS_RESULT_INVALID: return "invalid";
-        case ACCESS_RESULT_NOT_READY: return "notReady";
-        case ACCESS_RESULT_INCOMPLETE: return "incomplete";
-        case ACCESS_RESULT_BARRED: return "barred";
-        case ACCESS_RESULT_NOT_INIT: return "notInit";
-        case ACCESS_RESULT_BUS_STUCK: return "busStuck";
-        case ACCESS_RESULT_SLOT_POWER_UNSTABLE: return "slotPowerUnstable";
-        default: return "unknown";
-        }
-    }
-
+    
 protected:
     // I2C stats
     I2CStats _i2cStats;

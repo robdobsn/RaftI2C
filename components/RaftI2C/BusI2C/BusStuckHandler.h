@@ -10,14 +10,14 @@
 
 #include <stdint.h>
 #include "RaftJsonIF.h"
-#include "BusI2CRequestRec.h"
+#include "BusRequestInfo.h"
 #include "driver/gpio.h"
 
 class BusStuckHandler
 {
 public:
     // Constructor and destructor
-    BusStuckHandler(BusI2CReqSyncFn busI2CReqSyncFn);
+    BusStuckHandler(BusReqSyncFn busI2CReqSyncFn);
     virtual ~BusStuckHandler();
 
     // Setup
@@ -43,7 +43,7 @@ private:
     gpio_num_t _sclPin = GPIO_NUM_NC;
 
     // Bus I2C Request Sync function
-    BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+    BusReqSyncFn _busI2CReqSyncFn = nullptr;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CBusStuck";    

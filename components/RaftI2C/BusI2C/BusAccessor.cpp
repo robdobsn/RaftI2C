@@ -29,7 +29,7 @@
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusAccessor::BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn) :
+BusAccessor::BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn) :
         _raftBus(raftBus),
         _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
@@ -218,9 +218,9 @@ void BusAccessor::processPolling()
                 }
 #endif
                 // Send poll request
-                RaftI2CCentralIF::AccessResultCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
+                RaftRetCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
                 // Check for failed send and not barred temporarily
-                if ((sendResult != RaftI2CCentralIF::ACCESS_RESULT_OK) && (sendResult != RaftI2CCentralIF::ACCESS_RESULT_BARRED))
+                if ((sendResult != RAFT_OK) && (sendResult != RAFT_BUS_BARRED))
                 {
                     // Increment the suspend count if required
                     if (pollListIdx < _pollingVector.size())
@@ -239,7 +239,7 @@ void BusAccessor::processPolling()
 // Handle response to I2C request
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftRetCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead)
 {
     // Check if a response was expected but read length doesn't match
@@ -264,7 +264,7 @@ void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftI2CCentralIF
                     pReqRec->getCmdId(), 
                     pReadBuf, 
                     numBytesRead, 
-                    sendResult == RaftI2CCentralIF::ACCESS_RESULT_OK,
+                    sendResult == RAFT_OK,
                     pReqRec->getCallback(), 
                     pReqRec->getCallbackParam());
 

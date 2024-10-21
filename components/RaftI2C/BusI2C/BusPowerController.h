@@ -11,14 +11,14 @@
 #include <stdint.h>
 #include <vector>
 #include "RaftJsonIF.h"
-#include "BusI2CRequestRec.h"
+#include "BusRequestInfo.h"
 
 /// @brief Bus power controller handles power to either the whole bus OR on a per slot basis
 class BusPowerController
 {
 public:
     // Constructor and destructor
-    BusPowerController(BusI2CReqSyncFn busI2CReqSyncFn);
+    BusPowerController(BusReqSyncFn busI2CReqSyncFn);
     virtual ~BusPowerController();
 
     // Setup
@@ -46,7 +46,7 @@ public:
 
 private:
     // Bus access function
-    BusI2CReqSyncFn _busI2CReqSyncFn;
+    BusReqSyncFn _busI2CReqSyncFn;
 
     // Power control enabled
     bool _powerControlEnabled = false;
@@ -169,7 +169,7 @@ private:
         /// @brief Update power control registers for all slots
         /// @param force true to force update (even if not dirty)
         /// @param busI2CReqSyncFn function to call to perform I2C request
-        void update(bool force, BusI2CReqSyncFn busI2CReqSyncFn);
+        void update(bool force, BusReqSyncFn busI2CReqSyncFn);
 
         // Power controller address
         uint8_t addr = 0;

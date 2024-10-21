@@ -292,9 +292,9 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
-    RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
-    RaftI2CCentralIF::AccessResultCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
+    RaftRetCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
+    RaftRetCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
+    RaftRetCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CBusI2C";    

@@ -228,14 +228,14 @@ bool RaftI2CCentral::isOperatingOk() const
 // - a write of non-zero length and read of non-zero length is allowed - write occurs first and can only be of max 14 bytes
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
+RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
                                                           uint8_t *pReadBuf, uint32_t numToRead, uint32_t &numRead)
 {
     // Check valid
     if ((numToWrite > 0) && !pWriteBuf)
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     if ((numToRead > 0) && !pReadBuf)
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
 
 #if defined(DEBUG_RAFT_I2C_CENTRAL_ISR) || defined(DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL)
     _debugI2CISR.clear();
@@ -243,7 +243,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
 
     // Ensure the engine is ready
     if (!ensureI2CReady())
-        return ACCESS_RESULT_NOT_READY;
+        return RAFT_BUS_NOT_READY;
 
     // Check what operation is required
     I2CAccessType i2cOpType = ACCESS_POLL;
@@ -267,7 +267,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
         readCommands = 1 + ((numToRead + I2C_ENGINE_CMD_MAX_RX_BYTES - 2) / I2C_ENGINE_CMD_MAX_RX_BYTES);
     uint32_t rstartAndSecondAddrCommands = (i2cOpType == ACCESS_READ_ONLY ? 1 : ((i2cOpType == ACCESS_WRITE_RESTART_READ) ? 2 : 0));
     if (writeCommands + readCommands + rstartAndSecondAddrCommands > (I2C_ENGINE_CMD_QUEUE_SIZE - 2))
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
 
     // Prepare I2C engine for access
     prepareI2CAccess();
@@ -373,7 +373,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
 
     // Reset result pending flags
     _accessNackDetected = false;
-    _accessResultCode = ACCESS_RESULT_PENDING;
+    _accessResultCode = RAFT_BUS_PENDING;
 
     // Debug
 #ifdef DEBUG_RICI2C_ACCESS
@@ -394,21 +394,21 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
 
     // Wait for a result
     uint64_t startUs = micros();
-    while ((_accessResultCode == ACCESS_RESULT_PENDING) &&
+    while ((_accessResultCode == RAFT_BUS_PENDING) &&
            !Raft::isTimeout((uint64_t)micros(), startUs, maxExpectedUs))
     {
         vTaskDelay(0);
     }
 
     // Check for software time-out
-    if (_accessResultCode == ACCESS_RESULT_PENDING)
+    if (_accessResultCode == RAFT_BUS_PENDING)
     {
-        _accessResultCode = ACCESS_RESULT_SW_TIME_OUT;
+        _accessResultCode = RAFT_BUS_SW_TIME_OUT;
         _i2cStats.recordSoftwareTimeout();
     }
 
     // Check all of the I2C commands to ensure everything was marked done
-    if (_accessResultCode == ACCESS_RESULT_OK)
+    if (_accessResultCode == RAFT_OK)
     {
         for (uint32_t i = 0; i < cmdIdx; i++)
         {
@@ -419,7 +419,7 @@ RaftI2CCentralIF::AccessResultCode RaftI2CCentral::access(uint32_t address, cons
                 LOG_I(MODULE_PREFIX, "access incomplete addr %02x writeLen %d readLen %d cmdIdx %d cmd %08lx not done",
                       address, numToWrite, numToRead, i, pCmd[i]);
 #endif
-                _accessResultCode = ACCESS_RESULT_INCOMPLETE;
+                _accessResultCode = RAFT_BUS_INCOMPLETE;
                 _i2cStats.recordIncompleteTransaction();
                 break;
             }
@@ -886,13 +886,13 @@ void RaftI2CCentral::i2cISR()
                      intStatus & I2C_TXFIFO_EMPTY_INT_ST);
 
     // Track results & interrupts to disable that are no longer needed
-    AccessResultCode rsltCode = ACCESS_RESULT_PENDING;
+    RaftRetCode rsltCode = RAFT_BUS_PENDING;
     uint32_t interruptsToDisable = 0;
 
     // Check which interrupt has occurred
     if (intStatus & I2C_TIME_OUT_INT_ST)
     {
-        rsltCode = ACCESS_RESULT_HW_TIME_OUT;
+        rsltCode = RAFT_BUS_HW_TIME_OUT;
     }
     else if (intStatus & I2C_ACK_ERR_INT_ST)
     {
@@ -900,14 +900,14 @@ void RaftI2CCentral::i2cISR()
     }
     else if (intStatus & I2C_ARBITRATION_LOST_INT_ST)
     {
-        rsltCode = ACCESS_RESULT_ARB_LOST;
+        rsltCode = RAFT_BUS_ARB_LOST;
     }
     else if (intStatus & I2C_TRANS_COMPLETE_INT_ST)
     {
         // Set flag indicating successful completion
-        rsltCode = _accessNackDetected ? ACCESS_RESULT_ACK_ERROR : ACCESS_RESULT_OK;
+        rsltCode = _accessNackDetected ? RAFT_BUS_ACK_ERROR : RAFT_OK;
     }
-    if (rsltCode != ACCESS_RESULT_PENDING)
+    if (rsltCode != RAFT_BUS_PENDING)
     {
 #ifdef DEBUG_ISR_USING_GPIO_NUM
         gpio_set_level((gpio_num_t)DEBUG_ISR_USING_GPIO_NUM, 1);
@@ -920,7 +920,7 @@ void RaftI2CCentral::i2cISR()
         I2C_DEVICE.int_clr.val = _interruptClearFlags;
 
         // Set flag indicating successful completion
-        if (_accessResultCode == ACCESS_RESULT_PENDING)
+        if (_accessResultCode == RAFT_BUS_PENDING)
             _accessResultCode = rsltCode;
         return;
     }

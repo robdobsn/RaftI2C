@@ -15,7 +15,7 @@
 // Constructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn) :
+DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
     _busMultiplexers(BusMultiplexers),
     _busI2CReqSyncFn(busI2CReqSyncFn)
@@ -51,7 +51,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
         // Enable the slot
         auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
-        if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+        if (rslt != RAFT_OK)
             return;
 
         // Prep poll req data
@@ -75,10 +75,10 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
                             BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqRec.getAddress()).toString().c_str(),
                             writeDataHexStr.c_str(),
                             readDataHexStr.c_str(),
-                            RaftI2CCentralIF::getAccessResultStr(rslt));
+                            Raft::getRetCodeStr(rslt));
 #endif
 
-            if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+            if (rslt != RAFT_OK)
             {
                 allResultsOk = false;
                 break;

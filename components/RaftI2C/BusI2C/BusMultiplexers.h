@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "BusI2CRequestRec.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "BusStatusMgr.h"
@@ -20,7 +19,7 @@ class BusMultiplexers
 public:
     // Constructor and destructor
     BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-            BusStatusMgr& busStatusMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+            BusStatusMgr& busStatusMgr, BusReqSyncFn busI2CReqSyncFn);
     virtual ~BusMultiplexers();
 
     // Setup
@@ -86,7 +85,7 @@ public:
     /// @param slotNum Slot number (1-based)
     /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or one of
     ///         the bus stuck codes if the bus is now stuck
-    RaftI2CCentralIF::AccessResultCode enableOneSlot(uint32_t slotNum);
+    RaftRetCode enableOneSlot(uint32_t slotNum);
 
     /// @brief Disable all slots on bus multiplexers
     /// @param force Force disable even if the status indicates it is not necessary
@@ -132,7 +131,7 @@ private:
     BusStatusMgr& _busStatusMgr;
 
     // Bus access function
-    BusI2CReqSyncFn _busI2CReqSyncFn;
+    BusReqSyncFn _busI2CReqSyncFn;
 
     // Bus mux address range
     BusElemAddrType _minAddr = I2C_BUS_MUX_BASE_DEFAULT;
@@ -196,7 +195,7 @@ private:
     /// @param force Force enable/disable (even if status indicates it is not necessary)
     /// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
     /// @return Result code
-    RaftI2CCentralIF::AccessResultCode setSlotEnables(uint32_t muxIdx, uint32_t slotMask, 
+    RaftRetCode setSlotEnables(uint32_t muxIdx, uint32_t slotMask, 
                 bool force, uint32_t recurseLevel = 0);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +205,7 @@ private:
     /// @param force Force enable/disable (even if status indicates it is not necessary)
     /// @param recurseLevel Recursion level (mux connected to mux connected to mux etc.)
     /// @return Result code
-    RaftI2CCentralIF::AccessResultCode writeSlotMaskToMux(uint32_t muxIdx, 
+    RaftRetCode writeSlotMaskToMux(uint32_t muxIdx, 
                 uint32_t slotMask, bool force, uint32_t recurseLevel);
 
     /// @brief Disable all slots on cascaded bus multiplexers
