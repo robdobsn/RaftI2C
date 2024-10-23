@@ -93,7 +93,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
         // Store the poll result if all requests succeeded
         if (allResultsOk)
-            _busStatusMgr.pollResultStore(timeNowUs, pollInfo, address, _pollDataResult);
+            _busStatusMgr.handlePollResult(timeNowUs, address, _pollDataResult, &pollInfo);
 
         // Restore the bus multiplexers if necessary
         _busMultiplexers.disableAllSlots(false);

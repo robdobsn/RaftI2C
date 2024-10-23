@@ -173,11 +173,11 @@ public:
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get time of last bus status update
-    /// @return time of last bus status update in ms
-    virtual uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const override final
+    /// @brief Get latest timestamp of change to device info (online/offline, new data, etc)
+    /// @return timestamp of most recent device info in ms
+    virtual uint32_t getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const override final
     {
-        return _busStatusMgr.getLastStatusUpdateMs(includeElemOnlineStatusChanges, includePollDataUpdates);
+        return _busStatusMgr.getDeviceInfoTimestampMs(includeElemOnlineStatusChanges, includeDeviceDataUpdates);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

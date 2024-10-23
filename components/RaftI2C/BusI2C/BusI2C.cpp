@@ -206,7 +206,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d fastUnyieldMs %d slowUnyieldMs %d",
+    LOG_I(MODULE_PREFIX, "setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d fastUnyieldMs %d slowUnyieldMs %d",
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
                 portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize,
