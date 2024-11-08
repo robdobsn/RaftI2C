@@ -152,6 +152,36 @@ private:
     #define I2C_FILTER_CFG_SDA_THRESH filter_cfg.sda_thres
     #define I2C_FILTER_CFG_SCL_ENABLE filter_cfg.scl_en
     #define I2C_FILTER_CFG_SDA_ENABLE filter_cfg.sda_en
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+    // ESP32 S3
+    static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = 8;
+    #define I2C_ACK_ERR_INT_ENA I2C_NACK_INT_ENA
+    #define I2C_ACK_ERR_INT_ST I2C_NACK_INT_ST
+    #define I2C_TXFIFO_EMPTY_INT_ENA I2C_TXFIFO_WM_INT_ENA
+    #define I2C_TXFIFO_EMPTY_INT_ST I2C_TXFIFO_WM_INT_ST
+    #define I2C_RXFIFO_FULL_INT_ENA I2C_RXFIFO_WM_INT_ENA
+    #define I2C_RXFIFO_FULL_INT_ST I2C_RXFIFO_WM_INT_ST
+    #define I2C_MASTER_TRAN_COMP_INT_ST I2C_MST_TXFIFO_UDF_INT_ST
+    #define I2C_STATUS_REGISTER_NAME sr
+    #define I2C_COMMAND_0_REGISTER_NAME command[0]
+    #define I2C_TX_FIFO_RAM_ADDR_0_NAME txfifo_start_addr
+    #define I2C_DATA_FIFO_DATA_REG data
+    #define I2C_DATA_FIFO_READ_DATA_REG fifo_rdata
+    #define I2C_TIMEOUT_REG_NAME to
+    #define I2C_STATUS_REGISTER_TX_FIFO_CNT_NAME txfifo_cnt
+    #define I2C_STATUS_REGISTER_RX_FIFO_CNT_NAME rxfifo_cnt
+    #define I2C_SCL_LOW_PERIOD_PERIOD_NAME scl_low_period
+    #define I2C_SCL_HIGH_PERIOD_PERIOD_NAME scl_high_period
+    #define I2C_SDA_HOLD_TIME_NAME sda_hold_time
+    #define I2C_SDA_SAMPLE_TIME_NAME sda_sample_time
+    #define I2C_SCL_RSTART_SETUP_TIME_NAME scl_rstart_setup_time
+    #define I2C_SCL_STOP_SETUP_TIME_NAME scl_stop_setup_time
+    #define I2C_SCL_START_HOLD_TIME_NAME scl_start_hold_time
+    #define I2C_SCL_STOP_HOLD_TIME_NAME scl_stop_hold_time
+    #define I2C_FILTER_CFG_SCL_THRESH filter_cfg.scl_filter_thres
+    #define I2C_FILTER_CFG_SDA_THRESH filter_cfg.sda_filter_thres
+    #define I2C_FILTER_CFG_SCL_ENABLE filter_cfg.scl_filter_en
+    #define I2C_FILTER_CFG_SDA_ENABLE filter_cfg.sda_filter_en
 #else
     // ESP32
     static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = 16;

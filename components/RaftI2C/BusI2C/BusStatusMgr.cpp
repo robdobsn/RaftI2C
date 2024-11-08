@@ -20,6 +20,7 @@
 // #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
+// #define DEBUG_HANDLE_POLL_RESULT
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -554,10 +555,6 @@ bool BusStatusMgr::handlePollResult(uint64_t timeNowUs, BusElemAddrType address,
 
     // Find address record
     BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
-
-    // TODO - remove
-    LOG_I(MODULE_PREFIX, "----------- pollResultStore address %04x pAddrStatus %p", address, pAddrStatus);
-
     bool putResult = false;
     if (pAddrStatus)
     {
@@ -589,6 +586,10 @@ bool BusStatusMgr::handlePollResult(uint64_t timeNowUs, BusElemAddrType address,
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+
+#ifdef DEBUG_HANDLE_POLL_RESULT
+    LOG_I(MODULE_PREFIX, "handlePollResult address %04x pAddrStatus %p", address, pAddrStatus);
+#endif
 
     // Check if a callback is required
     if (pCallback)
