@@ -1,0 +1,27 @@
+{
+    "configurations": [
+        {
+            "name": "ESP-IDF",
+            "compilerPath": "/home/rob/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
+            "intelliSenseMode": "gcc-x64",
+            "compileCommands": "${workspaceFolder}/TestWebUI/build/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/rob/esp/esp-idf-v5.2.1/components/**"
+            ],
+            "defines": []
+        },        
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}

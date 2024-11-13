@@ -137,11 +137,10 @@
                 {
                     "name": "I2CA",
                     "type": "I2C",
-                    "sdaPin": 39,
-                    "sclPin": 40,
+                    "sdaPin": 18,
+                    "sclPin": 17,
                     "i2cFreq": 100000,
                     "mux": {
-                        "enable": 1,
                         "minAddr": "0x70",
                         "maxAddr": "0x77",
                         "rstPins": [2]
@@ -151,6 +150,6 @@
         }
     },
     "BusI2CTest": {
-        "controlled3V3Pin": 42
+        "controlled3V3Pin": 1
     }
 }

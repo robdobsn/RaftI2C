@@ -10,7 +10,7 @@
 
 #include "RaftBus.h"
 #include "RaftI2CCentralIF.h"
-#include "BusI2CRequestRec.h"
+#include "BusRequestInfo.h"
 #include "BusScanner.h"
 #include "BusStatusMgr.h"
 #include "BusMultiplexers.h"
@@ -19,6 +19,7 @@
 #include "DevicePollingMgr.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
+#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -172,20 +173,20 @@ public:
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get time of last bus status update
-    /// @return time of last bus status update in ms
-    virtual uint32_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const override final
+    /// @brief Get latest timestamp of change to device info (online/offline, new data, etc)
+    /// @return timestamp of most recent device info in ms
+    virtual uint32_t getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const override final
     {
-        return _busStatusMgr.getLastStatusUpdateMs(includeElemOnlineStatusChanges, includePollDataUpdates);
+        return _busStatusMgr.getDeviceInfoTimestampMs(includeElemOnlineStatusChanges, includeDeviceDataUpdates);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Convert bus address to string
     /// @param addr - address
     /// @return address as a string
-    virtual String addrToString(uint32_t addr) const override final
+    virtual String addrToString(BusElemAddrType addr) const override final
     {
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromCompositeAddrAndSlot(addr);
+        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(addr);
         return addrAndSlot.toString();
     }
 
@@ -193,11 +194,11 @@ public:
     /// @brief Convert string to bus address
     /// @param addrStr - address as a string
     /// @return address
-    virtual uint32_t stringToAddr(const String& addrStr) const override final
+    virtual BusElemAddrType stringToAddr(const String& addrStr) const override final
     {
         BusI2CAddrAndSlot addrAndSlot;
         addrAndSlot.fromString(addrStr);
-        return addrAndSlot.toCompositeAddrAndSlot();
+        return addrAndSlot.toBusElemAddrType();
     }
 
     // Yield value on each bus processing loop
@@ -259,6 +260,9 @@ private:
     // Bus status
     BusStatusMgr _busStatusMgr;
 
+    // Bus elem tracker
+    BusI2CElemTracker _busElemTracker;
+
     // Bus power controller
     BusPowerController _busPowerController;
     
@@ -292,7 +296,10 @@ private:
     void i2cWorkerTask();
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx);
-    RaftI2CCentralIF::AccessResultCode i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData);
-    RaftI2CCentralIF::AccessResultCode checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot);
+    RaftRetCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
+    RaftRetCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
+    RaftRetCode checkAddrValidAndNotBarred(BusElemAddrType address);
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusI2C";    
 };

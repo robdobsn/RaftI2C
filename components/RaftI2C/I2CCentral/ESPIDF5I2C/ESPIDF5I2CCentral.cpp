@@ -122,16 +122,16 @@ bool ESPIDF5I2CCentral::isOperatingOk() const
 // - a write of non-zero length and read of non-zero length is allowed - write occurs first and can only be of max 14 bytes
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
+RaftRetCode ESPIDF5I2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
                                                           uint8_t *pReadBuf, uint32_t numToRead, uint32_t &numRead)
 {    
     // Check valid
     if (!_isInitialised)
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     if ((numToWrite > 0) && !pWriteBuf)
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
     if ((numToRead > 0) && !pReadBuf)
-        return ACCESS_RESULT_INVALID;
+        return RAFT_BUS_INVALID;
 
     // Check for scan (probe) operation
     if ((numToWrite == 0) && (numToRead == 0))
@@ -142,17 +142,17 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
             case ESP_OK:
             {
                 // LOG_I(MODULE_PREFIX, "access probe address 0x%02x OK", address);
-                return ACCESS_RESULT_OK;
+                return RAFT_OK;
             }
             case ESP_ERR_NOT_FOUND:
             {
                 // LOG_I(MODULE_PREFIX, "access probe address 0x%02x NOT FOUND", address);
-                return ACCESS_RESULT_ACK_ERROR;
+                return RAFT_BUS_ACK_ERROR;
             }
             default:
             {
                 LOG_I(MODULE_PREFIX, "access probe address 0x%02x OTHER %d", address, err);
-                return ACCESS_RESULT_HW_TIME_OUT;
+                return RAFT_BUS_HW_TIME_OUT;
             }
         }
     }
@@ -183,7 +183,7 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
         if (i2c_master_bus_add_device(_i2cMasterBusHandle, &dev_cfg, &devHandle) != ESP_OK)
         {
             LOG_E(MODULE_PREFIX, "access failed to create I2C device handle address 0x%02x", address);
-            return ACCESS_RESULT_NOT_INIT;
+            return RAFT_BUS_NOT_INIT;
         }
         LOG_I(MODULE_PREFIX, "access adding device address 0x%02x devHandle %p", address, devHandle);
         _deviceAddrHandles.push_back({address, devHandle});
@@ -198,10 +198,10 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
         if (i2c_master_transmit(devHandle, pWriteBuf, numToWrite, 10) != ESP_OK)
         {
             LOG_W(MODULE_PREFIX, "access FAILED to TX data addr 0x%02x numToWrite %d", address, numToWrite);
-            return ACCESS_RESULT_ACK_ERROR;
+            return RAFT_BUS_ACK_ERROR;
         }
         // LOG_I(MODULE_PREFIX, "access transmit OK addr 0x%02x numToWrite %d", address, numToWrite);
-        return ACCESS_RESULT_OK;
+        return RAFT_OK;
     }
 
     // Check for read only
@@ -211,10 +211,10 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
         if (i2c_master_receive(devHandle, pReadBuf, numToRead, 10) != ESP_OK)
         {
             LOG_W(MODULE_PREFIX, "access failed to FAILED RX data addr 0x%02x numToRead %d", address, numToRead);
-            return ACCESS_RESULT_ACK_ERROR;
+            return RAFT_BUS_ACK_ERROR;
         }
         numRead = numToRead;
-        return ACCESS_RESULT_OK;
+        return RAFT_OK;
     }
 
 
@@ -222,10 +222,10 @@ RaftI2CCentralIF::AccessResultCode ESPIDF5I2CCentral::access(uint32_t address, c
     if (i2c_master_transmit_receive(devHandle, pWriteBuf, numToWrite, pReadBuf, numToRead, 10) != ESP_OK)
     {
         LOG_W(MODULE_PREFIX, "access FAILED TX/RX data addr 0x%02x numToWrite %d numToRead %d", address, numToWrite, numToRead);
-        return ACCESS_RESULT_ACK_ERROR;
+        return RAFT_BUS_ACK_ERROR;
     }
     numRead = numToRead;
-    return ACCESS_RESULT_OK;
+    return RAFT_OK;
 }
 
 // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

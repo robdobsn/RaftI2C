@@ -26,7 +26,7 @@ public:
     virtual bool isBusy() override final;
 
     // Access the bus
-    virtual RaftI2CCentralIF::AccessResultCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
+    virtual RaftRetCode access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                     uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead) override final;
 
     // Check if bus operating ok
@@ -41,4 +41,7 @@ private:
     uint32_t _busLockDetectCount = 0;
     static const uint32_t MAX_BUS_LOCK_DETECT_COUNT = 3;
     static const uint32_t BUS_LOCK_DETECT_MAX_MS = 500;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusESPIDF";
 };

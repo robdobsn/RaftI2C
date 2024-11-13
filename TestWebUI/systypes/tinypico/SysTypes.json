@@ -126,7 +126,7 @@
         "pubList": [
             {
                 "name": "devices",
-                "trigger": "TimeOr",
+                "trigger": "TimeOrChange",
                 "msgID": "devices",
                 "rates": [
                 ]
@@ -153,19 +153,48 @@
                         "enable": 1,
                         "rstPins": [4,5],
                         "minAddr": "0x70",
-                        "maxAddr": "0x77"
+                        "maxAddr": "0x77",
+                        "clearCascadeMux": 0
                     },
                     "pwr": {
-                        "ctrl":
-                        [
-                            {
-                                "dev": "PCA9535",
-                                "addr": "0x26",
-                                "minSlotNum": 41,
-                                "numSlots": 8
-                            }
-                        ]
-                    }
+                        "ioExps":
+                         [
+                             {
+                                 "dev": "PCA9535",
+                                 "addr": "0x26",
+                                 "NO_muxAddr": "0x70",
+                                 "NO_muxChanIdx": 0,
+                                 "NO_muxRstPin": 2,
+                                 "vPinBase": 100,
+                                 "numPins": 16
+                             }
+                         ],
+                         "voltageLevels":
+                         [
+                             "off",
+                             "3V3",
+                             "5V"
+                         ],
+                         "slotGroups":
+                         [
+                             {
+                                 "name": "Slots41..49",
+                                 "startSlotNum": 41,
+                                 "numSlots": 8,
+                                 "defaultLevel": 1,
+                                 "levelsExclOff": [
+                                     {
+                                         "vPins": [100,102,104,106,108,110,112,114],
+                                         "on": [0,0,0,0,0,0,0,0]
+                                     },
+                                     {
+                                         "vPins": [101,103,105,107,109,111,113,115],
+                                         "on": [0,0,0,0,0,0,0,0]
+                                     }
+                                 ]
+                             }
+                         ]
+                     }
                 }
             ]
         }

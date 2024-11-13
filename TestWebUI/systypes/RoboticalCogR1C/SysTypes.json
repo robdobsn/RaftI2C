@@ -137,20 +137,21 @@
                 {
                     "name": "I2CA",
                     "type": "I2C",
-                    "sdaPin": 39,
-                    "sclPin": 40,
+                    "reqFIFOLen": 10,
+                    "i2cPort": 0,
+                    "sdaPin": 10,
+                    "sclPin": 8,
                     "i2cFreq": 100000,
-                    "mux": {
-                        "enable": 1,
-                        "minAddr": "0x70",
-                        "maxAddr": "0x77",
-                        "rstPins": [2]
-                    }
+                    "taskCore": 0,
+                    "taskStack": 3000,
+                    "taskPriority": 5
                 }
             ]
         }
     },
     "BusI2CTest": {
-        "controlled3V3Pin": 42
+        "exampleGroup": {
+            "exampleKey": "Welcome to Raft!"
+        }
     }
 }

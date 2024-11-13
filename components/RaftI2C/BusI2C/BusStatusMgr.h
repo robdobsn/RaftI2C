@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// I2C Bus Status Manager
+// Bus Status Manager
 //
 // Rob Dobson 2020-2024
 //
@@ -13,10 +13,9 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "RaftBus.h"
-#include "BusI2CConsts.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
-#include "BusI2CAddrStatus.h"
+#include "BusAddrStatus.h"
 #include <list>
 
 class BusStatusMgr {
@@ -37,39 +36,37 @@ public:
     }
 
     // Bus element access barring
-    void barElemAccessSet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs);
-    bool barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot);
+    void barElemAccessSet(uint32_t timeNowMs, BusElemAddrType address, uint32_t barAccessAfterSendMs);
+    bool barElemAccessGet(uint32_t timeNowMs, BusElemAddrType address);
 
     // Check if element is online
-    BusOperationStatus isElemOnline(BusI2CAddrAndSlot addrAndSlot) const;
+    BusOperationStatus isElemOnline(BusElemAddrType address) const;
 
     // Update bus element state
     // Returns true if state has changed
-    bool updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline);
+    bool updateBusElemState(BusElemAddrType address, bool elemResponding, bool& isOnline);
 
     // Get count of address status records
     uint32_t getAddrStatusCount() const;
 
-    // Check if address is already detected on an extender
-    bool isAddrFoundOnAnyExtender(uint32_t addr) const;
-
     // Set bus element device status (which includes device type and can be empty) for an address
-    void setBusElemDeviceStatus(BusI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus);
+    void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
     // Get device type index by address
-    uint16_t getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) const;
+    uint16_t getDeviceTypeIndexByAddr(BusElemAddrType address) const;
 
     // Get pending ident poll
     bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
 
-    // Store poll results
-    bool pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData);
+    // Handle poll result
+    bool handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
+                    const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo);
 
-    /// @brief Get last status update time ms
+    /// @brief Get latest timestamp of change to device info (online/offline, new data, etc)
     /// @param includeElemOnlineStatusChanges include changes in online status of elements
-    /// @param includePollDataUpdates include updates from polling data
-    /// @return last status update time ms
-    uint64_t getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const;
+    /// @param includeDeviceDataUpdates include new data updates
+    /// @return latest update time ms
+    uint64_t getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Return addresses of devices attached to the bus
@@ -91,42 +88,28 @@ public:
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Is address found on main bus
-    /// @param addr address
-    /// @return true if address found on main bus
-    bool isAddrFoundOnMainBus(uint32_t addr) const
-    {
-        if (addr > I2C_BUS_ADDRESS_MAX)
-            return false;
-        return (_mainBusAddrBits[addr/32] & (1 << (addr % 32))) != 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set address found on main bus
-    /// @param addr address
-    void setAddrFoundOnMainBus(uint32_t addr)
-    {
-        if (addr > I2C_BUS_ADDRESS_MAX)
-            return;
-        if (!isAddrFoundOnMainBus(addr))
-            _mainBusAddrBits[addr/32] |= (1 << (addr % 32));
-    }
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Register for device data notifications
+    /// @param addrAndSlot address
+    /// @param dataChangeCB Callback for data change
+    /// @param minTimeBetweenReportsMs Minimum time between reports (ms)
+    /// @param pCallbackInfo Callback info (passed to the callback)
+    void registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB,
+                uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Inform that slot is powering down
-    /// @param slotNum slotNum
-    void slotPoweringDown(uint32_t slotNum);
+    /// @brief Inform that an address is going offline
+    /// @param addrList list of addresses
+    void goingOffline(std::vector<BusElemAddrType>& addrList);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Inform that the bus is stuck
     void informBusStuck();
 
-    // Max failures before declaring a bus element offline
-    static const uint32_t I2C_ADDR_RESP_COUNT_FAIL_MAX = 3;
-
-    // Max successes before declaring a bus element online
-    static const uint32_t I2C_ADDR_RESP_COUNT_OK_MAX = 2;
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get debug JSON
+    /// @return JSON string
+    String getDebugJSON(bool includeBraces) const;
 
 private:
     // Bus element status change mutex
@@ -135,18 +118,17 @@ private:
     // Bus base
     RaftBus& _raftBus;
 
-    // I2C address status
-    std::vector<BusI2CAddrStatus> _i2cAddrStatus;
-    static const uint32_t I2C_ADDR_STATUS_MAX = 50;
+    // Address status
+    std::vector<BusAddrStatus> _addrStatus;
+    static const uint32_t ADDR_STATUS_MAX = 50;
 
     // Find address record
     // Assumes semaphore already taken
-    const BusI2CAddrStatus* findAddrStatusRecord(BusI2CAddrAndSlot addrAndSlot) const
+    const BusAddrStatus* findAddrStatusRecord(BusElemAddrType address) const
     {
-        for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+        for (const BusAddrStatus& addrStatus : _addrStatus)
         {
-            if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
-                    (addrStatus.addrAndSlot.slotNum == addrAndSlot.slotNum))
+            if (addrStatus.address == address)
                 return &addrStatus;
         }
         return nullptr;
@@ -154,12 +136,11 @@ private:
 
     // Find address record editable
     // Assumes semaphore already taken
-    BusI2CAddrStatus* findAddrStatusRecordEditable(BusI2CAddrAndSlot addrAndSlot)
+    BusAddrStatus* findAddrStatusRecordEditable(BusElemAddrType address)
     {
-        for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+        for (BusAddrStatus& addrStatus : _addrStatus)
         {
-            if ((addrStatus.addrAndSlot.addr == addrAndSlot.addr) && 
-                    (addrStatus.addrAndSlot.slotNum == addrAndSlot.slotNum))
+            if (addrStatus.address == address)
                 return &addrStatus;
         }
         return nullptr;
@@ -176,10 +157,10 @@ private:
     bool _busElemStatusChangeDetected = false;
 
     // Last status update times us
-    uint64_t _lastIdentPollUpdateTimeUs = 0;
-    uint64_t _lastBusElemOnlineStatusUpdateTimeUs = 0;
+    uint32_t _lastIdentPollUpdateTimeMs = 0;
+    uint32_t _lastBusElemOnlineStatusUpdateTimeMs = 0;
+    uint32_t _lastPollOrStatusUpdateTimeMs = 0;
 
-    // Addresses found online on main bus at any time
-    uint32_t _mainBusAddrBits[(I2C_BUS_ADDRESS_MAX+31)/32] = {0};
-    static const uint32_t SIZE_OF_MAIN_BUS_ADDR_BITS_ARRAY = sizeof(_mainBusAddrBits)/sizeof(_mainBusAddrBits[0]);
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftBusStMgr";    
 };

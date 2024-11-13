@@ -27,34 +27,50 @@ public:
     {
         clear();
     }
-    BusI2CAddrAndSlot(uint32_t addr, uint32_t slotNum)
+    BusI2CAddrAndSlot(uint32_t i2cAddr, uint32_t slotNum)
     {
-        this->addr = addr;
+        this->i2cAddr = i2cAddr;
         this->slotNum = slotNum;
     }
-    static BusI2CAddrAndSlot fromCompositeAddrAndSlot(uint32_t compositeAddrAndSlot)
+    static BusI2CAddrAndSlot fromBusElemAddrType(BusElemAddrType compositeAddrAndSlot)
     {
         BusI2CAddrAndSlot addrAndSlot;
-        addrAndSlot.addr = compositeAddrAndSlot & 0xFF;
+        addrAndSlot.i2cAddr = compositeAddrAndSlot & 0xFF;
         addrAndSlot.slotNum = (compositeAddrAndSlot >> 8) & 0x3F;
         return addrAndSlot;
     }
-    uint32_t toCompositeAddrAndSlot() const
+    BusElemAddrType toBusElemAddrType() const
     {
-        return (addr & 0xFF) | ((slotNum & 0x3F) << 8);
+        return (i2cAddr & 0xFF) | ((slotNum & 0x3F) << 8);
+    }
+    static uint16_t getI2CAddr(BusElemAddrType compositeAddrAndSlot)
+    {
+        return compositeAddrAndSlot & 0xFF;
+    }
+    static uint16_t getSlotNum(BusElemAddrType compositeAddrAndSlot)
+    {
+        return (compositeAddrAndSlot >> 8) & 0x3F;
     }
     void clear()
     {
-        addr = 0;
+        i2cAddr = 0;
         slotNum = 0;
     }
     bool operator==(const BusI2CAddrAndSlot& other) const
     {
-        return addr == other.addr && slotNum == other.slotNum;
+        return i2cAddr == other.i2cAddr && slotNum == other.slotNum;
+    }
+    bool operator==(BusElemAddrType address) const
+    {
+        return address == toBusElemAddrType();
     }
     String toString() const
     {
-        return "0x" + String(addr, 16) + "@" + String(slotNum);
+        return "0x" + String(i2cAddr, 16) + "@" + String(slotNum);
+    }
+    static String toString(BusElemAddrType address)
+    {
+        return "0x" + String(getI2CAddr(address), 16) + "@" + String(getSlotNum(address));
     }
     void fromString(const String& str)
     {
@@ -62,15 +78,15 @@ public:
         int atPos = str.indexOf('@');
         if (atPos < 0)
         {
-            addr = strtol(str.c_str(), NULL, 0);
+            i2cAddr = strtol(str.c_str(), NULL, 0);
             slotNum = 0;
         }
         else
         {
-            addr = strtol(str.substring(0, atPos).c_str(), NULL, 0);
+            i2cAddr = strtol(str.substring(0, atPos).c_str(), NULL, 0);
             slotNum = strtol(str.substring(atPos + 1).c_str(), NULL, 0);
         }
     }
-    uint16_t addr:10;
+    uint16_t i2cAddr:10;
     uint8_t slotNum:6;
 };

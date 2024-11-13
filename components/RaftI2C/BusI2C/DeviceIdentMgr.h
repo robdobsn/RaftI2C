@@ -11,7 +11,6 @@
 #include "RaftBusDevicesIF.h"
 #include "DeviceTypeRecord.h"
 #include "BusStatusMgr.h"
-#include "BusMultiplexers.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
 #include <vector>
@@ -23,9 +22,8 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Constructor
     /// @param busStatusMgr bus status manager
-    /// @param busMultiplexers bus mulitplexers
-    /// @param busI2CReqSyncFn bus i2c synchronous access request function
-    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& busMultiplexers, BusI2CReqSyncFn busI2CReqSyncFn);
+    /// @param busReqSyncFn bus synchronous access request function
+    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Setup
@@ -36,14 +34,14 @@ public:
     /// @brief Get list of device addresses attached to the bus
     /// @param pAddrList pointer to array to receive addresses
     /// @param onlyAddressesWithIdentPollResponses true to only return addresses with ident poll responses    
-    virtual void getDeviceAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const override final;
+    virtual void getDeviceAddresses(std::vector<BusElemAddrType>& addresses, bool onlyAddressesWithIdentPollResponses) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type information by address
     /// @param address address of device to get information for
     /// @param includePlugAndPlayInfo true to include plug and play information
     /// @return JSON string
-    virtual String getDevTypeInfoJsonByAddr(uint32_t address, bool includePlugAndPlayInfo) const override final;
+    virtual String getDevTypeInfoJsonByAddr(BusElemAddrType address, bool includePlugAndPlayInfo) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type information by device type name
@@ -53,9 +51,9 @@ public:
     virtual String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get poll responses json
+    /// @brief Get queued device data in JSON format
     /// @return JSON string
-    virtual String getPollResponsesJson() const override final;
+    virtual String getQueuedDeviceDataJson() const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get decoded poll responses
@@ -67,29 +65,59 @@ public:
     /// @return number of records decoded
     /// @note the pStructOut should generally point to structures of the correct type for the device data and the
     ///       decodeState should be maintained between calls for the same device
-    virtual uint32_t getDecodedPollResponses(uint32_t address, 
+    virtual uint32_t getDecodedPollResponses(BusElemAddrType address, 
                     void* pStructOut, uint32_t structOutSize, 
                     uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Handle poll results
+    /// @param timeNowUs time in us (passed in to aid testing)
+    /// @param address address
+    /// @param pollResultData poll result data
+    /// @param pPollInfo pointer to device polling info (maybe nullptr) 
+    /// @return true if result stored
+    virtual bool handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
+                            const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo) override final
+    {
+        return _busStatusMgr.handlePollResult(timeNowUs, address, pollResultData, pPollInfo);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Register for device data notifications
+    /// @param addrAndSlot address
+    /// @param dataChangeCB Callback for data change
+    /// @param minTimeBetweenReportsMs Minimum time between reports (ms)
+    /// @param pCallbackInfo Callback info (passed to the callback)
+    virtual void registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB, 
+                uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo) override final
+    {
+        _busStatusMgr.registerForDeviceData(address, dataChangeCB, minTimeBetweenReportsMs, pCallbackInfo);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get debug JSON
+    /// @return JSON string
+    virtual String getDebugJSON(bool includeBraces) const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
-    /// @param addrAndSlot address and slot
+    /// @param 
     /// @param deviceStatus (out) device status
-    void identifyDevice(const BusI2CAddrAndSlot& addrAndSlot, DeviceStatus& deviceStatus);
+    void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check device type match (communicates with the device to check its type)
-    /// @param addrAndSlot address and slot
+    /// @param address address
     /// @param pDevTypeRec device type record
     /// @return true if device type matches
-    bool checkDeviceTypeMatch(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec);
+    bool checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Process device initialisation
-    /// @param addrAndSlot address and slot
+    /// @param address address
     /// @param pDevTypeRec device type record
     /// @return true if device initialisation was successful
-    bool processDeviceInit(const BusI2CAddrAndSlot& addrAndSlot, const DeviceTypeRecord* pDevTypeRec);
+    bool processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
 
 private:
     // Device indentification enabled
@@ -98,21 +126,18 @@ private:
     // Bus status
     BusStatusMgr& _busStatusMgr;
 
-    // Bus multiplexers
-    BusMultiplexers& _busMultiplexers;
-
-    // Bus i2c request function
-    BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+    // Bus request function
+    BusReqSyncFn _busReqSyncFn = nullptr;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON
-    /// @param addrAndSlot address and slot
+    /// @param address address
     /// @param isOnline true if device is online
     /// @param deviceTypeIndex index of device type
     /// @param devicePollResponseData poll response data
     /// @param responseSize size of poll response data
     /// @return JSON string
-    String deviceStatusToJson(const BusI2CAddrAndSlot& addrAndSlot, bool isOnline, uint16_t deviceTypeIndex, 
+    String deviceStatusToJson(BusElemAddrType address, bool isOnline, uint16_t deviceTypeIndex, 
                     const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,5 +152,8 @@ private:
     uint32_t decodePollResponses(uint16_t deviceTypeIndex, 
                     const uint8_t* pPollBuf, uint32_t pollBufLen, 
                     void* pStructOut, uint32_t structOutSize, 
-                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;                    
+                    uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftDevIdentMgr";
 };

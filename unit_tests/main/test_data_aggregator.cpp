@@ -22,7 +22,7 @@ TEST_CASE("Test PollDataAggregator Initialization", "[PollDataAggregator]")
     PollDataAggregator aggregator;
     aggregator.init(10, 3);
     std::vector<uint8_t> data = {1, 2, 3};
-    TEST_ASSERT_TRUE(aggregator.put(data));
+    TEST_ASSERT_TRUE(aggregator.put(12345, data));
 }
 
 TEST_CASE("Test PollDataAggregator Put and Get", "[PollDataAggregator]") 
@@ -30,7 +30,7 @@ TEST_CASE("Test PollDataAggregator Put and Get", "[PollDataAggregator]")
     PollDataAggregator aggregator;
     aggregator.init(10, 4);
     std::vector<uint8_t> data = {1, 2, 3, 4};
-    TEST_ASSERT_TRUE(aggregator.put(data));
+    TEST_ASSERT_TRUE(aggregator.put(12345, data));
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
     TEST_ASSERT_TRUE(data == dataOut);
@@ -44,13 +44,14 @@ TEST_CASE("Test PollDataAggregator Put and Get Wrap", "[PollDataAggregator]")
     std::vector<uint8_t> data2 = {4, 5, 6};
     std::vector<uint8_t> data3 = {7, 8, 9};
     std::vector<uint8_t> data4 = {10, 11, 12};
-    TEST_ASSERT_TRUE(aggregator.put(data1));
-    TEST_ASSERT_TRUE(aggregator.put(data2));
-    TEST_ASSERT_TRUE(aggregator.put(data3));
+    uint32_t timeVal = 12345;
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
     TEST_ASSERT_TRUE(data1 == dataOut);
-    TEST_ASSERT_TRUE(aggregator.put(data4));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data4));
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
     TEST_ASSERT_TRUE(data2 == dataOut);
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
@@ -75,10 +76,11 @@ TEST_CASE("Test PollDataAggregator Put and Get Full", "[PollDataAggregator]")
     std::vector<uint8_t> data2 = {4, 5, 6};
     std::vector<uint8_t> data3 = {7, 8, 9};
     std::vector<uint8_t> data4 = {10, 11, 12};
-    TEST_ASSERT_TRUE(aggregator.put(data1));
-    TEST_ASSERT_TRUE(aggregator.put(data2));
-    TEST_ASSERT_TRUE(aggregator.put(data3));
-    TEST_ASSERT_TRUE(aggregator.put(data4));
+    uint32_t timeVal = 12345;
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data4));
     TEST_ASSERT_TRUE(aggregator.count() == 3);
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
@@ -102,15 +104,16 @@ TEST_CASE("Test PollDataAggregator Put and Get Full Wrap", "[PollDataAggregator]
     std::vector<uint8_t> data4 = {10, 11, 12};
     std::vector<uint8_t> data5 = {13, 14, 15};
     std::vector<uint8_t> data6 = {19, 20, 21};
-    TEST_ASSERT_TRUE(aggregator.put(data1));
-    TEST_ASSERT_TRUE(aggregator.put(data2));
-    TEST_ASSERT_TRUE(aggregator.put(data3));
-    TEST_ASSERT_TRUE(aggregator.put(data4));
-    TEST_ASSERT_TRUE(aggregator.put(data5));
+    uint32_t timeVal = 12345;
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data4));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data5));
     std::vector<uint8_t> dataOut;
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
     TEST_ASSERT_TRUE(data3 == dataOut);
-    TEST_ASSERT_TRUE(aggregator.put(data6));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data6));
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
     TEST_ASSERT_TRUE(data4 == dataOut);
     TEST_ASSERT_TRUE(aggregator.get(dataOut));
@@ -131,12 +134,13 @@ TEST_CASE("Test PollDataAggregator Put and Get Multiple", "[PollDataAggregator]"
     std::vector<uint8_t> data5 = {17, 18, 19, 20};
     std::vector<uint8_t> data6 = {21, 22, 23, 24};
     std::vector<uint8_t> data7 = {25, 26, 27, 28};
-    TEST_ASSERT_TRUE(aggregator.put(data1));
-    TEST_ASSERT_TRUE(aggregator.put(data2));
-    TEST_ASSERT_TRUE(aggregator.put(data3));
-    TEST_ASSERT_TRUE(aggregator.put(data4));
-    TEST_ASSERT_TRUE(aggregator.put(data5));
-    TEST_ASSERT_TRUE(aggregator.put(data6));
+    uint32_t timeVal = 12345;
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data4));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data5));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data6));
     std::vector<uint8_t> dataOut;
     uint32_t elemSize = 0;
     std::vector<uint8_t> dataTest3And4 = data3;
@@ -144,7 +148,7 @@ TEST_CASE("Test PollDataAggregator Put and Get Multiple", "[PollDataAggregator]"
     TEST_ASSERT_TRUE(aggregator.get(dataOut, elemSize, 2) == 2);
     TEST_ASSERT_TRUE(dataTest3And4 == dataOut);
     TEST_ASSERT_TRUE(elemSize == 4);
-    TEST_ASSERT_TRUE(aggregator.put(data7));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data7));
     std::vector<uint8_t> dataTest5to7 = data5;
     dataTest5to7.insert(dataTest5to7.end(), data6.begin(), data6.end());
     dataTest5to7.insert(dataTest5to7.end(), data7.begin(), data7.end());

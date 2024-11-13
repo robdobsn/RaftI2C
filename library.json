@@ -1,34 +1,29 @@
 {
-  "name": "RaftI2C",
-  "version": "1.5.5-a",
-  "description": "I2C for the Raft ESP32 framework",
-  "keywords": "esp32, esp32s3, framework, I2C",
-  "repository":
-  {
-    "type": "git",
-    "url": "https://github.com/robdobsn/RaftI2C.git"
-  },
-  "authors":
-  [
-    {
-      "name": "Rob Dobson",
-      "email": "rob@dobson.com",
-      "url": "https://robdobson.com",
-      "maintainer": true
+    "name": "RaftI2C",
+    "version": "1.7.1",
+    "description": "I2C for the Raft ESP32 framework",
+    "keywords": "esp32, esp32s3, framework, I2C",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/robdobsn/RaftI2C.git"
+    },
+    "authors": [{
+        "name": "Rob Dobson",
+        "email": "rob@dobson.com",
+        "url": "https://robdobson.com",
+        "maintainer": true
+    }],
+    "license": "MIT",
+    "homepage": "https://github.com/robdobsn/RaftI2C",
+    "frameworks": ["arduino", "espidf"],
+    "platforms": ["espressif32"],
+    "build": {
+        "srcDir": "components/core",
+        "includeDir": "components/core",
+        "libLDFMode": "deep+",
+        "libArchive": false,
+        "flags": [
+            "-Icomponents/RafdI2C/I2CCentral"
+        ]
     }
-  ],
-  "license": "MIT",
-  "homepage": "https://github.com/robdobsn/RaftI2C",
-  "frameworks": ["arduino", "espidf"],
-  "platforms": ["espressif32"],
-  "build": {
-    "srcDir": "components/core",
-    "includeDir": "components/core",
-    "libLDFMode": "deep+",
-    "libArchive": false,
-    "extraScript": "lib_script.py",
-    "flags": [
-      "-Icomponents/RafdI2C/I2CCentral"
-    ]
-  }
 }

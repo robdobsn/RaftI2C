@@ -16,13 +16,12 @@
 #include "BusI2CScheduler.h"
 #include "ThreadSafeQueue.h"
 #include "BusRequestResult.h"
-#include "BusI2CRequestRec.h"
 #include "RaftI2CCentralIF.h"
 
 class BusAccessor {
 public:
     // Constructor and destructor
-    BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn);
+    BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn);
     ~BusAccessor();
 
     // Setup and loop
@@ -36,7 +35,7 @@ public:
     // Requests and responses
     bool addRequest(BusRequestInfo& busReqInfo);
     void processRequestQueue(bool isPaused);
-    void handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+    void handleResponse(const BusRequestInfo* pReqRec, RaftRetCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead);
 
     // Polling
@@ -60,7 +59,7 @@ private:
             pollReq.clear();
         }
         uint8_t suspendCount;
-        BusI2CRequestRec pollReq;
+        BusRequestInfo pollReq;
     };
 
     // Polling vector and mutex controlling access
@@ -74,7 +73,7 @@ private:
     static const int REQUEST_FIFO_SLOTS = 40;
     static const int REQUEST_FIFO_SLOTS_LOW_LOAD = 3;
     static const uint32_t ADD_REQ_TO_QUEUE_MAX_MS = 2;
-    ThreadSafeQueue<BusI2CRequestRec> _requestQueue;
+    ThreadSafeQueue<BusRequestInfo> _requestQueue;
 
     // Response FIFO
     static const int RESPONSE_FIFO_SLOTS = 40;
@@ -91,7 +90,7 @@ private:
     BusI2CScheduler _scheduler;
 
     // Bus i2c request function
-    BusI2CReqAsyncFn _busI2CReqAsyncFn = nullptr;
+    BusReqAsyncFn _busI2CReqAsyncFn = nullptr;
 
     // Low-load bus indicates the bus should use minimal resources
     bool _lowLoadBus = false;
@@ -102,4 +101,7 @@ private:
     // Helpers
     bool addToPollingList(BusRequestInfo& busReqInfo);
     bool addToQueuedReqFIFO(BusRequestInfo& busReqInfo);
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusAccessor";    
 };

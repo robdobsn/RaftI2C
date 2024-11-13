@@ -11,8 +11,6 @@
 #include "BusI2CESPIDF.h"
 #include "RaftArduino.h"
 
-static const char* MODULE_PREFIX = "BusI2CESPIDF";
-
 BusI2CESPIDF::BusI2CESPIDF()
 {
     _busLockDetectCount = 0;
@@ -35,7 +33,7 @@ bool BusI2CESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint3
     conf.master.clk_speed = busFrequency;
     conf.clk_flags = 0;
     _i2cNum = (i2cPort == 0) ? I2C_NUM_0 : 
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
     I2C_NUM_0;
 #else
     I2C_NUM_1;
@@ -51,7 +49,7 @@ bool BusI2CESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint3
     {
         LOG_W(MODULE_PREFIX, "driver_install fail %s", err == ESP_FAIL ? "DRIVER FAIL" : "param error");
     }
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
     int timeout = 16;
 #else
     int timeout = I2C_TIMEOUT_IN_I2C_BIT_PERIODS * (APB_CLK_FREQ / busFrequency);
@@ -77,7 +75,7 @@ bool BusI2CESPIDF::isBusy()
 }
 
 // Access the bus
-RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
+RaftRetCode BusI2CESPIDF::access(uint32_t address, const uint8_t* pWriteBuf, uint32_t numToWrite,
                 uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead)
 {
     // Send the command
@@ -122,7 +120,7 @@ RaftI2CCentralIF::AccessResultCode BusI2CESPIDF::access(uint32_t address, const 
     {
         _busLockDetectCount = 0;
     }
-    return ret == ESP_OK ? RaftI2CCentralIF::ACCESS_RESULT_OK : RaftI2CCentralIF::ACCESS_RESULT_SW_TIME_OUT;
+    return ret == ESP_OK ? RAFT_OK : RAFT_BUS_SW_TIME_OUT;
 }
 
 // Check if bus operating ok

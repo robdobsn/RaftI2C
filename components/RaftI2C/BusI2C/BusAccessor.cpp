@@ -10,6 +10,7 @@
 #include "Logger.h"
 #include "RaftUtils.h"
 #include "RaftJsonIF.h"
+#include "BusI2CAddrAndSlot.h"
 
 // Warnings
 #define WARN_ON_REQUEST_BUFFER_FULL
@@ -24,13 +25,11 @@
 // #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM 5
 // #define DEBUG_ADD_TO_QUEUED_REC_FIFO
 
-static const char* MODULE_PREFIX = "BusAccessor";
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor and destructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BusAccessor::BusAccessor(RaftBus& raftBus, BusI2CReqAsyncFn busI2CReqAsyncFn) :
+BusAccessor::BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn) :
         _raftBus(raftBus),
         _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
@@ -137,19 +136,22 @@ void BusAccessor::clear(bool incPolling)
 void BusAccessor::processRequestQueue(bool isPaused)
 {
     // Get from request FIFO
-    BusI2CRequestRec reqRec;
+    BusRequestInfo reqRec;
     if (_requestQueue.get(reqRec))
     {
-        // Debug
 #ifdef DEBUG_REQ_QUEUE_COMMANDS
+        // Address and slot
+        BusElemAddrType address = reqRec.getAddress();
+        // Debug
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str());
+        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", 
+                    BusI2CAddrAndSlot::toString(address).c_str(), writeDataStr.c_str());
 #endif
 
         // Debug one address only
 #ifdef DEBUG_REQ_QUEUE_ONE_ADDR
-        if (reqRec.getAddrAndSlot().addr != DEBUG_REQ_QUEUE_ONE_ADDR)
+        if (BusI2CAddrAndSlot::getI2CAddr(address) != DEBUG_REQ_QUEUE_ONE_ADDR)
             return;
 #endif
 
@@ -157,7 +159,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
         if (isPaused)
         {
             // Check is firmware update
-            if (reqRec.isFWUpdate() || reqRec.shouldSendIfPaused())
+            if (reqRec.isFWUpdate() || (reqRec.getBusReqType() == BUS_REQ_TYPE_SEND_IF_PAUSED))
             {
                 // Make the request
                 _busI2CReqAsyncFn(&reqRec, 0);
@@ -193,7 +195,7 @@ void BusAccessor::processPolling()
         {
             // Check valid - if list is empty or has shrunk this test can fail
             // Polling can be suspended if too many failures occur
-            BusI2CRequestRec* pReqRec = NULL;
+            BusRequestInfo* pReqRec = NULL;
             if ((pollListIdx < _pollingVector.size()) &&
                             (_pollingVector[pollListIdx].suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND))
             {
@@ -206,18 +208,19 @@ void BusAccessor::processPolling()
             {
                 // Debug poll timing
 #ifdef DEBUG_POLL_TIME_FOR_ADDR
-                if (pReqRec->isPolling() && (pReqRec->getAddrAndSlot().addr == DEBUG_POLL_TIME_FOR_ADDR))
+                BusElemAddrType address = pReqRec->getAddress();
+                if (pReqRec->isPolling() && (BusI2CAddrAndSlot::getI2CAddr(address) == DEBUG_POLL_TIME_FOR_ADDR))
                 {
                     LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slotNum %s elapsed %ld", 
-                                pReqRec->getAddrAndSlot().toString().c_str(), 
+                                BusI2CAddrAndSlot::toString(address).c_str(), 
                                 Raft::timeElapsed(millis(), _debugLastPollTimeMs));
                     _debugLastPollTimeMs = millis();
                 }
 #endif
                 // Send poll request
-                RaftI2CCentralIF::AccessResultCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
+                RaftRetCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
                 // Check for failed send and not barred temporarily
-                if ((sendResult != RaftI2CCentralIF::ACCESS_RESULT_OK) && (sendResult != RaftI2CCentralIF::ACCESS_RESULT_BARRED))
+                if ((sendResult != RAFT_OK) && (sendResult != RAFT_BUS_BARRED))
                 {
                     // Increment the suspend count if required
                     if (pollListIdx < _pollingVector.size())
@@ -236,7 +239,7 @@ void BusAccessor::processPolling()
 // Handle response to I2C request
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentralIF::AccessResultCode sendResult,
+void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftRetCode sendResult,
                 uint8_t* pReadBuf, uint32_t numBytesRead)
 {
     // Check if a response was expected but read length doesn't match
@@ -257,11 +260,11 @@ void BusAccessor::handleResponse(const BusI2CRequestRec* pReqRec, RaftI2CCentral
     }
 
     // Create response
-    BusRequestResult reqResult(pReqRec->getAddrAndSlot().toCompositeAddrAndSlot(), 
+    BusRequestResult reqResult(pReqRec->getAddress(), 
                     pReqRec->getCmdId(), 
                     pReadBuf, 
                     numBytesRead, 
-                    sendResult == RaftI2CCentralIF::ACCESS_RESULT_OK,
+                    sendResult == RAFT_OK,
                     pReqRec->getCallback(), 
                     pReqRec->getCallbackParam());
 
@@ -339,12 +342,11 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
         bool addedOk = false;
         for (PollingVectorItem& pollItem : _pollingVector)
         {
-            if (pollItem.pollReq.getAddrAndSlot() == 
-                        BusI2CAddrAndSlot::fromCompositeAddrAndSlot(busReqInfo.getAddress()))
+            if (pollItem.pollReq.getAddress() == busReqInfo.getAddress())
             {
                 // Replace request record
                 addedOk = true;
-                pollItem.pollReq = BusI2CRequestRec(busReqInfo);
+                pollItem.pollReq = BusRequestInfo(busReqInfo);
                 pollItem.suspendCount = 0;
                 break;
             }
@@ -359,7 +361,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
             {
                 // Create new record to track polling
                 PollingVectorItem newPollingItem;
-                newPollingItem.pollReq.set(busReqInfo);
+                newPollingItem.pollReq = busReqInfo;
                 
                 // Add to the polling list
                 _pollingVector.push_back(newPollingItem);
@@ -386,14 +388,12 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 // Add to the queued request FIFO
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
+bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
 {
     // Result
     bool retc = false;
 
     // Send to the request FIFO
-    BusI2CRequestRec reqRec;
-    reqRec.set(busReqInfo);
     retc = _requestQueue.put(reqRec, ADD_REQ_TO_QUEUE_MAX_MS);
 
 #ifdef DEBUG_ADD_TO_QUEUED_REC_FIFO
@@ -401,7 +401,8 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& busReqInfo)
     String writeDataStr;
     Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
     LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slotNum %s writeData %s readLen %d delayMs %d", 
-                reqRec.getAddrAndSlot().toString().c_str(), writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
+                BusI2CAddrAndSlot::fromBusElemAddrType(reqRec.getAddress()).toString().c_str(),
+                writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
 #endif
 
     // Msg buffer full

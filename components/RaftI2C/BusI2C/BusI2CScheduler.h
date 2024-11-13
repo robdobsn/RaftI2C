@@ -54,5 +54,8 @@ private:
 
     // Last time a poll occurred
     uint32_t _pollLastTimeMs;
+
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusSched";    
 };
 

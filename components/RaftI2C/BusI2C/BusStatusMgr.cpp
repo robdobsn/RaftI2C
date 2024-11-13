@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// I2C Bus Status Manager
+// Bus Status Manager
 //
 // Rob Dobson 2020-2024
 //
@@ -20,13 +20,11 @@
 // #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
-
-static const char* MODULE_PREFIX = "BusStatusMgr";
+// #define DEBUG_HANDLE_POLL_RESULT
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor and destructor
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
+/// @param raftBus raft bus
 BusStatusMgr::BusStatusMgr(RaftBus& raftBus) :
     _raftBus(raftBus)
 {
@@ -34,6 +32,8 @@ BusStatusMgr::BusStatusMgr(RaftBus& raftBus) :
     _busElemStatusMutex = xSemaphoreCreateMutex();
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Destructor
 BusStatusMgr::~BusStatusMgr()
 {
     if (_busElemStatusMutex)
@@ -41,15 +41,14 @@ BusStatusMgr::~BusStatusMgr()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Setup
+/// @param config configuration
 void BusStatusMgr::setup(const RaftJsonIF& config)
 {
     // Get address to use for lockup detection
     _addrForLockupDetect = 0;
     _addrForLockupDetectValid = false;
-    uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
+    BusElemAddrType address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
     if (address != 0xffffffff)
     {
         _addrForLockupDetect = address;
@@ -57,11 +56,7 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     }
     _busOperationStatus = BUS_OPERATION_UNKNOWN;
     _busElemStatusChangeDetected = false;
-    _i2cAddrStatus.clear();
-
-    // Clear found on main bus bits
-    for (int i = 0; i < SIZE_OF_MAIN_BUS_ADDR_BITS_ARRAY; i++)
-        _mainBusAddrBits[i] = 0;
+    _addrStatus.clear();
 
     // Debug
     LOG_I(MODULE_PREFIX, "task lockupDetect addr %02x (valid %s)",
@@ -70,9 +65,8 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Loop
+/// @param hwIsOperatingOk hardware is operating ok
 void BusStatusMgr::loop(bool hwIsOperatingOk)
 {
     // Check for any changes detected
@@ -94,7 +88,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
     if (xSemaphoreTake(_busElemStatusMutex, 0) == pdTRUE)
     {
         // Go through once and look for changes
-        for (auto& addrStatus : _i2cAddrStatus)
+        for (auto& addrStatus : _addrStatus)
         {
             if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 numChanges++;
@@ -113,14 +107,14 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
         // Get semaphore again
         if (xSemaphoreTake(_busElemStatusMutex, 0) == pdTRUE)
         {
-            for (auto& addrStatus : _i2cAddrStatus)
+            for (auto& addrStatus : _addrStatus)
             {
                 if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 {
                     // Handle element change
                     BusElemAddrAndStatus statusChange = 
                         {
-                            addrStatus.addrAndSlot.toCompositeAddrAndSlot(), 
+                            addrStatus.address, 
                             addrStatus.isOnline && addrStatus.isChange,
                             (addrStatus.wasOnceOnline && !addrStatus.isOnline) && addrStatus.isChange,
                             addrStatus.isNewlyIdentified,
@@ -133,7 +127,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 
                 // Check if this is the addrForLockupDetect
                 if (_addrForLockupDetectValid && 
-                            (addrStatus.addrAndSlot.addr == _addrForLockupDetect) && 
+                            (addrStatus.address == _addrForLockupDetect) && 
                             (addrStatus.wasOnceOnline))
                 {
                     newBusOperationStatus = addrStatus.isOnline ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
@@ -148,7 +142,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
 
-    // Perform elem statuc change callback if required
+    // Perform elem state change callback if required
     if ((statusChanges.size() > 0))
         _raftBus.callBusElemStatusCB(statusChanges);
 
@@ -156,8 +150,8 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 #ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
     for (auto& statusChange : statusChanges)
     {
-        LOG_I(MODULE_PREFIX, "loop addr@slotNum %s status change to %s", 
-                    statusChange.addrAndSlot.toString().c_str(),
+        LOG_I(MODULE_PREFIX, "loop address %04x status change to %s",
+                    statusChange.address,
                     statusChange.isChangeToOnline ? "online" : "offline");
     }
 #endif
@@ -176,15 +170,15 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Update bus element state
-// Returns true if the element state has changed
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemResponding, bool& isOnline)
+/// @brief Update bus element state
+/// @param address address
+/// @param elemResponding element is responding
+/// @param isOnline (out) element is online
+/// @return true if state has changed
+bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemResponding, bool& isOnline)
 {
 #ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-    LOG_I(MODULE_PREFIX, "updateBusElemState addr@slotNum %s isResponding %d", 
-                        addrAndSlot.toString().c_str(), elemResponding);
+    LOG_I(MODULE_PREFIX, "updateBusElemState address %04x isResponding %d", address, elemResponding);
 #endif
 
     // Check for new status change
@@ -194,8 +188,8 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
     // Debug
-    BusI2CAddrStatus prevStatus;
-    BusI2CAddrStatus newStatus;
+    BusAddrStatus prevStatus;
+    BusAddrStatus newStatus;
 #endif
 
     // Obtain semaphore controlling access to busElemChange list and flag
@@ -203,16 +197,16 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
     {
 
         // Find address record
-        BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
+        BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
 
         // If not found and element is responding then add a new record
-        if ((pAddrStatus == nullptr) && elemResponding && (_i2cAddrStatus.size() < I2C_ADDR_STATUS_MAX))
+        if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
             // Add new record
-            BusI2CAddrStatus newAddrStatus;
-            newAddrStatus.addrAndSlot = addrAndSlot;
-            _i2cAddrStatus.push_back(newAddrStatus);
-            pAddrStatus = &_i2cAddrStatus.back();
+            BusAddrStatus newAddrStatus;
+            newAddrStatus.address = address;
+            _addrStatus.push_back(newAddrStatus);
+            pAddrStatus = &_addrStatus.back();
         }
 
         // Check if we found a record
@@ -227,13 +221,6 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
             isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
             isOnline = pAddrStatus->isOnline;
 
-            // Check if this is a main-bus address (not on an extender) and keep track of all main-bus addresses if so
-            if (isNewStatusChange && isOnline && (addrAndSlot.slotNum == 0))
-            {
-                // Set address found on main bus
-                setAddrFoundOnMainBus(addrAndSlot.addr);
-            }
-
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
             // Debug
             newStatus = *pAddrStatus;
@@ -244,16 +231,17 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
         if (isNewStatusChange)
         {
             _busElemStatusChangeDetected = true;
-            _lastBusElemOnlineStatusUpdateTimeUs = micros();
+            _lastBusElemOnlineStatusUpdateTimeMs = millis();
+            _lastPollOrStatusUpdateTimeMs = millis();
         }
 
         // Check for spurious record detected
         if (flagSpuriousRecord)
         {
             // Remove the record
-            _i2cAddrStatus.erase(std::remove_if(_i2cAddrStatus.begin(), _i2cAddrStatus.end(), 
-                [addrAndSlot](BusI2CAddrStatus& addrStatus) { return addrStatus.addrAndSlot == addrAndSlot; }), 
-                _i2cAddrStatus.end());
+            _addrStatus.erase(std::remove_if(_addrStatus.begin(), _addrStatus.end(), 
+                [address](BusAddrStatus& addrStatus) { return addrStatus.address == address; }), 
+                _addrStatus.end());
         }
 
         // Return semaphore
@@ -261,12 +249,12 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR
-        if (addrAndSlot.addr == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
+        if (address == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
 #endif
         if (isNewStatusChange)
         {
-            LOG_I(MODULE_PREFIX, "updateBusElemState addr@slotNum %s count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnceOnline %d(was %d) isResponding %d",
-                        newStatus.addrAndSlot.toString().c_str(),
+            LOG_I(MODULE_PREFIX, "updateBusElemState address %04x count %d(was %d) isOnline %d(was %d) isNewStatusChange %d(was %d) wasOnceOnline %d(was %d) isResponding %d",
+                        newStatus.address,
                         newStatus.count, prevStatus.count, 
                         newStatus.isOnline, prevStatus.isOnline, 
                         newStatus.isChange, prevStatus.isChange, 
@@ -278,8 +266,8 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
     else
     {
 #ifdef WARN_ON_FAILED_TO_GET_SEMAPHORE
-        LOG_E(MODULE_PREFIX, "updateBusElemState addr@slotNum %s failed to obtain semaphore", 
-                            addrAndSlot.toString().c_str());
+        LOG_E(MODULE_PREFIX, "updateBusElemState address %04x failed to obtain semaphore", 
+                            address);
 #endif
     }
 
@@ -287,23 +275,21 @@ bool BusStatusMgr::updateBusElemState(BusI2CAddrAndSlot addrAndSlot, bool elemRe
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Check bus element is online
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-BusOperationStatus BusStatusMgr::isElemOnline(BusI2CAddrAndSlot addrAndSlot) const
+/// @brief Check if an element is online
+/// @param address address
+/// @return UNKNOWN if not known, OK if online, FAILING if offline
+BusOperationStatus BusStatusMgr::isElemOnline(BusElemAddrType address) const
 {
 #ifdef DEBUG_NO_SCANNING
     return BUS_OPERATION_OK;
 #endif
-    if ((addrAndSlot.addr < I2C_BUS_ADDRESS_MIN) || (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX))
-        return BUS_OPERATION_UNKNOWN;
-        
+
     // Obtain semaphore controlling access to busElemChange list and flag
     BusOperationStatus onlineStatus = BUS_OPERATION_UNKNOWN;
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) == pdTRUE)
     {
         // Find address record
-        const BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+        const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
         if (!pAddrStatus || !pAddrStatus->wasOnceOnline)
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
@@ -315,9 +301,8 @@ BusOperationStatus BusStatusMgr::isElemOnline(BusI2CAddrAndSlot addrAndSlot) con
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Get count of address status records
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Get count of address status records
+/// @return count
 uint32_t BusStatusMgr::getAddrStatusCount() const
 {
     // Obtain semaphore
@@ -325,7 +310,7 @@ uint32_t BusStatusMgr::getAddrStatusCount() const
         return 0;
 
     // Get count
-    uint32_t count = _i2cAddrStatus.size();
+    uint32_t count = _addrStatus.size();
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
@@ -333,44 +318,18 @@ uint32_t BusStatusMgr::getAddrStatusCount() const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Check if address is already detected on an extender
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool BusStatusMgr::isAddrFoundOnAnyExtender(uint32_t addr) const
-{
-    // Obtain semaphore
-    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
-        return false;
-
-    // Check if address is found
-    bool rslt = false;
-    for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
-    {
-        if ((addrStatus.addrAndSlot.addr == addr) && 
-                (addrStatus.addrAndSlot.slotNum != 0))
-        {
-            rslt = true;
-            break;
-        }
-    }
-
-    // Return semaphore
-    xSemaphoreGive(_busElemStatusMutex);
-    return rslt;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Bus element access barring
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot, uint32_t barAccessAfterSendMs)
+/// @brief Set bus element access barring
+/// @param timeNowMs current time in ms
+/// @param address address
+/// @param barAccessAfterSendMs time to bar access after send in ms
+void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, BusElemAddrType address, uint32_t barAccessAfterSendMs)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return;
 
     // Find address record
-    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Set access barring
@@ -382,13 +341,18 @@ void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
     xSemaphoreGive(_busElemStatusMutex);
 
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
-    LOG_W(MODULE_PREFIX, "i2cSendHelper %s barring bus access for addr@slotNum %s for %dms",
+    LOG_W(MODULE_PREFIX, "barElemAccessSet %s barring bus access for address %04x for %dms",
                     pAddrStatus ? "OK" : "FAIL", 
-                    addrAndSlot.toString().c_str(), barAccessAfterSendMs);
+                    address, barAccessAfterSendMs);
 #endif
 }
 
-bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAndSlot)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get bus element access barring
+/// @brief timeNowMs current time in ms
+/// @param address address
+/// @return true if access is barred
+bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusElemAddrType address)
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -399,7 +363,7 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
     bool barReleased = false;
 #endif
-    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
 
     // Check if access is barred
     if (pAddrStatus && pAddrStatus->barDurationMs != 0)
@@ -424,13 +388,12 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
     if (accessBarred)
     {
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access barred for addr@slotNum %s for %ldms", 
-                        addrAndSlot.toString().c_str(), pAddrStatus->barDurationMs);
+        LOG_W(MODULE_PREFIX, "barElemAccessGet access barred for address %04x for %ldms", 
+                        address, pAddrStatus->barDurationMs);
     }
     if (barReleased)
     {
-        LOG_W(MODULE_PREFIX, "i2cSendHelper access bar released for addr@slotNum %s", 
-                        addrAndSlot.toString().c_str());
+        LOG_W(MODULE_PREFIX, "barElemAccessGet access bar released for address %04x", address);
     }
     
 #endif
@@ -439,17 +402,17 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusI2CAddrAndSlot addrAn
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Set bus element device status (which includes device type and can be empty) for an address
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void BusStatusMgr::setBusElemDeviceStatus(BusI2CAddrAndSlot addrAndSlot, const DeviceStatus& deviceStatus)
+/// @brief Set bus element device status (which includes device type and can be empty) for an address
+/// @param address address
+/// @param deviceStatus device status
+void BusStatusMgr::setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus)
 {
     // Obtain sempahore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return;
 
     // Find address record
-    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Set device status (includes device type index)
@@ -468,9 +431,9 @@ void BusStatusMgr::setBusElemDeviceStatus(BusI2CAddrAndSlot addrAndSlot, const D
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get device type index by address
-/// @param addrAndSlot address and slot of device
+/// @param address address
 /// @return device type index
-uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) const
+uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType address) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -478,7 +441,7 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) c
 
     // Find address record
     uint16_t deviceTypeIndex = DeviceStatus::DEVICE_TYPE_INDEX_INVALID;
-    const BusI2CAddrStatus* pAddrStatus = findAddrStatusRecord(addrAndSlot);
+    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
         // Get device type index
@@ -491,23 +454,24 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusI2CAddrAndSlot addrAndSlot) c
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Inform that slot is powering down
-/// @param slotNum slotNum
-void BusStatusMgr::slotPoweringDown(uint32_t slotNum)
+/// @brief Inform that addresses are going offline
+/// @param addrList list of addresses
+void BusStatusMgr::goingOffline(std::vector<BusElemAddrType>& addrList)
 {
-    // Find all devices on this slot and indicate that they are offline
+    // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return;
 
     // Go through all devices and set status
-    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (BusAddrStatus& addrStatus : _addrStatus)
     {
-        if (addrStatus.addrAndSlot.slotNum == slotNum)
+        if (std::find(addrList.begin(), addrList.end(), addrStatus.address) != addrList.end())
         {
             addrStatus.isChange = addrStatus.isOnline;
             addrStatus.isOnline = false;
             _busElemStatusChangeDetected = true;
-            _lastBusElemOnlineStatusUpdateTimeUs = micros();
+            _lastBusElemOnlineStatusUpdateTimeMs = millis();
+            _lastPollOrStatusUpdateTimeMs = millis();
         }
     }
 
@@ -524,12 +488,18 @@ void BusStatusMgr::informBusStuck()
         return;
 
     // Go through all devices and set status to offline
-    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    bool anySet = false;
+    for (BusAddrStatus& addrStatus : _addrStatus)
     {
         addrStatus.isChange = addrStatus.isOnline;
         addrStatus.isOnline = false;
-        _busElemStatusChangeDetected = true;
-        _lastBusElemOnlineStatusUpdateTimeUs = micros();
+        anySet = true;
+    }
+    _busElemStatusChangeDetected = anySet;
+    if (anySet)
+    {
+        _lastBusElemOnlineStatusUpdateTimeMs = millis();
+        _lastPollOrStatusUpdateTimeMs = millis();
     }
 
     // Return semaphore
@@ -547,7 +517,7 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
         return false;
 
     // Check for any pending requests
-    for (BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (BusAddrStatus& addrStatus : _addrStatus)
     {
         // Check if a poll is due
         if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo))
@@ -566,55 +536,84 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Store poll results
 /// @param timeNowUs time in us (passed in to aid testing)
-/// @param pollInfo device polling info 
-/// @param addrAndSlot address and slot of device
+/// @param address address
 /// @param pollResultData poll result data
+/// @param pPollInfo pointer to device polling info (maybe nullptr)
 /// @return true if result stored
-bool BusStatusMgr::pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, 
-                        BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
+bool BusStatusMgr::handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
+                        const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo)
 {
+    // Callback
+    RaftDeviceDataChangeCB pCallback = nullptr;
+    const void* pCallbackInfo = nullptr;
+    uint16_t deviceTypeIdx = 0;
+    uint32_t timeNowMs = timeNowUs / 1000;
+
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
     // Find address record
-    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(addrAndSlot);
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     bool putResult = false;
     if (pAddrStatus)
     {
         // Add result to aggregator
-        putResult = pAddrStatus->deviceStatus.pollResultStore(timeNowUs, pollInfo, pollResultData);
+        putResult = pAddrStatus->deviceStatus.storePollResults(timeNowUs, pollResultData, pPollInfo);
+
+        // Check for callback
+        pCallback = pAddrStatus->getDataChangeCB();
+        if (pCallback)
+        {
+            // Check min time between reports
+            if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
+            {
+                // Get device type index and callback info
+                deviceTypeIdx = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+                pCallbackInfo = pAddrStatus->getCallbackInfo();
+                pAddrStatus->lastDataChangeReportTimeMs = timeNowMs;
+            }
+            else
+            {
+                pCallback = nullptr;
+            }
+        }
     }
 
     // Store time of last status update
-    _lastIdentPollUpdateTimeUs = timeNowUs;
+    _lastIdentPollUpdateTimeMs = timeNowMs;
+    _lastPollOrStatusUpdateTimeMs = timeNowMs;
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+
+#ifdef DEBUG_HANDLE_POLL_RESULT
+    LOG_I(MODULE_PREFIX, "handlePollResult address %04x pAddrStatus %p", address, pAddrStatus);
+#endif
+
+    // Check if a callback is required
+    if (pCallback)
+    {
+        // Call the callback
+        pCallback(deviceTypeIdx, pollResultData, pCallbackInfo);
+    }
+
     return putResult;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Get last status update time
+/// @brief Get latest timestamp of change to device info (online/offline, new data, etc)
 /// @param includeElemOnlineStatusChanges include changes in online status of elements
-/// @param includePollDataUpdates include updates from polling data
-/// @return last update time
-uint64_t BusStatusMgr::getLastStatusUpdateMs(bool includeElemOnlineStatusChanges, bool includePollDataUpdates) const
+/// @param includeDeviceDataUpdates include new data updates
+/// @return latest update time in ms
+uint64_t BusStatusMgr::getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const
 {
-    // Obtain semaphore
-    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
-        return 0;
-
-    // Get last update time
-    uint64_t lastUpdateTimeUs = 0;
-    if (includeElemOnlineStatusChanges)
-        lastUpdateTimeUs = lastUpdateTimeUs > _lastBusElemOnlineStatusUpdateTimeUs ? lastUpdateTimeUs : _lastBusElemOnlineStatusUpdateTimeUs;
-    if (includePollDataUpdates)
-        lastUpdateTimeUs = lastUpdateTimeUs > _lastIdentPollUpdateTimeUs ? lastUpdateTimeUs : _lastIdentPollUpdateTimeUs;
-    
-    // Return semaphore
-    xSemaphoreGive(_busElemStatusMutex);
-    return lastUpdateTimeUs/1000;
+    // Check which time to return
+    if (!includeElemOnlineStatusChanges)
+        return _lastIdentPollUpdateTimeMs;
+    if (!includeDeviceDataUpdates)
+        return _lastBusElemOnlineStatusUpdateTimeMs;
+    return _lastPollOrStatusUpdateTimeMs;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -622,20 +621,20 @@ uint64_t BusStatusMgr::getLastStatusUpdateMs(bool includeElemOnlineStatusChanges
 /// @param addresses - vector to store the addresses of devices
 /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
 /// @return true if there are any ident poll responses available
-bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const
+bool BusStatusMgr::getBusElemAddresses(std::vector<BusElemAddrType>& addresses, bool onlyAddressesWithIdentPollResponses) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
 
     // Iterate address status records
-    for (const BusI2CAddrStatus& addrStatus : _i2cAddrStatus)
+    for (const BusAddrStatus& addrStatus : _addrStatus)
     {
         bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.dataAggregator.count() > 0;
         if (includeAddr)
         {
             // Add address to list
-            addresses.push_back(addrStatus.addrAndSlot.toCompositeAddrAndSlot());
+            addresses.push_back(addrStatus.address);
         }
     }
 
@@ -653,7 +652,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool on
 /// @param responseSize - (out) size of the response data
 /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
 /// @return number of responses returned
-uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& isOnline, uint16_t& deviceTypeIndex, 
             std::vector<uint8_t>& devicePollResponseData, 
             uint32_t& responseSize, uint32_t maxResponsesToReturn)
 {
@@ -663,7 +662,7 @@ uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline,
 
     // Find address record
     uint32_t numResponses = 0;
-    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Elem online
@@ -679,4 +678,55 @@ uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline,
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get debug JSON
+/// @return JSON string
+String BusStatusMgr::getDebugJSON(bool includeBraces) const
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return "{}";
+
+    // Create JSON
+    String jsonStr;
+    for (const BusAddrStatus& addrStatus : _addrStatus)
+    {
+        if (jsonStr.length() > 0)
+            jsonStr += ",";
+        jsonStr += addrStatus.getJson();
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    jsonStr = "\"o\":" + String(_busOperationStatus ? 1 : 0) + ",\"d\":[" + jsonStr + "]";
+    if (includeBraces)
+        jsonStr = "{" + jsonStr + "}";
+    return jsonStr;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Register for device data notifications
+/// @param addrAndSlot address
+/// @param dataChangeCB Callback for data change
+/// @param minTimeBetweenReportsMs Minimum time between reports (ms)
+/// @param pCallbackInfo Callback info (passed to the callback)
+void BusStatusMgr::registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB, 
+            uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Find address record
+    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        // Register for data change
+        pAddrStatus->registerForDataChange(dataChangeCB, minTimeBetweenReportsMs, pCallbackInfo);
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
 }

@@ -14,8 +14,6 @@
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 
-static const char* MODULE_PREFIX = "BusI2C";
-
 #if defined(I2C_USE_RAFT_I2C)
 #include "RaftI2CCentral.h"
 #elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
@@ -34,6 +32,10 @@ static const char* MODULE_PREFIX = "BusI2C";
 // #define DEBUG_NO_POLLING
 // #define DEBUG_I2C_ASYNC_SEND_HELPER
 // #define DEBUG_I2C_SYNC_SEND_HELPER
+// #define DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES 32
+// #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x6a }
+// #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x6a, 0x25, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77 }
+// #define DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST { 0x48, 0x49, 0x26, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77 }
 // #define DEBUG_BUS_HIATUS
 // #define DEBUG_LOOP_TIMING_WITH_GPIO_NUM 19
 
@@ -49,13 +51,13 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busStuckHandler(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busMultiplexers(_busPowerController, _busStuckHandler, _busStatusMgr,
+        _busMultiplexers(_busPowerController, _busStuckHandler, _busStatusMgr, _busElemTracker,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _deviceIdentMgr(_busStatusMgr, _busMultiplexers,
+        _deviceIdentMgr(_busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busScanner(_busStatusMgr, _busMultiplexers, _deviceIdentMgr,
+        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
         ),
         _devicePollingMgr(_busStatusMgr, _busMultiplexers,
@@ -179,6 +181,9 @@ bool BusI2C::setup(const RaftJsonIF& config)
         return false;
     }
 
+    // Run post-setup on the bus power controller
+    _busPowerController.postSetup();
+    
     // Ok
     _initOk = true;
 
@@ -201,7 +206,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Debug
-    LOG_I(MODULE_PREFIX, "task setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d fastUnyieldMs %d slowUnyieldMs %d",
+    LOG_I(MODULE_PREFIX, "setup %s(%d) name %s port %d SDA %d SCL %d FREQ %d FILTER %d portTICK_PERIOD_MS %d taskCore %d taskPriority %d stackBytes %d loopYieldMs %d fastUnyieldMs %d slowUnyieldMs %d",
                 (retc == pdPASS) ? "OK" : "FAILED", retc, _busName.c_str(), _i2cPort,
                 _sdaPin, _sclPin, _freq, _i2cFilter, 
                 portTICK_PERIOD_MS, taskCore, taskPriority, taskStackSize,
@@ -445,40 +450,64 @@ void BusI2C::i2cWorkerTask()
 /// @return result code
 /// @note This is called from the worker task/thread and does not set the bus extender so if a slotted address
 ///       is used then the bus extender must be set before calling this function
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* pReqRec, std::vector<uint8_t>* pReadData)
+RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
 {
-#ifdef DEBUG_I2C_SYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendSync addr@slotNum writeLen %d readLen %d reqType %d",
-                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
-                    pReqRec->getReadReqLen(), pReqRec->getReqType());
-#endif
+    // Check valid
+    if (!_pI2CCentral)
+        return RAFT_BUS_NOT_INIT;
+
+    // Get address
+    BusElemAddrType address = pReqRec->getAddress();
+    uint16_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
 
     // Check address is within valid range
-    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    RaftI2CCentralIF::AccessResultCode rslt = checkAddrValidAndNotBarred(addrAndSlot);
-    if (rslt == RaftI2CCentralIF::ACCESS_RESULT_INVALID)
-        return rslt;
-
-    // Buffer for read
-    uint32_t readReqLen = 0;
-    uint8_t pDummyReadBuf[1];
-    if (pReadData && pReqRec->getReadReqLen() > 0)
+    RaftRetCode rsltCode = RAFT_BUS_NOT_INIT;
+    bool addrOk = checkAddrValidAndNotBarred(address) == RAFT_OK;
+    if (addrOk)
     {
-        readReqLen = pReqRec->getReadReqLen();
-        pReadData->resize(readReqLen);
+        // Buffer for read
+        uint32_t readReqLen = 0;
+        uint8_t pDummyReadBuf[1];
+        if (pReadData && pReqRec->getReadReqLen() > 0)
+        {
+            readReqLen = pReqRec->getReadReqLen();
+            pReadData->resize(readReqLen);
+        }
+        uint32_t writeReqLen = pReqRec->getWriteDataLen();
+
+        // Access the bus
+        uint32_t numBytesRead = 0;
+        rsltCode = _pI2CCentral->access(i2cAddr, pReqRec->getWriteData(), writeReqLen, 
+                pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
+
+        // Record time of comms
+        _lastI2CCommsUs = micros();
     }
-    uint32_t writeReqLen = pReqRec->getWriteDataLen();
 
-    // Access the bus
-    uint32_t numBytesRead = 0;
-    RaftI2CCentralIF::AccessResultCode rsltCode = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
-    if (!_pI2CCentral)
-        return rsltCode;
-    rsltCode = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
-            pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
+#ifdef DEBUG_I2C_SYNC_SEND_HELPER
+#ifdef DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST
+    std::vector<int> addrList = { DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST };
+    if (std::find(addrList.begin(), addrList.end(), BusI2CAddrAndSlot::getI2CAddr(address)) != addrList.end())
+    {
+#endif
+#ifdef DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES
+    String writeDataHexStr;
+    Raft::getHexStrFromBytes(pReqRec->getWriteData(), Raft::clamp(pReqRec->getWriteDataLen(), 0, DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
+    LOG_I(MODULE_PREFIX, "I2CSendSync %s i2cAddr 0x%02x writeLen %d readLen %d reqType %d writeData %s",
+                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR",
+                    i2cAddr, pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getBusReqType(), writeDataHexStr.c_str());
+#else
+    LOG_I(MODULE_PREFIX, "I2CSendSync %saddr 0x%02x writeLen %d readLen %d reqType %d",
+                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR ",
+                    i2cAddr, pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getBusReqType());
+#endif
+#ifdef DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST
+    }
+#endif
+#endif
 
-    // Record time of comms
-    _lastI2CCommsUs = micros();
     return rsltCode;
 }
 
@@ -487,23 +516,26 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendSync(const BusI2CRequestRec* p
 /// @param pReqRec - contains the request details including address, write data, read data length, etc
 /// @param pollListIdx - index into the polling list - used to reference back to the response queue
 /// @return result code
-RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* pReqRec, uint32_t pollListIdx)
+RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx)
 {
+    // Check address is within valid range and not barred
+    BusElemAddrType address = pReqRec->getAddress();
+    uint16_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+    uint16_t slotNum = BusI2CAddrAndSlot::getSlotNum(address);
+
 #ifdef DEBUG_I2C_ASYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendAsync addr@slotNum %s writeLen %d readLen %d reqType %d pollListIdx %d",
-                    pReqRec->getAddrAndSlot().toString().c_str(), pReqRec->getWriteDataLen(),
-                    pReqRec->getReadReqLen(), pReqRec->getReqType(), pollListIdx);
+    LOG_I(MODULE_PREFIX, "I2CSendAsync i2cAddr@slotNum %s writeLen %d readLen %d reqType %d pollListIdx %d",
+                    BusI2CAddrAndSlot::toString(address).c_str(), pReqRec->getWriteDataLen(),
+                    pReqRec->getReadReqLen(), pReqRec->getBusReqType(), pollListIdx);
 #endif
 
-    // Check address is within valid range and not barred
-    BusI2CAddrAndSlot addrAndSlot = pReqRec->getAddrAndSlot();
-    auto rslt = checkAddrValidAndNotBarred(addrAndSlot);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    auto rslt = checkAddrValidAndNotBarred(address);
+    if (rslt != RAFT_OK)
         return rslt;
 
     // Check if a bus mux slot is specified
-    rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
-    if (rslt != RaftI2CCentralIF::ACCESS_RESULT_OK)
+    rslt = _busMultiplexers.enableOneSlot(slotNum);
+    if (rslt != RAFT_OK)
         return rslt;
 
     // Buffer for read and address
@@ -514,10 +546,10 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 
     // Access the bus
     uint32_t numBytesRead = 0;
-    rslt = RaftI2CCentralIF::AccessResultCode::ACCESS_RESULT_NOT_INIT;
+    rslt = RAFT_BUS_NOT_INIT;
     if (!_pI2CCentral)
         return rslt;
-    rslt = _pI2CCentral->access(addrAndSlot.addr, pReqRec->getWriteData(), writeReqLen, 
+    rslt = _pI2CCentral->access(i2cAddr, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 
     // Reset bus multiplexers to turn off all slots
@@ -532,7 +564,7 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 
     // Bar access to element if requested
     if (barAccessAfterSendMs > 0)
-        _busStatusMgr.barElemAccessSet(millis(), addrAndSlot, barAccessAfterSendMs);
+        _busStatusMgr.barElemAccessSet(millis(), address, barAccessAfterSendMs);
 
     // Record time of comms
     _lastI2CCommsUs = micros();
@@ -543,29 +575,22 @@ RaftI2CCentralIF::AccessResultCode BusI2C::i2cSendAsync(const BusI2CRequestRec* 
 /// @brief Check address is valid and not barred
 /// @param addrAndSlot - address to check
 /// @return result code
-RaftI2CCentralIF::AccessResultCode BusI2C::checkAddrValidAndNotBarred(BusI2CAddrAndSlot addrAndSlot)
+RaftRetCode BusI2C::checkAddrValidAndNotBarred(BusElemAddrType address)
 {
-    if ((addrAndSlot.addr < I2C_BUS_ADDRESS_MIN) || (addrAndSlot.addr > I2C_BUS_ADDRESS_MAX))
-    {
-#ifdef WARN_IF_ADDR_OUTSIDE_VALID_RANGE
-        LOG_W(MODULE_PREFIX, "i2cSendSync addr %d out of range", addrAndSlot.addr);
-#endif
-        return RaftI2CCentralIF::ACCESS_RESULT_INVALID;
-    }
-
 #ifdef ENFORCE_MIN_TIME_BETWEEN_I2C_COMMS_US
     // Check the last time a communication occurred - if less than the minimum between sends
     // then delay
     while (!Raft::isTimeout(micros(), _lastI2CCommsUs, MIN_TIME_BETWEEN_I2C_COMMS_US))
     {
+        vTaskDelay(0);
     }
 #endif
 
     // Check if this address is barred for a period
-    if (_busStatusMgr.barElemAccessGet(millis(), addrAndSlot))
-        return RaftI2CCentralIF::ACCESS_RESULT_BARRED;
+    if (_busStatusMgr.barElemAccessGet(millis(), address))
+        return RAFT_BUS_BARRED;
 
-    return RaftI2CCentralIF::ACCESS_RESULT_OK;
+    return RAFT_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -577,7 +602,7 @@ bool BusI2C::isElemResponding(uint32_t address, bool* pIsValid) const
 {
     if (pIsValid)
         *pIsValid = true;
-    return _busStatusMgr.isElemOnline(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address)) == BusOperationStatus::BUS_OPERATION_OK;
+    return _busStatusMgr.isElemOnline(address) == BusOperationStatus::BUS_OPERATION_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

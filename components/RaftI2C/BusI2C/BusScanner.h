@@ -12,9 +12,9 @@
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
+#include "BusI2CElemTracker.h"
 #include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
-#include "BusI2CRequestRec.h"
 #include "DeviceIdentMgr.h"
 
 // #define DEBUG_SCANNING_SWEEP_TIME
@@ -22,8 +22,8 @@
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers,
-                DeviceIdentMgr& deviceIdentMgr, BusI2CReqSyncFn busI2CReqSyncFn);
+    BusScanner(BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusMultiplexers& BusMultiplexers,
+                DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void loop();
@@ -46,32 +46,32 @@ public:
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
 
 private:
-    // Scanning state
-    enum ScanState {
-        SCAN_STATE_IDLE,
-        SCAN_STATE_SCAN_EXTENDERS,
-        SCAN_STATE_MAIN_BUS,
-        SCAN_STATE_SCAN_FAST,
-        SCAN_STATE_SCAN_SLOW
+    // Scanning mode
+    enum BusScanMode {
+        SCAN_MODE_IDLE,
+        SCAN_MODE_MAIN_BUS_MUX_ONLY,
+        SCAN_MODE_MAIN_BUS,
+        SCAN_MODE_SCAN_FAST,
+        SCAN_MODE_SCAN_SLOW
     };
-    ScanState _scanState = SCAN_STATE_IDLE;
+    BusScanMode _scanMode = SCAN_MODE_IDLE;
 
-    const char* getScanStateStr(ScanState scanState)
+    const char* getScanStateStr(BusScanMode scanState)
     {
         switch (scanState)
         {
-            case SCAN_STATE_IDLE: return "IDLE";
-            case SCAN_STATE_SCAN_EXTENDERS: return "SCAN_EXTENDERS";
-            case SCAN_STATE_MAIN_BUS: return "MAIN_BUS";
-            case SCAN_STATE_SCAN_FAST: return "SCAN_FAST";
-            case SCAN_STATE_SCAN_SLOW: return "SCAN_SLOW";
+            case SCAN_MODE_IDLE: return "IDLE";
+            case SCAN_MODE_MAIN_BUS_MUX_ONLY: return "MAIN_MUX";
+            case SCAN_MODE_MAIN_BUS: return "MAIN_BUS";
+            case SCAN_MODE_SCAN_FAST: return "SCAN_FAST";
+            case SCAN_MODE_SCAN_SLOW: return "SCAN_SLOW";
         }
         return "UNKNOWN";
     }
 
     // Scanning state repeat count
     uint16_t _scanStateRepeatCount = 0;
-    uint16_t _scanStateRepeatMax = BusStatusMgr::I2C_ADDR_RESP_COUNT_FAIL_MAX+1;
+    uint16_t _scanStateRepeatMax = BusAddrStatus::ADDR_RESP_COUNT_FAIL_MAX_DEFAULT+1;
 
     // Scanning
     uint32_t _scanLastMs = 0;
@@ -99,18 +99,14 @@ private:
     // Scan priority counts
     static constexpr uint16_t SCAN_PRIORITY_COUNTS[] = { 1, 3, 9 };
 
-    enum ScanIndexMode
-    {
-        SCAN_INDEX_EXTENDERS_ONLY,
-        SCAN_INDEX_I2C_ADDRESSES,
-        SCAN_INDEX_PRIORITY_LIST_INDEX,
-    };
-
     // Enable slow scanning
     bool _slowScanEnabled = true;
 
     // Status manager
     BusStatusMgr& _busStatusMgr;
+
+    // Bus element tracker (keeps track of whether element found on the main bus or on an extender)
+    BusI2CElemTracker& _busElemTracker;
 
     // Bus multiplexers
     BusMultiplexers& _busMultiplexers;
@@ -119,28 +115,44 @@ private:
     DeviceIdentMgr& _deviceIdentMgr;
 
     // Bus i2c request function (synchronous)
-    BusI2CReqSyncFn _busI2CReqSyncFn = nullptr;
+    BusReqSyncFn _busReqSyncFn = nullptr;
+
+    /// @brief Set scan mode
+    /// @param scanMode Scan mode
+    void setScanMode(BusScanMode scanMode, uint32_t maxRepeat = BusAddrStatus::ADDR_RESP_COUNT_FAIL_MAX_DEFAULT+1);
+
+    /// @brief Scan one address and slot
+    /// @param addr Address
+    /// @param slot Slot
+    /// @param failedToEnableSlot (out) Failed to enable slot
+    /// @return Access result code
+    RaftRetCode scanOneAddress(uint32_t addr, uint32_t slot, bool& failedToEnableSlot);
 
     // Helpers
-    RaftI2CCentralIF::AccessResultCode scanOneAddress(uint32_t addr);
-    void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftI2CCentralIF::AccessResultCode accessResult);
+    void updateBusElemState(uint32_t addr, uint32_t slotNum, RaftRetCode accessResult);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set current address and get slot to scan next
+    /// @brief Set current address and get slot to scan next (based on scan mode)
     /// @param addr (out) Address
     /// @param slotNum (out) Slot number (1-based)
     /// @param sweepCompleted (out) Sweep completed
-    /// @param onlyMainBus Only main bus (don't scan extenders)
-    /// @param onlyExtenderAddrs Only return extender addresses
     /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
     /// @return True if valid
-    bool getAddrAndGetSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted, 
-                bool onlyMainBus, bool onlyExtenderAddrs, bool ignorePriorities);
+    bool getAddrAndSlotToScanNext(uint32_t& addr, uint32_t& slotNum, bool& sweepCompleted, bool ignorePriorities);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    BusElemAddrType getAddrFromScanListIndex(ScanPriorityRec& scanRec, ScanIndexMode scanMode, bool& indexWrap);
+    /// @brief Get address from scan list index
+    /// @param scanRec Scan priority record
+    /// @param ignorePriorities Ignore priorities - simply scan all addresses (and slots) equally
+    /// @param indexWrap index has wrapped around
+    /// @return Address to scan
+    BusElemAddrType getAddrFromScanListIndex(ScanPriorityRec& scanRec, bool ignorePriorities, bool& indexWrap);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool onlyMainBus, bool addressesOnSlotDone);
+    /// @brief Get slot number from slot index
+    /// @param scanRec scan priority record
+    /// @param sweepCompleted (out) sweep completed
+    /// @param addressesOnSlotDone addresses on slot done
+    /// @return Slot number
+    uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool addressesOnSlotDone);
 
+    // Debug
+    static constexpr const char* MODULE_PREFIX = "RaftI2CBusScanner";    
 };
