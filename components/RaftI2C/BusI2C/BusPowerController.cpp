@@ -17,6 +17,7 @@
 // #define DEBUG_POWER_CONTROL_STATES
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 // #define DEBUG_POWER_CONTROL_SLOT_STABLE
+// #define DEBUG_POWER_CONTROL_SLOT_UNSTABLE
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -245,22 +246,25 @@ void BusPowerController::setup(const RaftJsonIF& config)
     String slotGroupStr;
     for (SlotPowerControlGroup& slotGroup : _slotPowerCtrlGroups)
     {
-        String slotRecsStr;
+        LOG_I(MODULE_PREFIX, "Slot group %s start %d defaultLevel %d", slotGroup.groupName.c_str(),
+                        slotGroup.startSlotNum, slotGroup.defaultLevel);
         uint32_t slotNum = slotGroup.startSlotNum;
         for (SlotPowerControlRec& slotRec : slotGroup.slotRecs)
         {
             String voltageLevelStr;
             for (VoltageLevelPinRec& vPinRec : slotRec.voltageLevelPins)
             {
-                voltageLevelStr += Raft::formatString(100, "vPin %d onLvl %d valid %d ; ", vPinRec.pinNum, vPinRec.onLevel, vPinRec.isValid);
+                if (voltageLevelStr.length() > 0)
+                    voltageLevelStr += ", ";
+                if (vPinRec.isValid)
+                    voltageLevelStr += Raft::formatString(100, "vPin %d lvl %s", vPinRec.pinNum, vPinRec.onLevel ? "HIGH" : "LOW");
+                else
+                    voltageLevelStr += "INVALID";
             }
-            slotRecsStr += Raft::formatString(500, "slotNum %d: vLevels %s\n", slotNum, voltageLevelStr.c_str());
+            LOG_I(MODULE_PREFIX, "Slot %d: %s", slotNum, voltageLevelStr.c_str());
             slotNum++;
         }
-        slotGroupStr += Raft::formatString(500, "Group %s: startSlot %d defaultLevel %d\n%s", 
-                slotGroup.groupName.c_str(), slotGroup.startSlotNum, slotGroup.defaultLevel, slotRecsStr.c_str());
     }
-    LOG_I(MODULE_PREFIX, "Slot groups ...\n%s", slotGroupStr.c_str());
 
 #endif
 
@@ -320,6 +324,14 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
         }
     }
 
+#ifdef DEBUG_POWER_CONTROL_SLOT_UNSTABLE
+    // Debug
+    if (!((pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V)))
+    {
+        LOG_I(MODULE_PREFIX, "isSlotPowerStable UNSTABLE slotNum %d pwrCtrlState %d", slotNum, pSlotRec->pwrCtrlState);
+    }
+#endif
+
 #ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
     // Debug
     LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d pwrCtrlState %d returning %d", 
@@ -340,23 +352,23 @@ void BusPowerController::powerCycleSlot(uint32_t slotNum)
     LOG_I(MODULE_PREFIX, "powerCycleSlot POWER OFF slotNum %d slotNum %d", slotNum, slotNum);
 #endif
 
-    // // Check for slot 0 (power cycle bus)
-    // if (slotNum == 0)
-    // {
-    //     // Turn off the main bus power
-    //     setVoltageLevel(0, POWER_CONTROL_OFF, true);
+    // Check for slot 0 (power cycle bus)
+    if (slotNum == 0)
+    {
+        // Turn off the main bus power
+        setVoltageLevel(0, POWER_CONTROL_OFF, true);
 
-    //     // Set state
-    //     _mainBusPowerControlState = MAIN_BUS_POWER_OFF;
-    //     _busPowerControlStateLastMs = millis();
-    //     return;
-    // }
+        // Set state
+        _mainBusPowerControlState = MAIN_BUS_POWER_OFF;
+        _busPowerControlStateLastMs = millis();
+        return;
+    }
 
-    // // Turn the slot power off
-    // setVoltageLevel(slotNum, POWER_CONTROL_OFF, true);
+    // Turn the slot power off
+    setVoltageLevel(slotNum, POWER_CONTROL_OFF, true);
 
-    // // Set the state to power off pending cycling
-    // setSlotState(slotNum, SLOT_POWER_OFF_PENDING_CYCLING, millis());
+    // Set the state to power off pending cycling
+    setSlotState(slotNum, SLOT_POWER_OFF_PENDING_CYCLING, millis());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -568,102 +580,101 @@ BusPowerController::SlotPowerControlRec* BusPowerController::getSlotRecord(uint3
 /// @param force Force the action (even if not dirty)
 void BusPowerController::actionI2CIOStateChanges(bool force)
 {
-    // // Iterate through power control records
-    // for (IOExpanderRec& pwrCtrlRec : _ioExpanderRecs)
-    // {
-    //     // Update power control registers
-    //     pwrCtrlRec.update(force, _busReqSyncFn);
-    // }
+    // Iterate through power control records
+    for (IOExpanderRec& pwrCtrlRec : _ioExpanderRecs)
+    {
+        // Update power control registers
+        pwrCtrlRec.update(force, _busReqSyncFn);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Update power control registers for all slots
 void BusPowerController::IOExpanderRec::update(bool force, BusReqSyncFn busI2CReqSyncFn)
 {
-//     // Check if io expander is dirty
-//     if (force || ioRegDirty)
-//     {
-//         // Setup multiplexer
-//         if (muxAddr != 0)
-//         {
-//             // Check reset pin is output and set to 1
-//             if (muxResetPin >= 0)
-//             {
-//                 pinMode(muxResetPin, OUTPUT);
-//                 digitalWrite(muxResetPin, HIGH);
-// #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-//                 LOG_I(MODULE_PREFIX, "update muxResetPin %d set to HIGH", muxResetPin);
-// #endif                
-//             }
+    // Check if io expander is dirty
+    if (force || ioRegDirty)
+    {
+        bool rsltOk = false;
+        
+        // Setup multiplexer (if the power controller is connected via a multiplexer)
+        if (muxAddr != 0)
+        {
+            // Check reset pin is output and set to 1
+            if (muxResetPin >= 0)
+            {
+                pinMode(muxResetPin, OUTPUT);
+                digitalWrite(muxResetPin, HIGH);
+#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
+                LOG_I(MODULE_PREFIX, "update muxResetPin %d set to HIGH", muxResetPin);
+#endif                
+            }
 
-//             // Set the mux channel
-//             BusI2CAddrAndSlot muxAddrAndSlot(muxAddr, 0);
-//             uint8_t muxWriteData[1] = { (uint8_t)(1 << muxChanIdx) };
-//             BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
-//                         muxAddrAndSlot,
-//                         0, sizeof(muxWriteData),
-//                         muxWriteData,
-//                         0,
-//                         0, 
-//                         nullptr, 
-//                         this);
-//             busI2CReqSyncFn(&reqRec, nullptr);
-//         }
+            // Set the mux channel
+            uint8_t muxWriteData[1] = { (uint8_t)(1 << muxChanIdx) };
+            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
+                        muxAddr,
+                        0, sizeof(muxWriteData),
+                        muxWriteData,
+                        0,
+                        0, 
+                        nullptr, 
+                        this);
+            busI2CReqSyncFn(&reqRec, nullptr);
+        }
 
-//         // Set the output register first (to avoid unexpected power changes)
-//         BusI2CAddrAndSlot addrAndSlot(addr, 0);
-//         uint8_t outputPortData[3] = { PCA9535_OUTPUT_PORT_0, 
-//                     uint8_t(outputsReg & 0xff), 
-//                     uint8_t(outputsReg >> 8)};
-//         BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
-//                     addrAndSlot,
-//                     0, sizeof(outputPortData),
-//                     outputPortData,
-//                     0,
-//                     0, 
-//                     nullptr, 
-//                     this);
-//         bool rsltOk = busI2CReqSyncFn(&reqRec, nullptr) == RAFT_OK;
+        // Set the output register first (to avoid unexpected power changes)
+        uint8_t outputPortData[3] = { PCA9535_OUTPUT_PORT_0, 
+                    uint8_t(outputsReg & 0xff), 
+                    uint8_t(outputsReg >> 8)};
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
+                    addr,
+                    0, sizeof(outputPortData),
+                    outputPortData,
+                    0,
+                    0, 
+                    nullptr, 
+                    this);
+        rsltOk = busI2CReqSyncFn(&reqRec, nullptr) == RAFT_OK;
 
-//         // Write the configuration register
-//         uint8_t configPortData[3] = { PCA9535_CONFIG_PORT_0, 
-//                     uint8_t(configReg & 0xff), 
-//                     uint8_t(configReg >> 8)};
-//         BusI2CRequestRec reqRec2(BUS_REQ_TYPE_FAST_SCAN,
-//                     addrAndSlot,
-//                     0, sizeof(configPortData),
-//                     configPortData,
-//                     0,
-//                     0, 
-//                     nullptr, 
-//                     this);
-//         rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RAFT_OK;
+        // Write the configuration register
+        uint8_t configPortData[3] = { PCA9535_CONFIG_PORT_0, 
+                    uint8_t(configReg & 0xff), 
+                    uint8_t(configReg >> 8)};
+        BusRequestInfo reqRec2(BUS_REQ_TYPE_FAST_SCAN,
+                    addr,
+                    0, sizeof(configPortData),
+                    configPortData,
+                    0,
+                    0, 
+                    nullptr, 
+                    this);
+        rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RAFT_OK;
 
-//         // Clear multiplexer
-//         if (muxAddr != 0)
-//         {
-//             // Clear the mux channel
-//             BusI2CAddrAndSlot muxAddrAndSlot(muxAddr, 0);
-//             uint8_t muxWriteData[1] = { 0 };
-//             BusI2CRequestRec reqRec(BUS_REQ_TYPE_FAST_SCAN,
-//                         muxAddrAndSlot,
-//                         0, sizeof(muxWriteData),
-//                         muxWriteData,
-//                         0,
-//                         0, 
-//                         nullptr, 
-//                         this);
-//             busI2CReqSyncFn(&reqRec, nullptr);
-//         }
+        // Clear multiplexer
+        if (muxAddr != 0)
+        {
+            // Clear the mux channel
+            uint8_t muxWriteData[1] = { 0 };
+            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
+                        muxAddr,
+                        0, sizeof(muxWriteData),
+                        muxWriteData,
+                        0,
+                        0, 
+                        nullptr, 
+                        this);
+            busI2CReqSyncFn(&reqRec, nullptr);
+        }
 
-//         // Clear the dirty flag if result is ok
-//         ioRegDirty = !rsltOk;
+        // Clear the dirty flag if result is ok
+        ioRegDirty = !rsltOk;
 
-// #ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-//         LOG_I(MODULE_PREFIX, "update addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d rslt %s", 
-//                 addr, outputsReg, configReg, force, rsltOk ? "OK" : "FAIL");
-// #endif
-//     }
+#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
+        LOG_I(MODULE_PREFIX, "update addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d rslt %s", 
+                addr, outputsReg, configReg, force, rsltOk ? "OK" : "FAIL");
+#endif
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

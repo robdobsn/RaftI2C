@@ -17,7 +17,7 @@
 #define DEBUG_BUS_MUX_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
-#define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
+// #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
 // #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE_CLEAR
 // #define DEBUG_SLOT_INDEX_INVALID
 // #define DEBUG_POWER_STABILITY
@@ -71,7 +71,7 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
     // Multiplexer reset pin(s)
     _resetPins.clear();
 
-    // Handle one or miultiple reset pins
+    // Handle one or multiple reset pins
     std::vector<String> resetPinStrs;
     config.getArrayElems("rstPins", resetPinStrs);
     for (auto& resetPinStr : resetPinStrs)
@@ -458,7 +458,7 @@ void BusMultiplexers::disableAllSlots(bool force)
 {
     // Check if we should use reset pins
     bool forceNoResetPins = false;
-#ifndef DEBUG_FORCE_NO_RESET_PINS
+#ifdef DEBUG_FORCE_NO_RESET_PINS
     forceNoResetPins = true;
 #endif
 
