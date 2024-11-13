@@ -357,10 +357,6 @@ void BusPowerController::powerCycleSlot(uint32_t slotNum)
     {
         // Turn off the main bus power
         setVoltageLevel(0, POWER_CONTROL_OFF, true);
-
-        // Set state
-        _mainBusPowerControlState = MAIN_BUS_POWER_OFF;
-        _busPowerControlStateLastMs = millis();
         return;
     }
 
