@@ -9,6 +9,7 @@
 #include "DeviceIdentMgr.h"
 #include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
+#include "BusI2CAddrAndSlot.h"
 #include "Logger.h"
 
 // #define DEBUG_DEVICE_IDENT_MGR
@@ -67,8 +68,11 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         return;
     }
 
+    // Get the raw I2C address (excluding slot number)
+    uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+
     // Check if this address is in the range of any known device
-    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(address);
+    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
         // Get JSON definition for device
@@ -77,8 +81,8 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s address %04x", 
-                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", address);
+        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s address %s", 
+                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", BusI2CAddrAndSlot::toString(address).c_str());
 #endif
 
         // Check if the detection value(s) match responses from the device
@@ -102,8 +106,8 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 
 #ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
-            LOG_I(MODULE_PREFIX, "setBusElemDevInfo address %04x numPollResToStore %d pollResSizeIncTimestamp %d", 
-                    address,
+            LOG_I(MODULE_PREFIX, "setBusElemDevInfo address %s numPollResToStore %d pollResSizeIncTimestamp %d", 
+                    BusI2CAddrAndSlot::toString(address).c_str(),
                     deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 #endif
@@ -157,9 +161,9 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceT
         Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr %04x writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
                     rslt == RAFT_OK ? "OK" : "BUS ACCESS FAILED",
-                    address, 
+                    BusI2CAddrAndSlot::toString(address).c_str(), 
                     writeStr.c_str(), rslt, 
                     readDataStr.c_str(), readData.size(), 
                     detectionRec.pauseAfterSendMs);
@@ -212,8 +216,8 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceT
         }
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %04x %s", 
-                    address,
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %s %s", 
+                    BusI2CAddrAndSlot::toString(address).c_str(),
                     checkValueMatch ? "MATCH" : "NO MATCH");
 #endif
 
@@ -237,8 +241,8 @@ bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, const DeviceType
     deviceTypeRecords.getInitBusRequests(address, pDevTypeRec, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-    LOG_I(MODULE_PREFIX, "processDeviceInit address %04x numInitBusRequests %d", 
-                address, initBusRequests.size());
+    LOG_I(MODULE_PREFIX, "processDeviceInit address %s numInitBusRequests %d", 
+                BusI2CAddrAndSlot::toString(address).c_str(), initBusRequests.size());
 #endif
 
     // Initialise the device
