@@ -294,6 +294,29 @@ void BusPowerController::loop()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if address is a bus power controller
+/// @param i2cAddr address of bus power controller
+/// @param muxAddr address of mux (0 if on main I2C bus)
+/// @param muxChannel channel on mux
+/// @return true if address is a bus power controller
+bool BusPowerController::isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel)
+{
+    // Check if power control is enabled
+    if (!_powerControlEnabled)
+        return false;
+
+    // Check if address is in the IO expander range
+    for (IOExpanderRec& ioExpRec : _ioExpanderRecs)
+    {
+        if ((i2cAddr == ioExpRec.addr) && (muxAddr == ioExpRec.muxAddr) && (muxChannel == ioExpRec.muxChanIdx))
+            return true;
+    }
+
+    // Not found
+    return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if power on a slot is stable
 /// @param slotNum Slot number (1-based)
 /// @return True if power is stable

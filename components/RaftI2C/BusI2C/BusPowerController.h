@@ -38,8 +38,17 @@ public:
     /// @param slotNum slot number (1 based) (0 to power cycle bus)
     void powerCycleSlot(uint32_t slotNum);
 
-    // Check if slot power is controlled
+    /// @brief Check if slot power is controlled
+    /// @param slotNum slot number (1 based)
+    /// @return true if slot power is controlled
     bool isSlotPowerControlled(uint32_t slotNum);
+
+    /// @brief Check if address is a bus power controller
+    /// @param i2cAddr address of bus power controller
+    /// @param muxAddr address of mux (0 if on main I2C bus)
+    /// @param muxChannel channel on mux
+    /// @return true if address is a bus power controller
+    bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel);
 
     // Maximum number of slots
     static const uint32_t MAX_SLOTS = 64;

@@ -82,6 +82,24 @@ public:
         }
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get muliplexer and slot index from slot number
+    /// @param slotNum Slot number (1-based)
+    /// @param muxIdx Multiplexer index
+    /// @param slotIdx Slot index
+    /// @return True if valid
+    bool getMuxAndSlotIdx(uint32_t slotNum, uint32_t& muxIdx, uint32_t& slotIdx);
+    
+    /// @brief Get address based on mux record
+    /// @param muxIdx Multiplexer index
+    /// @return Address
+    BusElemAddrType getAddrFromMuxIdx(uint32_t muxIdx)
+    {
+        if (muxIdx >= _busMuxRecs.size())
+            return 0;
+        return _minAddr + muxIdx;
+    }
+
     /// @brief Enable one slot on bus multiplexers(s)
     /// @param slotNum Slot number (1-based)
     /// @return OK if successful, otherwise error code which may be invalid if the slotNum doesn't exist or one of
@@ -183,14 +201,6 @@ private:
 
     // Init bus mux records
     void initBusMuxRecs();
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get muliplexer and slot index from slot number
-    /// @param slotNum Slot number (1-based)
-    /// @param muxIdx Multiplexer index
-    /// @param slotIdx Slot index
-    /// @return True if valid
-    bool getMuxAndSlotIdx(uint32_t slotNum, uint32_t& muxIdx, uint32_t& slotIdx);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set slot enables on mux

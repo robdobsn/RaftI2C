@@ -57,7 +57,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _deviceIdentMgr(_busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _deviceIdentMgr,
+        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busPowerController, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
         ),
         _devicePollingMgr(_busStatusMgr, _busMultiplexers,
