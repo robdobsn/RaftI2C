@@ -9,6 +9,7 @@
 #include "DeviceIdentMgr.h"
 #include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
+#include "RaftDevice.h"
 #include "BusI2CAddrAndSlot.h"
 #include "Logger.h"
 
@@ -302,6 +303,17 @@ String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bo
     return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device type info JSON by device type index
+/// @param deviceTypeIdx device type index
+/// @param includePlugAndPlayInfo include plug and play info
+/// @return JSON string
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(uint16_t deviceTypeIdx, bool includePlugAndPlayInfo) const
+{
+    // Get device type info
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get queued device data in JSON format
 /// @return JSON doc
@@ -331,6 +343,39 @@ String DeviceIdentMgr::getQueuedDeviceDataJson() const
         }
     }
     return jsonStr.length() == 0 ? "{}" : jsonStr + "}";
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get queued device data in binary format
+/// @param connMode connection mode (inc bus number)
+/// @return Binary data vector
+std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode) const
+{
+    // Return buffer
+    std::vector<uint8_t> binData;
+
+    // Get list of all bus element addresses
+    std::vector<BusElemAddrType> addresses;
+    _busStatusMgr.getBusElemAddresses(addresses, false);
+    for (auto address : addresses)
+    {
+        // Get bus status for each address
+        bool isOnline = false;
+        uint16_t deviceTypeIndex = 0;
+        std::vector<uint8_t> devicePollResponseData;
+        uint32_t responseSize = 0;
+        _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Get poll response JSON
+        if (devicePollResponseData.size() > 0)
+        {
+            // Generate binary device message
+            RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, isOnline, devicePollResponseData);
+        }
+    }
+
+    // Return binary data
+    return binData;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
