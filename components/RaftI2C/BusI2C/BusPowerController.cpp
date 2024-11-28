@@ -440,7 +440,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d state is wait_stable", slotNum);
 #endif
-                        setVoltageLevel(slotNum, POWER_CONTROL_LOW_V, false);
+                        setVoltageLevel(slotNum, slotGroup.defaultLevel, false);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
                     }
                     break;
