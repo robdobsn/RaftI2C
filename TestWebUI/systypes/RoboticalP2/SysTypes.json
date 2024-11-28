@@ -120,15 +120,20 @@
         "enable": 1,
         "pubList": [
             {
-                "name": "devices",
-                "trigger": "TimeOrChange",
-                "msgID": "devices",
-                "rates": [
-                ]
+                "topic": "devjson",
+                "trigger": "Change",
+                "minStateChangeMs":10,
+                "rates": []
+            },
+            {
+                "topic": "devbin",
+                "trigger": "Change",
+                "minStateChangeMs":10,
+                "rates": []
             }
         ]
     },
-    "HWDevMan":
+    "DevMan":
     {
         "Buses":
         {

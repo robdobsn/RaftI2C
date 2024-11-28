@@ -9,7 +9,6 @@
 #include "RegisterWebServer.h"
 #include "BusI2CTest.h"
 #include "BusI2C.h"
-#include "HWDevMan.h"
 
 // Entry point
 extern "C" void app_main(void)
@@ -27,9 +26,6 @@ extern "C" void app_main(void)
 
     // Register sysmod
     raftCoreApp.registerSysMod("BusI2CTest", BusI2CTest::create, true);
-
-    // Device manager
-    raftCoreApp.registerSysMod("HWDevMan", HWDevMan::create, true);
 
     // Loop forever
     while (1)

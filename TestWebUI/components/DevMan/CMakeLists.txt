@@ -1,9 +1,0 @@
-idf_component_register(
-    SRCS 
-        "HWDevMan.cpp"
-    INCLUDE_DIRS
-        "."
-    REQUIRES
-        RaftCore
-        RaftI2C
-)
