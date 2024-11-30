@@ -225,6 +225,9 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceT
         // Check if all values match
         if (!checkValueMatch)
             detectionValuesMatch = false;
+
+        if (detectionRec.pauseAfterSendMs > 0)
+            delay(detectionRec.pauseAfterSendMs);
     }
 
     // Access the device and check the response
