@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-#define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
+// #define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
 
 // #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
@@ -335,7 +335,7 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
         if (!pSlotRec)
         {
 #ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
-            LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d SLOT NOT FOUND! so saying yes", slotNum);
+            LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d not power controlled returning yes", slotNum);
 #endif
             return true;
         }
