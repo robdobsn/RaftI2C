@@ -1,4 +1,5 @@
 Main library
+[] check changes to bus stuck handling - maybe better to cycle slot power first (if available) and then cycle main bus power rather than trying to detect which bus failed because, for instance, smart servos don't fail when slot is set but fail when a command is issued. This may be fixed by simply reverting the first change in the BusMultiplexers.cpp call to attemptToClearBusStuck and setting first arg back to false.
 [] Current monitoring for hardware that supports it
 [] Support for using a MUXED channel for power and ADCs
 [] investigate idea of callback functions to do device-detection/init/polling/decoding - could define struct with values and then serialize it out - endianness TBD - perhaps include and endian-ness marker (a known 2 byte value for instance) - or just define little-endian knowing it is ok on ESP32 and needs adjustment on other platforms?

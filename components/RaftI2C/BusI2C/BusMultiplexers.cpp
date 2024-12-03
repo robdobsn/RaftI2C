@@ -388,7 +388,7 @@ RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
         for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
         {
             // Attempt to clear bus-stuck (returns true if it resolved the issue)
-            if (attemptToClearBusStuck(false, slotNum))
+            if (attemptToClearBusStuck(true, slotNum))
                 break;
         }
 
@@ -439,7 +439,7 @@ RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
             // If the bus is stuck at this point then it is not possible to enable a slot
             // so try to clear the bus-stuck problem in any way possible
             // (returns true if it resolved the issue)
-            if (attemptToClearBusStuck(false, slotNum))
+            if (attemptToClearBusStuck(true, slotNum))
                 break;
         }
     }
