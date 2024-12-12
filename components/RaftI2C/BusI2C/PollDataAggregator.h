@@ -51,7 +51,7 @@ public:
     ////////////////////////////////////////////////////////////////////////////
     /// @brief Put a vector of uint8_t data to one slot in the circular buffer
     /// @param data Data to add
-    bool put(const std::vector<uint8_t>& data)
+    bool put(uint64_t timeNowUs, const std::vector<uint8_t>& data)
     {
         // Check buffer size > size of a single result
         if (data.size() != _resultSize)
@@ -70,6 +70,11 @@ public:
             _ringBufHeadOffset = 0;
         if (_ringBufCount < _maxElems)
             _ringBufCount++;
+
+        // Store the latest values
+        _latestValue = data;
+        _lastestValueTimeUs = timeNowUs;
+        _latestValueIsNew = true;
 
         // Release access
         xSemaphoreGive(_accessMutex);
@@ -181,11 +186,42 @@ public:
         return resultCount;
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    /// @brief Get the latest data
+    /// @param data (output) Data to get
+    /// @return true if data is new
+    bool getLatestValue(uint64_t& dataTimeUs, std::vector<uint8_t>& data)
+    {
+        // Obtain access
+        if (!_accessMutex || (xSemaphoreTake(_accessMutex, portMAX_DELAY) != pdTRUE))
+            return false;
+
+        // Check if data is new
+        bool dataNew = _latestValueIsNew;
+        dataTimeUs = _lastestValueTimeUs;
+        data = _latestValue;
+        _latestValueIsNew = false;
+
+        // Release access
+        xSemaphoreGive(_accessMutex);
+
+        // Return data
+        return dataNew;
+    }
+
 private:
+    // Circular buffer
     std::vector<uint8_t> _ringBuffer;
     uint16_t _ringBufHeadOffset = 0;
     uint16_t _ringBufCount = 0;
     uint16_t _resultSize = 0;
     uint16_t _maxElems = 0;
+
+    // Latest value
+    std::vector<uint8_t> _latestValue;
+    uint64_t _lastestValueTimeUs = 0;
+    bool _latestValueIsNew = false;
+
+    // Access mutex
     SemaphoreHandle_t _accessMutex = nullptr;
 };

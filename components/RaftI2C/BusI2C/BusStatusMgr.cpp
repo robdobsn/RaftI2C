@@ -49,7 +49,7 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
     // Get address to use for lockup detection
     _addrForLockupDetect = 0;
     _addrForLockupDetectValid = false;
-    uint32_t address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
+    BusElemAddrType address = strtoul(config.getString("lockupDetect", "0xffffffff").c_str(), NULL, 0);
     if (address != 0xffffffff)
     {
         _addrForLockupDetect = address;
@@ -336,7 +336,7 @@ uint32_t BusStatusMgr::getAddrStatusCount() const
 // Check if address is already detected on an extender
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusStatusMgr::isAddrFoundOnAnyExtender(uint32_t addr) const
+bool BusStatusMgr::isAddrFoundOnAnyExtender(BusElemAddrType addr) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -573,6 +573,11 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
 bool BusStatusMgr::pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& pollInfo, 
                         BusI2CAddrAndSlot addrAndSlot, const std::vector<uint8_t>& pollResultData)
 {
+    // Callback
+    RaftDeviceDataChangeCB pCallback = nullptr;
+    const void* pCallbackInfo = nullptr;
+    uint16_t deviceTypeIdx = 0;
+
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
         return false;
@@ -584,6 +589,25 @@ bool BusStatusMgr::pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& 
     {
         // Add result to aggregator
         putResult = pAddrStatus->deviceStatus.pollResultStore(timeNowUs, pollInfo, pollResultData);
+
+        // Check for callback
+        pCallback = pAddrStatus->getDataChangeCB();
+        if (pCallback)
+        {
+            // Check min time between reports
+            uint32_t timeNowMs = timeNowUs / 1000;
+            if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
+            {
+                // Get device type index and callback info
+                deviceTypeIdx = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+                pCallbackInfo = pAddrStatus->getCallbackInfo();
+                pAddrStatus->lastDataChangeReportTimeMs = timeNowMs;
+            }
+            else
+            {
+                pCallback = nullptr;
+            }
+        }
     }
 
     // Store time of last status update
@@ -591,6 +615,14 @@ bool BusStatusMgr::pollResultStore(uint64_t timeNowUs, const DevicePollingInfo& 
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+
+    // Check if a callback is required
+    if (pCallback)
+    {
+        // Call the callback
+        pCallback(deviceTypeIdx, pollResultData, pCallbackInfo);
+    }
+
     return putResult;
 }
 
@@ -622,7 +654,7 @@ uint64_t BusStatusMgr::getLastStatusUpdateMs(bool includeElemOnlineStatusChanges
 /// @param addresses - vector to store the addresses of devices
 /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
 /// @return true if there are any ident poll responses available
-bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const
+bool BusStatusMgr::getBusElemAddresses(std::vector<BusElemAddrType>& addresses, bool onlyAddressesWithIdentPollResponses) const
 {
     // Obtain semaphore
     if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
@@ -653,7 +685,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<uint32_t>& addresses, bool on
 /// @param responseSize - (out) size of the response data
 /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
 /// @return number of responses returned
-uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& isOnline, uint16_t& deviceTypeIndex, 
             std::vector<uint8_t>& devicePollResponseData, 
             uint32_t& responseSize, uint32_t maxResponsesToReturn)
 {
@@ -679,4 +711,29 @@ uint32_t BusStatusMgr::getBusElemPollResponses(uint32_t address, bool& isOnline,
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Register for device data notifications
+/// @param addrAndSlot address
+/// @param dataChangeCB Callback for data change
+/// @param minTimeBetweenReportsMs Minimum time between reports (ms)
+/// @param pCallbackInfo Callback info (passed to the callback)
+void BusStatusMgr::registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB, 
+            uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo)
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return;
+
+    // Find address record
+    BusI2CAddrStatus* pAddrStatus = findAddrStatusRecordEditable(BusI2CAddrAndSlot::fromCompositeAddrAndSlot(address));
+    if (pAddrStatus)
+    {
+        // Register for data change
+        pAddrStatus->registerForDataChange(dataChangeCB, minTimeBetweenReportsMs, pCallbackInfo);
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
 }
