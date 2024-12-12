@@ -9,14 +9,18 @@
 #pragma once
 
 #include <stdint.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "RaftBus.h"
 #include "BusI2CScheduler.h"
 #include "ThreadSafeQueue.h"
 #include "BusRequestResult.h"
 #include "RaftI2CCentralIF.h"
+#include "RaftThreading.h"
+
+#ifdef FREERTOS_H
+#pragma message("========================================== BusAccessor.h using FreeRTOS")
+#else
+#pragma message("========================================== BusAccessor.h using MicroPython")
+#endif
 
 class BusAccessor {
 public:
@@ -64,7 +68,7 @@ private:
 
     // Polling vector and mutex controlling access
     std::vector<PollingVectorItem> _pollingVector;
-    SemaphoreHandle_t _pollingMutex = nullptr;
+    RaftMutex _pollingMutex;
     static const int MAX_POLLING_LIST_RECS = 30;
     static const int MAX_POLLING_LIST_RECS_LOW_LOAD = 4;
     static const int MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND = 2;
