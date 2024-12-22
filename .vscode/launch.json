@@ -25,17 +25,6 @@
                     "ignoreFailures": true
                 }
             ]
-        },
-        {
-            "name": "Python ProcessDevTypeJsonToC",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "./scripts/ProcessDevTypeJsonToC.py",
-            "console": "integratedTerminal",
-            "args": [
-                "./DeviceTypeRecords/DeviceTypeRecords.json",
-                "./scripts/TestCHeader.h"
-            ]
         }
     ]
 }
