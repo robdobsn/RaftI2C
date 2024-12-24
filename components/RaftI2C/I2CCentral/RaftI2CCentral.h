@@ -11,11 +11,10 @@
 
 #include "RaftI2CCentralIF.h"
 #include "RaftUtils.h"
+#include "RaftThreading.h"
 #include "soc/i2c_struct.h"
 #include "soc/i2c_reg.h"
 #include "esp_intr_alloc.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "sdkconfig.h"
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ALL_SOURCES

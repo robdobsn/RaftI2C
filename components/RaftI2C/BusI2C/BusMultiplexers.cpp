@@ -11,8 +11,7 @@
 #include "BusI2CElemTracker.h"
 #include "RaftJson.h"
 #include "RaftUtils.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "RaftThreading.h"
 
 #define DEBUG_BUS_MUX_SETUP
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
