@@ -10,6 +10,7 @@
 #include "Logger.h"
 #include "RaftUtils.h"
 #include "DeviceIdentMgr.h"
+#include <algorithm>
 
 // #define DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING

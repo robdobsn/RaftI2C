@@ -166,8 +166,8 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     // Enable clock to I2C peripheral
     I2C_DEVICE.clk_conf.sclk_active = 1;
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    periph_module_enable(i2c_periph_signal[0].module);
-    periph_module_reset(i2c_periph_signal[0].module);
+    periph_module_enable(PERIPH_I2C0_MODULE);
+    periph_module_reset(PERIPH_I2C0_MODULE);
     // i2c_hal_init(I2C_DEVICE, 0);    // Enable clock to I2C peripheral
     I2C_DEVICE.clk_conf.sclk_active = 1;
     SET_PERI_REG_MASK(RTC_CNTL_CLK_CONF_REG, RTC_CNTL_DIG_CLK8M_EN_M);
