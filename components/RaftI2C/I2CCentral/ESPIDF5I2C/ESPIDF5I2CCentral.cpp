@@ -12,6 +12,7 @@
 #include "RaftUtils.h"
 #include "RaftArduino.h"
 #include "sdkconfig.h"
+#include "esp_idf_version.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Consts
@@ -62,6 +63,9 @@ bool ESPIDF5I2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, 
         .trans_queue_depth = 0,
         .flags = {
             .enable_internal_pullup = true,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+            .allow_pd = 1,
+#endif
         }
     };
 
