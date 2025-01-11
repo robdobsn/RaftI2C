@@ -64,7 +64,7 @@ bool ESPIDF5I2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, 
         .flags = {
             .enable_internal_pullup = true,
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
-            .allow_pd = 1,
+            .allow_pd = 0,
 #endif
         }
     };
