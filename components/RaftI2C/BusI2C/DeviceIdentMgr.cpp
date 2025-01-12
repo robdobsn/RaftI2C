@@ -112,6 +112,8 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
                     deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 #endif
+            // Break out of the loop
+            break;
         }
         else
         {
