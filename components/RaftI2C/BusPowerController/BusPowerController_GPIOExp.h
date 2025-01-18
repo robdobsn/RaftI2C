@@ -12,9 +12,10 @@
 #include <vector>
 #include "RaftJsonIF.h"
 #include "BusRequestInfo.h"
+#include "BusPowerControllerIF.h"
 
 /// @brief Bus power controller handles power to either the whole bus OR on a per slot basis
-class BusPowerController
+class BusPowerController :: public BusPowerControllerIF
 {
 public:
     // Constructor and destructor
@@ -22,40 +23,35 @@ public:
     virtual ~BusPowerController();
 
     // Setup
-    void setup(const RaftJsonIF& config);
-    bool postSetup();
+    virtual void setup(const RaftJsonIF& config) override;
+    virtual bool postSetup() override;
 
     // Service
-    void loop();
+    virtual void loop() override;
 
     // Service called from I2C task
-    void taskService(uint64_t timeNowUs);
+    virtual void taskService(uint64_t timeNowUs) override;
 
     // Check if slot has stable power
-    bool isSlotPowerStable(uint32_t slotNum);
+    virtual bool isSlotPowerStable(uint32_t slotNum) override;
 
     /// @brief Power cycle slot
     /// @param slotNum slot number (1 based) (0 to power cycle bus)
-    void powerCycleSlot(uint32_t slotNum);
+    virtual void powerCycleSlot(uint32_t slotNum) override;
 
     /// @brief Check if slot power is controlled
     /// @param slotNum slot number (1 based)
     /// @return true if slot power is controlled
-    bool isSlotPowerControlled(uint32_t slotNum);
+    virtual bool isSlotPowerControlled(uint32_t slotNum) override;
 
     /// @brief Check if address is a bus power controller
     /// @param i2cAddr address of bus power controller
     /// @param muxAddr address of mux (0 if on main I2C bus)
     /// @param muxChannel channel on mux
     /// @return true if address is a bus power controller
-    bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel);
-
-    // Maximum number of slots
-    static const uint32_t MAX_SLOTS = 64;
+    virtual bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel) override;
 
 private:
-    // Bus access function
-    BusReqSyncFn _busReqSyncFn;
 
     // Power control enabled
     bool _powerControlEnabled = false;

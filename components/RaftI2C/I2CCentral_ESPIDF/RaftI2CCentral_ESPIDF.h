@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// ESPIDF5I2CCentral.h
+// RaftI2CCentral_ESPIDF.h
 // I2C Central using ESP IDF 5.2+
 //
 // Rob Dobson 2024
@@ -14,11 +14,11 @@
 #include "sdkconfig.h"
 #include "driver/i2c_master.h"
 
-class ESPIDF5I2CCentral : public RaftI2CCentralIF
+class RaftI2CCentral_ESPIDF : public RaftI2CCentralIF
 {
 public:
-    ESPIDF5I2CCentral();
-    virtual ~ESPIDF5I2CCentral();
+    RaftI2CCentral_ESPIDF();
+    virtual ~RaftI2CCentral_ESPIDF();
 
     // Init/de-init
     virtual bool init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency, 

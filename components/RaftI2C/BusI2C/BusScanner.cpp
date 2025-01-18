@@ -25,12 +25,14 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusScanner::BusScanner(BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusMultiplexers& busMultiplexers, 
-                BusPowerController& powerController, DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn) :
+BusScanner::BusScanner(BusStatusMgr& busStatusMgr, 
+        BusI2CElemTracker& busElemTracker, 
+        BusMultiplexers& busMultiplexers,
+        DeviceIdentMgr& deviceIdentMgr, 
+        BusReqSyncFn busI2CReqSyncFn) :
     _busStatusMgr(busStatusMgr),
     _busElemTracker(busElemTracker),
     _busMultiplexers(busMultiplexers),
-    _powerController(powerController),
     _deviceIdentMgr(deviceIdentMgr),
     _busReqSyncFn(busI2CReqSyncFn)
 {
@@ -179,22 +181,24 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                         continue;
                 }
 
-                // Avoid scanning a bus power controller address
-                if (slotNum == 0)
-                {
-                    if (_powerController.isBusPowerController(addr, 0, 0))
-                        continue;
-                }
-                else
-                {
-                    uint32_t muxIdx = 0;
-                    uint32_t slotIdx = 0;
-                    if (!_busMultiplexers.getMuxAndSlotIdx(slotNum, muxIdx, slotIdx))
-                        continue;
-                    uint32_t muxAddr = _busMultiplexers.getAddrFromMuxIdx(muxIdx);
-                    if (_powerController.isBusPowerController(addr, muxAddr, slotIdx))
-                        continue;
-                }
+                // TODO - put back functionality to avoid scanning power controller or 
+                // maybe implement exclusion list more generally
+                // // Avoid scanning a bus power controller address
+                // if (slotNum == 0)
+                // {
+                //     if (_powerController.isBusPowerController(addr, 0, 0))
+                //         continue;
+                // }
+                // else
+                // {
+                //     uint32_t muxIdx = 0;
+                //     uint32_t slotIdx = 0;
+                //     if (!_busMultiplexers.getMuxAndSlotIdx(slotNum, muxIdx, slotIdx))
+                //         continue;
+                //     uint32_t muxAddr = _busMultiplexers.getAddrFromMuxIdx(muxIdx);
+                //     if (_powerController.isBusPowerController(addr, muxAddr, slotIdx))
+                //         continue;
+                // }
 
                 // Scan the address
                 bool failedToEnableSlot = false;

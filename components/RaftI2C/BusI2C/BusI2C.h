@@ -17,7 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
-#include "BusPowerController.h"
+#include "BusPowerControllerIF.h"
 #include "BusStuckHandler.h"
 #include "BusI2CAddrAndSlot.h"
 
@@ -201,14 +201,28 @@ public:
         return addrAndSlot.toBusElemAddrType();
     }
 
+    /// @brief Set handler for bus power management
+    /// @param pBusPowerController - bus power controller
+    void setBusPowerController(BusPowerControllerIF* pBusPowerController)
+    {
+        _pBusPowerController = pBusPowerController;
+        _busMultiplexers.setBusPowerController(pBusPowerController);
+        if (_pBusPowerController)
+        {
+            _pBusPowerController->setBusReqSyncFn(
+                std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
+            );
+        }
+    }
+
+private:
+
     // Yield value on each bus processing loop
     static const uint32_t I2C_BUS_LOOP_YIELD_MS = 5;
 
     // Max fast scanning without yielding
     static const uint32_t I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS = 10;
     static const uint32_t I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS = 2;
-
-private:
 
     // Settings
     int _i2cPort = 0;
@@ -263,9 +277,6 @@ private:
     // Bus elem tracker
     BusI2CElemTracker _busElemTracker;
 
-    // Bus power controller
-    BusPowerController _busPowerController;
-    
     // Bus stuck handler
     BusStuckHandler _busStuckHandler;
     
@@ -284,6 +295,9 @@ private:
     // Bus accessor
     BusAccessor _busAccessor;
 
+    // Bus power controller
+    BusPowerControllerIF* _pBusPowerController = nullptr;
+
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;
     uint32_t _busAccessBarMs[ELEM_BAR_I2C_ADDRESS_MAX+1];
@@ -295,9 +309,19 @@ private:
     static void i2cWorkerTaskStatic(void* pvParameters);
     void i2cWorkerTask();
 
-    // Helpers
+    /// @brief Send I2C message asynchronously and store result in the response queue
+    /// @param pReqRec
+    /// @param pollListIdx 
+    /// @return result code
     RaftRetCode i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollListIdx);
+
+    /// @brief Send I2C message synchronously
+    /// @param pReqRec
+    /// @param pReadData
+    /// @return result code
     RaftRetCode i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData);
+
+    // Helpers
     RaftRetCode checkAddrValidAndNotBarred(BusElemAddrType address);
 
     // Debug

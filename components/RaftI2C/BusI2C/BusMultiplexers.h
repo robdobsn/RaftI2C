@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "BusPowerController.h"
+#include "BusPowerControllerIF.h"
 #include "BusStuckHandler.h"
 #include "BusStatusMgr.h"
 #include "BusI2CElemTracker.h"
@@ -19,8 +19,10 @@ class BusMultiplexers
 {
 public:
     // Constructor and destructor
-    BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-        BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusReqSyncFn busI2CReqSyncFn);
+    BusMultiplexers(BusStuckHandler& busStuckHandler, 
+        BusStatusMgr& busStatusMgr, 
+        BusI2CElemTracker& busElemTracker, 
+        BusReqSyncFn busI2CReqSyncFn);
     virtual ~BusMultiplexers();
 
     // Setup
@@ -123,6 +125,15 @@ public:
     /// @return Next slot number (1-based)
     uint32_t getNextSlotNum(uint32_t slotNum);
 
+    /// @brief Set handler for bus power management
+    /// @param pBusPowerController - bus power controller
+    void setBusPowerController(BusPowerControllerIF* pBusPowerController)
+    {
+        _pBusPowerController = pBusPowerController;
+    }
+
+private:
+
     // Bus mux slot count
     static const uint32_t I2C_BUS_MUX_SLOT_COUNT = 8;
 
@@ -136,12 +147,11 @@ public:
     // Max number of recurse levels mux connected to mux connected to mux etc
     static const uint32_t MAX_RECURSE_LEVEL_MUX_CONNECTIONS = 5;
 
-private:
     // Multiplexer functionality enabled
     bool _isEnabled = true;
 
     // Bus power controller
-    BusPowerController& _busPowerController;
+    BusPowerControllerIF* _pBusPowerController = nullptr;
 
     // Bus stuck handler
     BusStuckHandler& _busStuckHandler;

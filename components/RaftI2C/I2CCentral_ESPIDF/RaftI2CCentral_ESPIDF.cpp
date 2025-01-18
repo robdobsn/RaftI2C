@@ -1,13 +1,13 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// ESPIDF5I2CCentral
+// RaftI2CCentral_ESPIDF
 // I2C Central using ESP IDF 5.2+
 //
 // Rob Dobson 2024
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "ESPIDF5I2CCentral.h"
+#include "RaftI2CCentral_ESPIDF.h"
 #include "Logger.h"
 #include "RaftUtils.h"
 #include "RaftArduino.h"
@@ -16,17 +16,17 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Consts
-static const char *MODULE_PREFIX = "ESPIDF5I2CCentral";
+static const char *MODULE_PREFIX = "RaftI2CCentral_ESPIDF";
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-ESPIDF5I2CCentral::ESPIDF5I2CCentral()
+RaftI2CCentral_ESPIDF::RaftI2CCentral_ESPIDF()
 {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Destructor
-ESPIDF5I2CCentral::~ESPIDF5I2CCentral()
+RaftI2CCentral_ESPIDF::~RaftI2CCentral_ESPIDF()
 {
     // De-init
     deinit();
@@ -39,7 +39,7 @@ ESPIDF5I2CCentral::~ESPIDF5I2CCentral()
 /// @param pinSCL - SCL pin number
 /// @param busFrequency - bus frequency
 /// @param busFilteringLevel - bus filtering level (see ESP-IDF i2c_config_t)
-bool ESPIDF5I2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency,
+bool RaftI2CCentral_ESPIDF::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency,
                           uint32_t busFilteringLevel)
 {
     // de-init first in case already initialised
@@ -84,7 +84,7 @@ bool ESPIDF5I2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief De-initialisation function
-void ESPIDF5I2CCentral::deinit()
+void RaftI2CCentral_ESPIDF::deinit()
 {
     if (_isInitialised)
     {
@@ -98,7 +98,7 @@ void ESPIDF5I2CCentral::deinit()
 // Check if bus is busy
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool ESPIDF5I2CCentral::isBusy()
+bool RaftI2CCentral_ESPIDF::isBusy()
 {
     // Check if hardware is ready
     if (!_isInitialised)
@@ -112,7 +112,7 @@ bool ESPIDF5I2CCentral::isBusy()
 // Check if bus operating ok
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool ESPIDF5I2CCentral::isOperatingOk() const
+bool RaftI2CCentral_ESPIDF::isOperatingOk() const
 {
     return _isInitialised;
 }
@@ -126,7 +126,7 @@ bool ESPIDF5I2CCentral::isOperatingOk() const
 // - a write of non-zero length and read of non-zero length is allowed - write occurs first and can only be of max 14 bytes
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-RaftRetCode ESPIDF5I2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
+RaftRetCode RaftI2CCentral_ESPIDF::access(uint32_t address, const uint8_t *pWriteBuf, uint32_t numToWrite,
                                                           uint8_t *pReadBuf, uint32_t numToRead, uint32_t &numRead)
 {    
     // Check valid
@@ -236,7 +236,7 @@ RaftRetCode ESPIDF5I2CCentral::access(uint32_t address, const uint8_t *pWriteBuf
 // // Check that the I2C module is ready and reset it if not
 // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// bool ESPIDF5I2CCentral::ensureI2CReady()
+// bool RaftI2CCentral_ESPIDF::ensureI2CReady()
 // {
 //     // Check if busy
 //     if (isBusy() && Raft::isTimeout(millis(), _lastCheckI2CReadyMs, _lastCheckI2CReadyIntervalMs))

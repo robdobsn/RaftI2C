@@ -29,10 +29,14 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusMultiplexers::BusMultiplexers(BusPowerController& busPowerController, BusStuckHandler& busStuckHandler, 
-        BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusReqSyncFn busI2CReqSyncFn) :
-    _busPowerController(busPowerController), _busStuckHandler(busStuckHandler),
-    _busStatusMgr(busStatusMgr), _busElemTracker(busElemTracker), _busReqSyncFn(busI2CReqSyncFn)
+BusMultiplexers::BusMultiplexers(BusStuckHandler& busStuckHandler, 
+        BusStatusMgr& busStatusMgr, 
+        BusI2CElemTracker& busElemTracker, 
+        BusReqSyncFn busI2CReqSyncFn) :
+    _busStuckHandler(busStuckHandler),
+    _busStatusMgr(busStatusMgr), 
+    _busElemTracker(busElemTracker), 
+    _busReqSyncFn(busI2CReqSyncFn)
 {
     // Init bus multiplexer records
     initBusMuxRecs();
@@ -294,7 +298,7 @@ RaftRetCode BusMultiplexers::setSlotEnables(uint32_t muxIdx,
             if (muxOnline)
             {
                 // Check if the mux has stable power
-                muxPowerStable = _busPowerController.isSlotPowerStable(muxConnSlotNum);
+                muxPowerStable = _pBusPowerController ? _pBusPowerController->isSlotPowerStable(muxConnSlotNum) : true;
             }
         }
         if (!muxAndSlotOk || !muxOnline || !muxPowerStable)
@@ -414,7 +418,7 @@ RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
     }
 
     // Check if the slot has stable power
-    if (!_busPowerController.isSlotPowerStable(slotNum))
+    if (!(_pBusPowerController ? _pBusPowerController->isSlotPowerStable(slotNum) : true))
     {
 #ifdef DEBUG_POWER_STABILITY
         LOG_I(MODULE_PREFIX, "enableOneSlot slotNum %d power not stable", slotNum);
@@ -680,7 +684,7 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
         disableAllSlots(true);
 
         // Check if failure occurred after the slot was set
-        if (failAfterSlotSet && _busPowerController.isSlotPowerControlled(slotNum))
+        if (failAfterSlotSet && (_pBusPowerController ? _pBusPowerController->isSlotPowerControlled(slotNum) : true))
         {
             // Inform the bus status manager that a slot is powering down
             std::vector<BusElemAddrType> listOfAddr;
@@ -688,7 +692,8 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
             _busStatusMgr.goingOffline(listOfAddr);
 
             // Start power cycling the slot
-            _busPowerController.powerCycleSlot(slotNum);
+            if(_pBusPowerController)
+                _pBusPowerController->powerCycleSlot(slotNum);
         }
         else
         {
@@ -698,7 +703,8 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
             _busStatusMgr.goingOffline(listOfAddr);
 
             // Clear the stuck bus problem by power cycling the entire bus
-            _busPowerController.powerCycleSlot(0);
+            if (_pBusPowerController)
+                _pBusPowerController->powerCycleSlot(0);
         }
     }
 

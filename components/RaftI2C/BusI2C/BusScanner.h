@@ -22,8 +22,11 @@
 class BusScanner {
 
 public:
-    BusScanner(BusStatusMgr& busStatusMgr, BusI2CElemTracker& busElemTracker, BusMultiplexers& BusMultiplexers,
-                BusPowerController& powerController, DeviceIdentMgr& deviceIdentMgr, BusReqSyncFn busI2CReqSyncFn);
+    BusScanner(BusStatusMgr& busStatusMgr, 
+            BusI2CElemTracker& busElemTracker, 
+            BusMultiplexers& BusMultiplexers,
+            DeviceIdentMgr& deviceIdentMgr, 
+            BusReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
     void setup(const RaftJsonIF& config);
     void loop();
@@ -110,9 +113,6 @@ private:
 
     // Bus multiplexers
     BusMultiplexers& _busMultiplexers;
-
-    // Power controller
-    BusPowerController& _powerController;
 
     // Device ident manager
     DeviceIdentMgr& _deviceIdentMgr;

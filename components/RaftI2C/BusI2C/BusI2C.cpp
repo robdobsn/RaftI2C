@@ -17,9 +17,7 @@
 #if defined(I2C_USE_RAFT_I2C)
 #include "RaftI2CCentral.h"
 #elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
-#include "ESPIDF5I2CCentral.h"
-#else
-// #include "BusI2CESPIDF.h"
+#include "RaftI2CCentral_ESPIDF.h"
 #endif
 
 // The following will define a minimum time between I2C comms activities
@@ -45,19 +43,16 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
                 RaftI2CCentralIF* pI2CCentralIF)
     : RaftBus(busElemStatusCB, busOperationStatusCB),
         _busStatusMgr(*this),
-        _busPowerController(
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-        ),
         _busStuckHandler(
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busMultiplexers(_busPowerController, _busStuckHandler, _busStatusMgr, _busElemTracker,
+        _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
         _deviceIdentMgr(_busStatusMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
         ),
-        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busPowerController, _deviceIdentMgr,
+        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _deviceIdentMgr,
             std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
         ),
         _devicePollingMgr(_busStatusMgr, _busMultiplexers,
@@ -81,9 +76,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
 #if defined(I2C_USE_RAFT_I2C) 
         _pI2CCentral = new RaftI2CCentral();
 #elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
-        _pI2CCentral = new ESPIDF5I2CCentral();
-#else
-        _pI2CCentral = new BusI2CESPIDF();
+        _pI2CCentral = new RaftI2CCentral_ESPIDF();
 #endif
         _i2cCentralNeedsToBeDeleted = true;
     }
@@ -142,8 +135,12 @@ bool BusI2C::setup(const RaftJsonIF& config)
     _busMultiplexers.setup(busExtenderConfig);
 
     // Bus power controller setup
+    // TODO - maybe implement this differently - if we have an abstract GPIO class then we can use that
+    // it would be configured elsewhere as a device maybe - it could even be discovered on the main bus
+    // then it would be available to be used to control power?
     RaftJsonPrefixed busPowerConfig(config, "pwr");
-    _busPowerController.setup(busPowerConfig);
+    if (_pBusPowerController)
+        _pBusPowerController->setup(busPowerConfig);
 
     // Bus stuck handler setup
     _busStuckHandler.setup(config);
@@ -253,7 +250,8 @@ void BusI2C::loop()
     _busMultiplexers.loop();
 
     // Bus power controller loop
-    _busPowerController.loop();
+    if (_pBusPowerController)
+        _pBusPowerController->loop();
 
     // Service bus stuck handler
     _busStuckHandler.loop();
@@ -397,7 +395,8 @@ void BusI2C::i2cWorkerTask()
 #endif
 
         // Bus power controller loop
-        _busPowerController.taskService(micros());
+        if (_pBusPowerController)
+            _pBusPowerController->taskService(micros());
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
