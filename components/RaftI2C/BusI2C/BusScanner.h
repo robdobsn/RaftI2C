@@ -25,6 +25,7 @@ public:
     BusScanner(BusStatusMgr& busStatusMgr, 
             BusI2CElemTracker& busElemTracker, 
             BusMultiplexers& BusMultiplexers,
+            BusIOExpanders& busIOExpanders,
             DeviceIdentMgr& deviceIdentMgr, 
             BusReqSyncFn busI2CReqSyncFn);
     ~BusScanner();
@@ -113,6 +114,9 @@ private:
 
     // Bus multiplexers
     BusMultiplexers& _busMultiplexers;
+
+    // Bus IO Expanders
+    BusIOExpanders& _busIOExpanders;
 
     // Device ident manager
     DeviceIdentMgr& _deviceIdentMgr;

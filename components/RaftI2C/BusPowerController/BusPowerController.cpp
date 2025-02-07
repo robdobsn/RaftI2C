@@ -6,7 +6,7 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <BusPowerController.h>
+#include "BusPowerController.h"
 #include "RaftUtils.h"
 #include "Logger.h"
 #include "RaftJson.h"
@@ -21,8 +21,8 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusPowerController::BusPowerController(BusReqSyncFn busI2CReqSyncFn)
-        : _busReqSyncFn(busI2CReqSyncFn)
+BusPowerController::BusPowerController(BusReqSyncFn busI2CReqSyncFn, BusIOExpanders& busIOExpanders)
+        : _busReqSyncFn(busI2CReqSyncFn), _busIOExpanders(busIOExpanders)
 {
 }
 
@@ -57,58 +57,6 @@ void BusPowerController::setup(const RaftJsonIF& config)
         LOG_I(MODULE_PREFIX, "%s voltageLevels size %d INVALID (should be %d) - I2C power control disabled", __func__, 
                     _voltageLevelNames.size(), POWER_CONTROL_NUM_LEVELS);
         return;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // IO Expanders
-
-    // Get array of IO expanders
-    std::vector<String> ioExpanderArray;
-    config.getArrayElems("ioExps", ioExpanderArray);
-    _ioExpanderRecs.clear();
-    for (RaftJson ioExpElem : ioExpanderArray)
-    {
-        // Get device type
-        String ioExpDeviceType = ioExpElem.getString("dev", "");
-
-        // Currently only supports PCA9535
-        if (ioExpDeviceType != "PCA9535")
-        {
-            LOG_W(MODULE_PREFIX, "%s dev type %s INVALID", __func__, ioExpDeviceType.c_str());
-            continue;
-        }
-
-        // Get device address
-        uint32_t ioExpDeviceAddr = ioExpElem.getLong("addr", 0);
-        if (ioExpDeviceAddr == 0)
-        {
-            LOG_W(MODULE_PREFIX, "%s addr 0x%02x INVALID", __func__, ioExpDeviceAddr);
-            continue;
-        }
-
-        // Check if device is on a multiplexer
-        uint32_t ioExpMuxAddr = ioExpElem.getLong("muxAddr", 0);
-        uint32_t ioExpMuxChanIdx = ioExpElem.getLong("muxChanIdx", 0);
-        int8_t ioExpMuxResetPin = ioExpElem.getLong("muxRstPin", -1);
-
-        // Virtual pin number start
-        int virtualPinBase = ioExpElem.getLong("vPinBase", -1);
-        if (virtualPinBase < 0)
-        {
-            LOG_W(MODULE_PREFIX, "%s vPinBase %d INVALID", __func__, virtualPinBase);
-            continue;
-        }
-
-        // Get num pins on the IO expander
-        uint32_t numPins = ioExpElem.getLong("numPins", 0);
-        if ((numPins == 0) || (numPins > IO_EXPANDER_MAX_PINS))
-        {
-            LOG_W(MODULE_PREFIX, "%s numPins %d INVALID", __func__, numPins);
-            continue;
-        }
-
-        // Create a record for this IO expander
-        _ioExpanderRecs.push_back(IOExpanderRec(ioExpDeviceAddr, ioExpMuxAddr, ioExpMuxChanIdx, ioExpMuxResetPin, virtualPinBase, numPins));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -223,17 +171,6 @@ void BusPowerController::setup(const RaftJsonIF& config)
     // Debug
 #ifdef DEBUG_POWER_CONTROL_SETUP
 
-    // Debug IO expanders
-    String ioExpRecStr;
-    for (IOExpanderRec& pwrCtrlRec : _ioExpanderRecs)
-    {
-        ioExpRecStr += Raft::formatString(100, "addr 0x%02x %s vPinBase %d numPins %d ; ", 
-                pwrCtrlRec.addr, 
-                pwrCtrlRec.muxAddr != 0 ? Raft::formatString(100, "muxAddr 0x%02x muxChanIdx %d", pwrCtrlRec.muxAddr, pwrCtrlRec.muxChanIdx).c_str() : "MAIN_BUS",
-                pwrCtrlRec.virtualPinBase, pwrCtrlRec.numPins);
-    }
-    LOG_I(MODULE_PREFIX, "Power controllers: %s", ioExpRecStr.c_str());
-
     // Debug voltage level names
     String voltageLevelNamesStr;
     for (String& vLevelName : _voltageLevelNames)
@@ -293,28 +230,28 @@ void BusPowerController::loop()
 {
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check if address is a bus power controller
-/// @param i2cAddr address of bus power controller
-/// @param muxAddr address of mux (0 if on main I2C bus)
-/// @param muxChannel channel on mux
-/// @return true if address is a bus power controller
-bool BusPowerController::isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel)
-{
-    // Check if power control is enabled
-    if (!_powerControlEnabled)
-        return false;
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /// @brief Check if address is a bus power controller
+// /// @param i2cAddr address of bus power controller
+// /// @param muxAddr address of mux (0 if on main I2C bus)
+// /// @param muxChannel channel on mux
+// /// @return true if address is a bus power controller
+// bool BusPowerController::isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel)
+// {
+//     // Check if power control is enabled
+//     if (!_powerControlEnabled)
+//         return false;
 
-    // Check if address is in the IO expander range
-    for (IOExpanderRec& ioExpRec : _ioExpanderRecs)
-    {
-        if ((i2cAddr == ioExpRec.addr) && (muxAddr == ioExpRec.muxAddr) && (muxChannel == ioExpRec.muxChanIdx))
-            return true;
-    }
+//     // Check if address is in the IO expander range
+//     for (IOExpanderRec& ioExpRec : _ioExpanderRecs)
+//     {
+//         if ((i2cAddr == ioExpRec.addr) && (muxAddr == ioExpRec.muxAddr) && (muxChannel == ioExpRec.muxChanIdx))
+//             return true;
+//     }
 
-    // Not found
-    return false;
-}
+//     // Not found
+//     return false;
+// }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if power on a slot is stable
@@ -454,7 +391,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
     }
 
     // Action changes to I2C IO expanders
-    actionI2CIOStateChanges(false);
+    _busIOExpanders.syncI2CIOStateChanges(false, _busReqSyncFn);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -496,7 +433,7 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels po
             // Turn off all pins
             for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
             {
-                setVirtualPinLevel(vPinRec, false);
+                _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
             }
             break;
         case POWER_CONTROL_LOW_V:
@@ -508,73 +445,19 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels po
             {
                 if (levelIdx != reqLevelIdx)
                 {
-                    setVirtualPinLevel(vPinRec, false);
+                    _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
                 }
                 levelIdx++;
             }
             // Now turn on the required voltage level
-            setVirtualPinLevel(pSlotRec->voltageLevelPins[reqLevelIdx], true);
+            VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[reqLevelIdx];
+            _busIOExpanders.virtualPinWrite(vPinRec.pinNum, vPinRec.onLevel);
             break;
     }
 
     // Action changes in I2C IO state (if required)
     if (actionIOExpanderChanges)
-        actionI2CIOStateChanges(false);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set virtual pin level
-/// @param vPinRec virtual pin record
-/// @param turnOn true for on, false for off
-void BusPowerController::setVirtualPinLevel(VoltageLevelPinRec& vPinRec, bool turnOn)
-{
-    // Check if pin valid
-    if (!vPinRec.isValid)
-        return;
-
-    // Get the actual level to set
-    bool setLevel = turnOn ? vPinRec.onLevel : !vPinRec.onLevel;
-
-    // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
-    IOExpanderRec* pPwrCtrlRec = findIOExpanderFromVPin(vPinRec.pinNum);
-
-    // If nullptr then it's a GPIO pin
-    if (pPwrCtrlRec == nullptr)
-    {
-        // Set the GPIO pin
-        pinMode(vPinRec.pinNum, OUTPUT);
-        digitalWrite(vPinRec.pinNum, setLevel);
-
-#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-        LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO vPin %d powerOnLevel %d turnOn %d setLevel %d", 
-                    vPinRec.pinNum, vPinRec.onLevel, turnOn, setLevel);
-#endif
-        return;
-    }
-
-#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-    uint32_t curOutputsReg = pPwrCtrlRec->outputsReg;
-    uint32_t curConfigReg = pPwrCtrlRec->configReg;
-#endif
-
-    // Set/clear the bit in the IO output register
-    uint32_t bitNum = vPinRec.pinNum - pPwrCtrlRec->virtualPinBase;
-    if (setLevel)
-        pPwrCtrlRec->outputsReg |= (1 << bitNum);
-    else
-        pPwrCtrlRec->outputsReg &= ~(1 << bitNum);
-
-    // Clear the bit in the IO control register (make it an output)
-    pPwrCtrlRec->configReg &= ~(1 << bitNum);
-
-    // Set the dirty flag
-    pPwrCtrlRec->ioRegDirty = true;
-
-#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "setVirtualPinLevel vPin %d onLevel %d turnOn %d setLevel %d outputsReg 0x%04x -> 0x%04x configReg 0x%04x -> 0x%04x", 
-            vPinRec.pinNum, vPinRec.onLevel, turnOn, setLevel,
-            curOutputsReg, pPwrCtrlRec->outputsReg, curConfigReg, pPwrCtrlRec->configReg);
-#endif
+        _busIOExpanders.syncI2CIOStateChanges(false, _busReqSyncFn);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -595,108 +478,6 @@ BusPowerController::SlotPowerControlRec* BusPowerController::getSlotRecord(uint3
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Action state changes in I2C IO expanders
-/// @param force Force the action (even if not dirty)
-void BusPowerController::actionI2CIOStateChanges(bool force)
-{
-    // Iterate through power control records
-    for (IOExpanderRec& pwrCtrlRec : _ioExpanderRecs)
-    {
-        // Update power control registers
-        pwrCtrlRec.update(force, _busReqSyncFn);
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Update power control registers for all slots
-void BusPowerController::IOExpanderRec::update(bool force, BusReqSyncFn busI2CReqSyncFn)
-{
-    // Check if io expander is dirty
-    if (force || ioRegDirty)
-    {
-        bool rsltOk = false;
-        
-        // Setup multiplexer (if the power controller is connected via a multiplexer)
-        if (muxAddr != 0)
-        {
-            // Check reset pin is output and set to 1
-            if (muxResetPin >= 0)
-            {
-                pinMode(muxResetPin, OUTPUT);
-                digitalWrite(muxResetPin, HIGH);
-#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-                LOG_I(MODULE_PREFIX, "update muxResetPin %d set to HIGH", muxResetPin);
-#endif                
-            }
-
-            // Set the mux channel
-            uint8_t muxWriteData[1] = { (uint8_t)(1 << muxChanIdx) };
-            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
-                        muxAddr,
-                        0, sizeof(muxWriteData),
-                        muxWriteData,
-                        0,
-                        0, 
-                        nullptr, 
-                        this);
-            busI2CReqSyncFn(&reqRec, nullptr);
-        }
-
-        // Set the output register first (to avoid unexpected power changes)
-        uint8_t outputPortData[3] = { PCA9535_OUTPUT_PORT_0, 
-                    uint8_t(outputsReg & 0xff), 
-                    uint8_t(outputsReg >> 8)};
-        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
-                    addr,
-                    0, sizeof(outputPortData),
-                    outputPortData,
-                    0,
-                    0, 
-                    nullptr, 
-                    this);
-        rsltOk = busI2CReqSyncFn(&reqRec, nullptr) == RAFT_OK;
-
-        // Write the configuration register
-        uint8_t configPortData[3] = { PCA9535_CONFIG_PORT_0, 
-                    uint8_t(configReg & 0xff), 
-                    uint8_t(configReg >> 8)};
-        BusRequestInfo reqRec2(BUS_REQ_TYPE_FAST_SCAN,
-                    addr,
-                    0, sizeof(configPortData),
-                    configPortData,
-                    0,
-                    0, 
-                    nullptr, 
-                    this);
-        rsltOk &= busI2CReqSyncFn(&reqRec2, nullptr) == RAFT_OK;
-
-        // Clear multiplexer
-        if (muxAddr != 0)
-        {
-            // Clear the mux channel
-            uint8_t muxWriteData[1] = { 0 };
-            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
-                        muxAddr,
-                        0, sizeof(muxWriteData),
-                        muxWriteData,
-                        0,
-                        0, 
-                        nullptr, 
-                        this);
-            busI2CReqSyncFn(&reqRec, nullptr);
-        }
-
-        // Clear the dirty flag if result is ok
-        ioRegDirty = !rsltOk;
-
-#ifdef DEBUG_POWER_CONTROL_BIT_SETTINGS
-        LOG_I(MODULE_PREFIX, "update addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d rslt %s", 
-                addr, outputsReg, configReg, force, rsltOk ? "OK" : "FAIL");
-#endif
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Power off all
 void BusPowerController::powerOffAll()
 {
@@ -714,5 +495,5 @@ void BusPowerController::powerOffAll()
     }
 
     // Action changes
-    actionI2CIOStateChanges(true);
+    _busIOExpanders.syncI2CIOStateChanges(true, _busReqSyncFn);
 }

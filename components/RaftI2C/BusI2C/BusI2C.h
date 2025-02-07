@@ -17,7 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
-#include "BusPowerControllerIF.h"
+#include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "BusI2CAddrAndSlot.h"
 
@@ -201,18 +201,43 @@ public:
         return addrAndSlot.toBusElemAddrType();
     }
 
-    /// @brief Set handler for bus power management
-    /// @param pBusPowerController - bus power controller
-    void setBusPowerController(BusPowerControllerIF* pBusPowerController)
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set virtual pin mode on IO expander
+    /// @param pinNum - pin number
+    /// @param mode - true for input, false for output
+    /// @param level - initial level (true for high, false for low)
+    virtual void virtualPinMode(int pinNum, bool level) override final
     {
-        _pBusPowerController = pBusPowerController;
-        _busMultiplexers.setBusPowerController(pBusPowerController);
-        if (_pBusPowerController)
-        {
-            _pBusPowerController->setBusReqSyncFn(
-                std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-            );
-        }
+        _busIOExpanders.virtualPinMode(pinNum, level);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set virtual pin level on IO expander
+    /// @param pinNum - pin number
+    /// @param level - true for on, false for off
+    virtual void virtualPinWrite(int pinNum, bool level) override final
+    {
+        _busIOExpanders.virtualPinWrite(pinNum, level);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get virtual pin level on IO expander
+    /// @param pinNum - pin number
+    /// @param vPinCallback - callback for virtual pin changes
+    /// @param pCallbackData - callback data
+    virtual void virtualPinRead(int pinNum, VirtualPinCallbackType vPinCallback, void* pCallbackData = nullptr) override final
+    {
+        _busIOExpanders.virtualPinRead(pinNum, _busReqAsyncFn, vPinCallback, pCallbackData);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Update IO expander
+    /// @param forceCommunication - true to force communication
+    /// @param vPinCallback - callback for virtual pin changes
+    /// @param pCallbackData - callback data
+    virtual void virtualPinsUpdate(bool forceCommunication, VirtualPinCallbackType vPinCallback = nullptr, void* pCallbackData = nullptr) override final
+    {
+        _busIOExpanders.virtualPinsUpdate(forceCommunication, _busReqAsyncFn, vPinCallback, pCallbackData);
     }
 
 private:
@@ -271,6 +296,12 @@ private:
     uint32_t _i2cMainLoopCount = 0;
 #endif
 
+    // I2C send sync function
+    BusReqSyncFn _busReqSyncFn = nullptr;
+
+    // I2C send async function
+    BusReqAsyncFn _busReqAsyncFn = nullptr;
+
     // Bus status
     BusStatusMgr _busStatusMgr;
 
@@ -295,8 +326,11 @@ private:
     // Bus accessor
     BusAccessor _busAccessor;
 
+    // Bus IO Expanders
+    BusIOExpanders _busIOExpanders;
+
     // Bus power controller
-    BusPowerControllerIF* _pBusPowerController = nullptr;
+    BusPowerController* _pBusPowerController = nullptr;
 
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;

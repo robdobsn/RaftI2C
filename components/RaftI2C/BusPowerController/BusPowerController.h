@@ -12,47 +12,53 @@
 #include <vector>
 #include "RaftJsonIF.h"
 #include "BusRequestInfo.h"
-#include "BusPowerControllerIF.h"
+#include "BusIOExpanders.h"
 
 /// @brief Bus power controller handles power to either the whole bus OR on a per slot basis
-class BusPowerController :: public BusPowerControllerIF
+class BusPowerController
 {
 public:
     // Constructor and destructor
-    BusPowerController(BusReqSyncFn busI2CReqSyncFn);
-    virtual ~BusPowerController();
+    BusPowerController(BusReqSyncFn busI2CReqSyncFn, BusIOExpanders& busIOExpanders);
+    ~BusPowerController();
 
     // Setup
-    virtual void setup(const RaftJsonIF& config) override;
-    virtual bool postSetup() override;
+    void setup(const RaftJsonIF& config);
+    bool postSetup();
 
     // Service
-    virtual void loop() override;
+    void loop();
 
     // Service called from I2C task
-    virtual void taskService(uint64_t timeNowUs) override;
+    void taskService(uint64_t timeNowUs);
 
     // Check if slot has stable power
-    virtual bool isSlotPowerStable(uint32_t slotNum) override;
+    bool isSlotPowerStable(uint32_t slotNum);
 
     /// @brief Power cycle slot
     /// @param slotNum slot number (1 based) (0 to power cycle bus)
-    virtual void powerCycleSlot(uint32_t slotNum) override;
+    void powerCycleSlot(uint32_t slotNum);
 
     /// @brief Check if slot power is controlled
     /// @param slotNum slot number (1 based)
     /// @return true if slot power is controlled
-    virtual bool isSlotPowerControlled(uint32_t slotNum) override;
+    bool isSlotPowerControlled(uint32_t slotNum);
 
-    /// @brief Check if address is a bus power controller
-    /// @param i2cAddr address of bus power controller
-    /// @param muxAddr address of mux (0 if on main I2C bus)
-    /// @param muxChannel channel on mux
-    /// @return true if address is a bus power controller
-    virtual bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel) override;
+    // /// @brief Check if address is a bus power controller
+    // /// @param i2cAddr address of bus power controller
+    // /// @param muxAddr address of mux (0 if on main I2C bus)
+    // /// @param muxChannel channel on mux
+    // /// @return true if address is a bus power controller
+    // bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel);
 
 private:
 
+    // Bus access function
+    BusReqSyncFn _busReqSyncFn;
+
+    // IO Expanders
+    BusIOExpanders& _busIOExpanders;
+    
     // Power control enabled
     bool _powerControlEnabled = false;
     
@@ -77,18 +83,20 @@ private:
     static const uint32_t POWER_CYCLE_OFF_TIME_MS = 500;
 
     // Voltage level pin record
-    struct VoltageLevelPinRec
+    class VoltageLevelPinRec
     {
-        VoltageLevelPinRec()
+    public:
+        VoltageLevelPinRec() : 
+            pinNum(0), onLevel(0), isValid(0)
         {
         }
         VoltageLevelPinRec(uint16_t pinNum, bool onLevel, bool isValid) :
             pinNum(pinNum), onLevel(onLevel), isValid(isValid)
         {
         }
-        uint16_t pinNum:14 = 0;
-        uint16_t onLevel:1 = 0;
-        uint16_t isValid:1 = 0;
+        uint16_t pinNum:14;
+        uint16_t onLevel:1;
+        uint16_t isValid:1;
     };
 
     // Slot power control device types
@@ -97,10 +105,6 @@ private:
         SLOT_POWER_CONTROLLER_NONE = 0,
         SLOT_POWER_CONTROLLER_PCA9535 = 1
     };
-
-    // PCA9535 registers
-    static const uint8_t PCA9535_CONFIG_PORT_0 = 0x06;
-    static const uint8_t PCA9535_OUTPUT_PORT_0 = 0x02;
 
     // Slot power control state
     enum SlotPowerControlState
@@ -159,55 +163,6 @@ private:
     // Slot groups
     std::vector<SlotPowerControlGroup> _slotPowerCtrlGroups;
 
-    // Max pins on a power controller
-    static const uint32_t IO_EXPANDER_MAX_PINS = 16;
-
-    // IO exander records
-    class IOExpanderRec
-    {
-    public:
-        IOExpanderRec(uint32_t addr, uint32_t muxAddr, uint32_t muxChanIdx, int8_t muxResetPin, uint32_t virtualPinBase, uint32_t numPins) :
-            addr(addr), muxAddr(muxAddr), muxChanIdx(muxChanIdx), muxResetPin(muxResetPin), virtualPinBase(virtualPinBase), numPins(numPins)
-        {
-        }
-
-        /// @brief Update power control registers for all slots
-        /// @param force true to force update (even if not dirty)
-        /// @param busI2CReqSyncFn function to call to perform I2C request
-        void update(bool force, BusReqSyncFn busI2CReqSyncFn);
-
-        // Power controller address
-        uint8_t addr = 0;
-
-        // Muliplexer address (0 if connected directly to main I2C bus)
-        uint8_t muxAddr = 0;
-
-        // Multiplexer channel index
-        uint8_t muxChanIdx = 0;
-
-        // Multiplexer reset pin
-        int8_t muxResetPin = -1;
-
-        // virtual pin (an extension of normal microcontroller pin numbering to include expander
-        // pins based at this number for this device) start number
-        uint16_t virtualPinBase = 0;
-
-        // Number of pins
-        uint16_t numPins = 0;
-
-        // Power controller output register
-        uint16_t outputsReg = 0xffff;
-
-        // Power controller config bits record
-        uint16_t configReg = 0xffff;
-
-        // IO register is dirty
-        bool ioRegDirty = true;
-    };
-
-    // IO exander records
-    std::vector<IOExpanderRec> _ioExpanderRecs;
-
     /// @brief Get slot record
     /// @param slotNum Slot number (1-based)
     /// @return Slot record or nullptr if not found
@@ -229,34 +184,9 @@ private:
     /// @param powerLevel enum PowerControlLevels
     void setVoltageLevel(uint32_t slotNum, PowerControlLevels powerLevel, bool actionIOExpanderChanges);
 
-    /// @brief Find IO expander for a virtual pin
-    /// @param vPin virtual pin number
-    /// @return IO expander record or nullptr if not found
-    IOExpanderRec* findIOExpanderFromVPin(uint32_t vPin)
-    {
-        for (uint32_t i = 0; i < _ioExpanderRecs.size(); i++)
-        {
-            if (vPin >= _ioExpanderRecs[i].virtualPinBase && 
-                vPin < _ioExpanderRecs[i].virtualPinBase + _ioExpanderRecs[i].numPins)
-            {
-                return &_ioExpanderRecs[i];
-            }
-        }
-        return nullptr;
-    }
-
-    /// @brief Set virtual pin level
-    /// @param vPinRec virtual pin record
-    /// @param turnOn true for on, false for off
-    void setVirtualPinLevel(VoltageLevelPinRec& vPinRec, bool turnOn);
-
-    /// @brief Action state changes in I2C IO expanders
-    /// @param force true to force action
-    void actionI2CIOStateChanges(bool force);
-
     /// @brief Turn all power off
     void powerOffAll();
 
     // Debug
-    static constexpr const char* MODULE_PREFIX = "RaftI2CBusPwrCtrl";        
+    static constexpr const char* MODULE_PREFIX = "BusPwrCtrl";
 };

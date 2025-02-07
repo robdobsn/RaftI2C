@@ -42,25 +42,15 @@
 BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperationStatusCB,
                 RaftI2CCentralIF* pI2CCentralIF)
     : RaftBus(busElemStatusCB, busOperationStatusCB),
+        _busReqSyncFn(std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)),
+        _busReqAsyncFn(std::bind(&BusI2C::i2cSendAsync, this, std::placeholders::_1, std::placeholders::_2)),
         _busStatusMgr(*this),
-        _busStuckHandler(
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-        ),
-        _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker,
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-        ),
-        _deviceIdentMgr(_busStatusMgr,
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-        ),
-        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _deviceIdentMgr,
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2) 
-        ),
-        _devicePollingMgr(_busStatusMgr, _busMultiplexers,
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2)
-        ),
-        _busAccessor(*this,
-            std::bind(&BusI2C::i2cSendAsync, this, std::placeholders::_1, std::placeholders::_2)
-        )
+        _busStuckHandler(_busReqSyncFn),
+        _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker, _busReqSyncFn),
+        _deviceIdentMgr(_busStatusMgr, _busReqSyncFn),
+        _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busIOExpanders, _deviceIdentMgr, _busReqSyncFn),
+        _devicePollingMgr(_busStatusMgr, _busMultiplexers, _busReqSyncFn),
+        _busAccessor(*this, _busReqAsyncFn)
 {
     // Init
     _lastI2CCommsUs = micros();
@@ -92,6 +82,10 @@ BusI2C::~BusI2C()
     // Clean up
     if (_i2cCentralNeedsToBeDeleted)
         delete _pI2CCentral;
+
+    // Check if bus power controller needs to be deleted
+    if (_pBusPowerController)
+        delete _pBusPowerController;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,13 +128,23 @@ bool BusI2C::setup(const RaftJsonIF& config)
     RaftJsonPrefixed busExtenderConfig(config, "mux");
     _busMultiplexers.setup(busExtenderConfig);
 
+    // IO expanders
+    RaftJsonPrefixed busIOConfig(config, "ioExps");
+    _busIOExpanders.setup(busIOConfig);
+
     // Bus power controller setup
-    // TODO - maybe implement this differently - if we have an abstract GPIO class then we can use that
-    // it would be configured elsewhere as a device maybe - it could even be discovered on the main bus
-    // then it would be available to be used to control power?
-    RaftJsonPrefixed busPowerConfig(config, "pwr");
-    if (_pBusPowerController)
-        _pBusPowerController->setup(busPowerConfig);
+    int arrayLen = 0;
+    if (config.getType("pwr", arrayLen) == RaftJsonIF::RAFT_JSON_OBJECT)
+    {
+        RaftJsonPrefixed busPowerConfig(config, "pwr");
+        _pBusPowerController = new BusPowerController(
+            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2),
+            _busIOExpanders
+        );
+        _busMultiplexers.setBusPowerController(_pBusPowerController);
+        if (_pBusPowerController)
+            _pBusPowerController->setup(busPowerConfig);
+    }
 
     // Bus stuck handler setup
     _busStuckHandler.setup(config);
@@ -179,7 +183,8 @@ bool BusI2C::setup(const RaftJsonIF& config)
     }
 
     // Run post-setup on the bus power controller
-    _busPowerController.postSetup();
+    if (_pBusPowerController)
+        _pBusPowerController->postSetup();
     
     // Ok
     _initOk = true;
@@ -625,3 +630,4 @@ void BusI2C::hiatus(uint32_t forPeriodMs)
     LOG_I("BusI2C", "hiatus req for %dms", forPeriodMs);
 #endif
 }
+

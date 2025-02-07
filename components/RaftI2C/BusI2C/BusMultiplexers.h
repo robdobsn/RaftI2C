@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "BusPowerControllerIF.h"
+#include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "BusStatusMgr.h"
 #include "BusI2CElemTracker.h"
@@ -127,7 +127,7 @@ public:
 
     /// @brief Set handler for bus power management
     /// @param pBusPowerController - bus power controller
-    void setBusPowerController(BusPowerControllerIF* pBusPowerController)
+    void setBusPowerController(BusPowerController* pBusPowerController)
     {
         _pBusPowerController = pBusPowerController;
     }
@@ -151,7 +151,7 @@ private:
     bool _isEnabled = true;
 
     // Bus power controller
-    BusPowerControllerIF* _pBusPowerController = nullptr;
+    BusPowerController* _pBusPowerController = nullptr;
 
     // Bus stuck handler
     BusStuckHandler& _busStuckHandler;
