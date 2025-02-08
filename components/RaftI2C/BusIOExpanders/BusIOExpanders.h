@@ -29,9 +29,9 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin mode on IO expander
     /// @param pinNum - pin number
-    /// @param mode - true for input, false for output
+    /// @param mode - INPUT or OUTPUT (as defined in Arduino)
     /// @param level - initial level (true for high, false for low)
-    void virtualPinMode(int pinNum, bool level);
+    void virtualPinMode(int pinNum, uint8_t mode, bool level);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin level on IO expander
@@ -46,14 +46,6 @@ public:
     /// @param vPinCallback - callback for virtual pin changes
     /// @param pCallbackData - callback data
     void virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Update IO expander
-    /// @param forceCommunication - true to force communication
-    /// @param busI2CReqAsyncFn function to call to perform I2C request
-    /// @param vPinCallback - callback for virtual pin changes
-    /// @param pCallbackData - callback data
-    void virtualPinsUpdate(bool forceCommunication, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData);
 
     /// @brief Sync state changes in I2C IO expanders
     /// @param force true to force action

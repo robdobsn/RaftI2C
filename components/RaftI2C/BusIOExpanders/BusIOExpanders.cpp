@@ -11,8 +11,10 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
+// #define VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
+
 #define DEBUG_IO_EXPANDER_SETUP
-#define DEBUG_IO_BIT_SETTINGS
+// #define DEBUG_IO_BIT_SETTINGS
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -37,7 +39,7 @@ void BusIOExpanders::setup(const RaftJsonIF& config)
 
     // Get array of IO expanders
     std::vector<String> ioExpanderArray;
-    config.getArrayElems("ioExps", ioExpanderArray);
+    config.getArrayElems("exps", ioExpanderArray);
     _ioExpanders.clear();
     for (RaftJson ioExpElem : ioExpanderArray)
     {
@@ -113,9 +115,9 @@ void BusIOExpanders::syncI2CIOStateChanges(bool force, BusReqSyncFn busI2CReqSyn
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set virtual pin mode on IO expander
 /// @param pinNum - pin number
-/// @param mode - true for input, false for output
+/// @param mode - mode INPUT/OUTPUT
 /// @param level - initial level (true for high, false for low)
-void BusIOExpanders::virtualPinMode(int pinNum, bool level)
+void BusIOExpanders::virtualPinMode(int pinNum, uint8_t mode, bool level)
 {
     // Check if pin valid
     if (pinNum < 0)
@@ -124,24 +126,26 @@ void BusIOExpanders::virtualPinMode(int pinNum, bool level)
     // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
     BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
 
-    // If nullptr then it's a GPIO pin
+    // Handle not found
     if (pBusIOExpander == nullptr)
     {
+#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
         // Set the GPIO pin
-        pinMode(pinNum, OUTPUT);
+        pinMode(pinNum, mode);
         digitalWrite(pinNum, level);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
         LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO pin %d level %d", pinNum, level);
 #endif
+#endif
         return;
     }
 
     // Perform the IO expander operation
-    pBusIOExpander->virtualPinMode(pinNum, level);
+    pBusIOExpander->virtualPinMode(pinNum, mode, level);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "setVirtualPinLevel IOExp pin %d level %d", pinNum, level);
+    LOG_I(MODULE_PREFIX, "setVirtualPinLevel IOExp vPin %d level %d", pinNum, level);
 #endif
 }
 
@@ -158,14 +162,16 @@ void BusIOExpanders::virtualPinWrite(int pinNum, bool level)
     // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
     BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
 
-    // If nullptr then it's a GPIO pin
+    // Handle not found
     if (pBusIOExpander == nullptr)
     {
+#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
         // Set the GPIO pin
         digitalWrite(pinNum, level);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
         LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO vPin %d level %d", pinNum, level);
+#endif
 #endif
         return;
     }
@@ -193,16 +199,17 @@ void BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
     // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
     BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
 
-    // If nullptr then it's a GPIO pin
+    // Handle not found
     if (pBusIOExpander == nullptr)
     {
+#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
         // Read the GPIO pin
         bool level = digitalRead(pinNum);
         
         // Callback
         if (vPinCallback)
             vPinCallback(pCallbackData, VirtualPinResult(pinNum, level, RAFT_OK));
-
+#endif
         return;
     }
 
@@ -212,20 +219,4 @@ void BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
 #ifdef DEBUG_IO_BIT_SETTINGS
     LOG_I(MODULE_PREFIX, "getVirtualPinLevel IOExp vPin %d callback pending", pinNum);
 #endif
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Update IO expander
-/// @param forceCommunication - true to force communication
-/// @param busI2CReqAsyncFn Function to call to perform I2C request
-/// @param vPinCallback - callback for virtual pin changes
-/// @param pCallbackData - callback data
-void BusIOExpanders::virtualPinsUpdate(bool forceCommunication, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData)
-{
-    // Iterate through IO expanders
-    for (BusIOExpander& ioExp : _ioExpanders)
-    {
-        // Update IO expander
-        ioExp.updateAsync(forceCommunication, busI2CReqAsyncFn, vPinCallback, pCallbackData);
-    }
 }

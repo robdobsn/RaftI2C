@@ -204,11 +204,11 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin mode on IO expander
     /// @param pinNum - pin number
-    /// @param mode - true for input, false for output
+    /// @param mode - mode (INPUT or OUTPUT)
     /// @param level - initial level (true for high, false for low)
-    virtual void virtualPinMode(int pinNum, bool level) override final
+    virtual void virtualPinMode(int pinNum, uint8_t mode, bool level) override final
     {
-        _busIOExpanders.virtualPinMode(pinNum, level);
+        _busIOExpanders.virtualPinMode(pinNum, mode, level);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -228,16 +228,6 @@ public:
     virtual void virtualPinRead(int pinNum, VirtualPinCallbackType vPinCallback, void* pCallbackData = nullptr) override final
     {
         _busIOExpanders.virtualPinRead(pinNum, _busReqAsyncFn, vPinCallback, pCallbackData);
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Update IO expander
-    /// @param forceCommunication - true to force communication
-    /// @param vPinCallback - callback for virtual pin changes
-    /// @param pCallbackData - callback data
-    virtual void virtualPinsUpdate(bool forceCommunication, VirtualPinCallbackType vPinCallback = nullptr, void* pCallbackData = nullptr) override final
-    {
-        _busIOExpanders.virtualPinsUpdate(forceCommunication, _busReqAsyncFn, vPinCallback, pCallbackData);
     }
 
 private:

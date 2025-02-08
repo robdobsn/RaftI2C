@@ -23,6 +23,13 @@ public:
     {
     }
 
+    /// @brief Set to use async I2C requests
+    /// @param useAsync true to use async requests
+    void setUseAsyncI2C(bool useAsync)
+    {
+        useAsyncI2C = useAsync;
+    }
+    
     /// @brief Get virtual pin base
     /// @return virtual pin base
     uint32_t getVirtualPinBase() const
@@ -49,9 +56,9 @@ public:
 
     /// @brief Set virtual pin mode on IO expander
     /// @param pinNum - pin number
-    /// @param mode - true for input, false for output
+    /// @param mode - mode (INPUT or OUTPUT)
     /// @param level - true for high, false for low
-    void virtualPinMode(int pinNum, bool level);
+    void virtualPinMode(int pinNum, uint8_t mode, bool level);
 
     /// @brief Set virtual pin level on IO expander
     /// @param pinNum - pin number
@@ -82,7 +89,8 @@ public:
     String getDebugStr()
     {
         return Raft::formatString(100, "addr 0x%02x %s vPinBase %d numPins %d ; ", 
-            addr, muxAddr != 0 ? Raft::formatString(100, "muxAddr 0x%02x muxChanIdx %d", muxAddr, muxChanIdx).c_str() : "MAIN_BUS",
+            addr, 
+            muxAddr != 0 ? Raft::formatString(100, "muxAddr 0x%02x muxChanIdx %d", muxAddr, muxChanIdx).c_str() : "MAIN_BUS",
             virtualPinBase, numPins);
     }
 
@@ -123,6 +131,9 @@ private:
 
     // Config register is dirty
     bool configRegDirty = true;
+
+    // Use Async I2C requests
+    bool useAsyncI2C = true;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "BusIOExpander";

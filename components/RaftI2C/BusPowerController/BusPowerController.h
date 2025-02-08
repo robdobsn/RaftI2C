@@ -19,7 +19,7 @@ class BusPowerController
 {
 public:
     // Constructor and destructor
-    BusPowerController(BusReqSyncFn busI2CReqSyncFn, BusIOExpanders& busIOExpanders);
+    BusPowerController(BusIOExpanders& busIOExpanders);
     ~BusPowerController();
 
     // Setup
@@ -53,9 +53,6 @@ public:
 
 private:
 
-    // Bus access function
-    BusReqSyncFn _busReqSyncFn;
-
     // IO Expanders
     BusIOExpanders& _busIOExpanders;
     
@@ -65,14 +62,9 @@ private:
     // Hardware is initialized
     bool _hardwareInitialized = false;
 
-    // Power levels
-    enum PowerControlLevels
-    {
-        POWER_CONTROL_OFF = 0,
-        POWER_CONTROL_LOW_V = 1,
-        POWER_CONTROL_HIGH_V = 2,
-    };
-    static const uint32_t POWER_CONTROL_NUM_LEVELS = 3;
+    // Power levels (POWER_CONTROL_OFF must be 0)
+    static const uint32_t POWER_CONTROL_OFF = 0;
+    static const uint32_t POWER_CONTROL_MAX_LEVELS = 3;
 
     // Voltage level names
     std::vector<String> _voltageLevelNames;
@@ -113,9 +105,24 @@ private:
         SLOT_POWER_OFF_PRE_INIT = 1,
         SLOT_POWER_ON_WAIT_STABLE = 2,
         SLOT_POWER_OFF_PENDING_CYCLING = 3,
-        SLOT_POWER_ON_LOW_V = 4,
-        SLOT_POWER_ON_HIGH_V = 5
+        SLOT_POWER_AT_REQUIRED_LEVEL = 4
     };
+
+    /// @brief Get slot power control state string
+    /// @param state slot power control state
+    /// @return state string
+    static const char* getSlotPowerControlStateStr(SlotPowerControlState state)
+    {
+        switch (state)
+        {
+            case SLOT_POWER_OFF_PERMANENTLY: return "OFF_PERMANENTLY";
+            case SLOT_POWER_OFF_PRE_INIT: return "OFF_PRE_INIT";
+            case SLOT_POWER_ON_WAIT_STABLE: return "ON_WAIT_STABLE";
+            case SLOT_POWER_OFF_PENDING_CYCLING: return "OFF_PENDING_CYCLING";
+            case SLOT_POWER_AT_REQUIRED_LEVEL: return "AT_REQUIRED_LEVEL";
+            default: return "INVALID";
+        }
+    }
 
     // Slot records
     class SlotPowerControlRec
@@ -134,6 +141,9 @@ private:
         // Power state
         SlotPowerControlState pwrCtrlState = SLOT_POWER_OFF_PRE_INIT;
 
+        // Power control level index
+        uint8_t _slotReqPowerControlLevelIdx = POWER_CONTROL_OFF;
+
         // Time of last state change
         uint16_t pwrCtrlStateLastMs = 0;
 
@@ -145,16 +155,16 @@ private:
     class SlotPowerControlGroup
     {
     public:
-        SlotPowerControlGroup(const String& groupName, uint32_t startSlotNum, PowerControlLevels defaultLevel,
+        SlotPowerControlGroup(const String& groupName, uint32_t startSlotNum, uint32_t defaultLevelIdx,
                         std::vector<SlotPowerControlRec>& slotRecs) :
-            groupName(groupName), startSlotNum(startSlotNum), defaultLevel(defaultLevel), slotRecs(slotRecs)
+            groupName(groupName), startSlotNum(startSlotNum), defaultLevelIdx(defaultLevelIdx), slotRecs(slotRecs)
         {
         }
 
         // Params
         String groupName;
         uint32_t startSlotNum = 0;
-        PowerControlLevels defaultLevel = POWER_CONTROL_OFF;
+        uint32_t defaultLevelIdx = POWER_CONTROL_OFF;
 
         // Per slot info
         std::vector<SlotPowerControlRec> slotRecs;
@@ -181,10 +191,10 @@ private:
 
     /// @brief Set voltage level for a slot
     /// @param slotNum slot number (1 based)
-    /// @param powerLevel enum PowerControlLevels
-    void setVoltageLevel(uint32_t slotNum, PowerControlLevels powerLevel, bool actionIOExpanderChanges);
+    /// @param powerLevelIdx power control level index (POWER_CONTROL_OFF to turn off)
+    void setVoltageLevel(uint32_t slotNum, uint32_t powerLevelIdx);
 
-    /// @brief Turn all power off
+    /// @brief Power off all
     void powerOffAll();
 
     // Debug

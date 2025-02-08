@@ -10,15 +10,18 @@
 #include "BusRequestInfo.h"
 #include "BusRequestResult.h"
 
-#define DEBUG_IO_EXPANDER_SYNC_COMMS
-#define DEBUG_IO_EXPANDER_ASYNC_COMMS
-#define DEBUG_IO_EXPANDER_RESET
+// Uncomment to support Async I2C requests (not currently used)
+// #define I2C_IO_EXP_SUPPORT_ASYNC
+
+// #define DEBUG_IO_EXPANDER_SYNC_COMMS
+// #define DEBUG_IO_EXPANDER_ASYNC_COMMS
+// #define DEBUG_IO_EXPANDER_RESET
 
 /// @brief Set virtual pin mode on IO expander
 /// @param pinNum - pin number
-/// @param mode - true for input, false for output
+/// @param mode - INPUT or OUTPUT (as defined in Arduino)
 /// @param level - true for high, false for low
-void BusIOExpander::virtualPinMode(int pinNum, bool level)
+void BusIOExpander::virtualPinMode(int pinNum, uint8_t mode, bool level)
 {
     // Check if pin valid
     if (pinNum < 0)
@@ -29,7 +32,7 @@ void BusIOExpander::virtualPinMode(int pinNum, bool level)
         return;
 
     // Set the pin mode
-    if (level)
+    if (mode == OUTPUT)
         configReg &= ~(1 << (pinNum - virtualPinBase));
     else
         configReg |= (1 << (pinNum - virtualPinBase));
@@ -199,10 +202,12 @@ void BusIOExpander::updateSync(bool force, BusReqSyncFn busI2CReqSyncFn)
     outputsRegDirty = !rsltOk;
 
 #ifdef DEBUG_IO_EXPANDER_SYNC_COMMS
-    LOG_I(MODULE_PREFIX, "update addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d rslt %s",
+    LOG_I(MODULE_PREFIX, "update sync addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d rslt %s",
           addr, outputsReg, configReg, force, rsltOk ? "OK" : "FAIL");
 #endif
 }
+
+#ifdef I2C_IO_EXP_SUPPORT_ASYNC
 
 /// @brief Update power control registers for all slots
 /// @param force true to force update (even if not dirty)
@@ -251,6 +256,7 @@ void BusIOExpander::updateAsync(bool force, BusReqAsyncFn busI2CReqAsyncFn, Virt
                 0,
                 0,
                 [vPinCallback, pCallbackData](void* pBusReqCBData, BusRequestResult& busRequestResult) {
+                    if (vPinCallback)
                         vPinCallback(pCallbackData, VirtualPinResult(-1, false, busRequestResult.getResult()));
                 },
                 this);
@@ -275,7 +281,8 @@ void BusIOExpander::updateAsync(bool force, BusReqAsyncFn busI2CReqAsyncFn, Virt
                             0,
                             0,
                             [vPinCallback, pCallbackData](void* pBusReqCBData, BusRequestResult& busRequestResult) {
-                                vPinCallback(pCallbackData, VirtualPinResult(-1, false, busRequestResult.getResult()));
+                                if (vPinCallback)
+                                    vPinCallback(pCallbackData, VirtualPinResult(-1, false, busRequestResult.getResult()));
                             },
                            this);
         busI2CReqAsyncFn(&reqRec2, 0);
@@ -285,7 +292,8 @@ void BusIOExpander::updateAsync(bool force, BusReqAsyncFn busI2CReqAsyncFn, Virt
     }
     
 #ifdef DEBUG_IO_EXPANDER_ASYNC_COMMS
-    LOG_I(MODULE_PREFIX, "update addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d",
+    LOG_I(MODULE_PREFIX, "update async addr 0x%02x outputReg 0x%04x configReg 0x%04x force %d",
           addr, outputsReg, configReg, force);
 #endif
 }
+#endif

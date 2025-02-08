@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-// #define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
+#define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
 
 // #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
@@ -21,8 +21,8 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
-BusPowerController::BusPowerController(BusReqSyncFn busI2CReqSyncFn, BusIOExpanders& busIOExpanders)
-        : _busReqSyncFn(busI2CReqSyncFn), _busIOExpanders(busIOExpanders)
+BusPowerController::BusPowerController(BusIOExpanders& busIOExpanders)
+        : _busIOExpanders(busIOExpanders)
 {
 }
 
@@ -52,10 +52,10 @@ void BusPowerController::setup(const RaftJsonIF& config)
     }
 
     // Check number of levels
-    if (_voltageLevelNames.size() != POWER_CONTROL_NUM_LEVELS)
+    if (_voltageLevelNames.size() >= POWER_CONTROL_MAX_LEVELS)
     {
-        LOG_I(MODULE_PREFIX, "%s voltageLevels size %d INVALID (should be %d) - I2C power control disabled", __func__, 
-                    _voltageLevelNames.size(), POWER_CONTROL_NUM_LEVELS);
+        LOG_I(MODULE_PREFIX, "%s FAIL too many voltageLevels %d >= max %d (inc OFF) - I2C power control disabled", __func__, 
+                    _voltageLevelNames.size(), POWER_CONTROL_MAX_LEVELS);
         return;
     }
 
@@ -82,16 +82,15 @@ void BusPowerController::setup(const RaftJsonIF& config)
         uint32_t numSlots = slotGroupElem.getLong("numSlots", 0);
 
         // Get the default level
-        int defaultLevel = slotGroupElem.getInt("defaultLevel", 0);
+        int defaultLevelIdx = slotGroupElem.getInt("defaultLevelIdx", 0);
 
         // Check this is in the range of the voltage level names
-        if ((defaultLevel < 0) || (defaultLevel >= POWER_CONTROL_NUM_LEVELS))
+        if ((defaultLevelIdx < 0) || (defaultLevelIdx >= POWER_CONTROL_MAX_LEVELS))
         {
-            LOG_W(MODULE_PREFIX, "%s defaultLevel %d INVALID (> %d)", __func__, 
-                        defaultLevel, POWER_CONTROL_NUM_LEVELS);
+            LOG_W(MODULE_PREFIX, "%s defaultLevelIdx %d INVALID (> %d)", __func__, 
+                        defaultLevelIdx, POWER_CONTROL_MAX_LEVELS);
             continue;
         }
-        PowerControlLevels defaultLevelEnum = (PowerControlLevels)defaultLevel;
 
         // Get the voltage level array
         std::vector<String> levelsExclOff;
@@ -162,7 +161,7 @@ void BusPowerController::setup(const RaftJsonIF& config)
         }
 
         // Add to slot groups
-        _slotPowerCtrlGroups.push_back(SlotPowerControlGroup(groupName, startSlotNum, defaultLevelEnum, slotRecs));
+        _slotPowerCtrlGroups.push_back(SlotPowerControlGroup(groupName, startSlotNum, defaultLevelIdx, slotRecs));
     }
 
     // Power control is enabled
@@ -183,8 +182,8 @@ void BusPowerController::setup(const RaftJsonIF& config)
     String slotGroupStr;
     for (SlotPowerControlGroup& slotGroup : _slotPowerCtrlGroups)
     {
-        LOG_I(MODULE_PREFIX, "Slot group %s start %d defaultLevel %d", slotGroup.groupName.c_str(),
-                        slotGroup.startSlotNum, slotGroup.defaultLevel);
+        LOG_I(MODULE_PREFIX, "Slot group %s start %d defaultLevelIdx %d", slotGroup.groupName.c_str(),
+                        slotGroup.startSlotNum, slotGroup.defaultLevelIdx);
         uint32_t slotNum = slotGroup.startSlotNum;
         for (SlotPowerControlRec& slotRec : slotGroup.slotRecs)
         {
@@ -286,20 +285,22 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 
 #ifdef DEBUG_POWER_CONTROL_SLOT_UNSTABLE
     // Debug
-    if (!((pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V)))
+    if (!(pSlotRec->pwrCtrlState == SLOT_POWER_AT_REQUIRED_LEVEL))
     {
-        LOG_I(MODULE_PREFIX, "isSlotPowerStable UNSTABLE slotNum %d pwrCtrlState %d", slotNum, pSlotRec->pwrCtrlState);
+        LOG_I(MODULE_PREFIX, "isSlotPowerStable UNSTABLE slotNum %d pwrCtrlState %s", 
+                    slotNum, getSlotPowerControlStateStr(pSlotRec->pwrCtrlState));
     }
 #endif
 
 #ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
     // Debug
-    LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d pwrCtrlState %d returning %d", 
-                slotNum, pSlotRec->pwrCtrlState, (pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V));
+    LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d pwrCtrlState %s", 
+                slotNum,
+                getSlotPowerControlStateStr(pSlotRec->pwrCtrlState));
 #endif
 
     // Check if power is stable
-    return (pSlotRec->pwrCtrlState == SLOT_POWER_ON_LOW_V) || (pSlotRec->pwrCtrlState == SLOT_POWER_ON_HIGH_V);
+    return pSlotRec->pwrCtrlState == SLOT_POWER_AT_REQUIRED_LEVEL;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -316,12 +317,12 @@ void BusPowerController::powerCycleSlot(uint32_t slotNum)
     if (slotNum == 0)
     {
         // Turn off the main bus power
-        setVoltageLevel(0, POWER_CONTROL_OFF, true);
+        setVoltageLevel(0, POWER_CONTROL_OFF);
         return;
     }
 
     // Turn the slot power off
-    setVoltageLevel(slotNum, POWER_CONTROL_OFF, true);
+    setVoltageLevel(slotNum, POWER_CONTROL_OFF);
 
     // Set the state to power off pending cycling
     setSlotState(slotNum, SLOT_POWER_OFF_PENDING_CYCLING, millis());
@@ -358,7 +359,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d now off pending cycling", slotNum);
 #endif
-                        setVoltageLevel(slotNum, POWER_CONTROL_OFF, false);
+                        setVoltageLevel(slotNum, POWER_CONTROL_OFF);
                         slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, timeNowMs);
                     }
                     break;
@@ -368,7 +369,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d voltage is stable", slotNum);
 #endif
-                        slotRec.setState(SLOT_POWER_ON_LOW_V, timeNowMs);
+                        slotRec.setState(SLOT_POWER_AT_REQUIRED_LEVEL, timeNowMs);
                     }
                     break;
                 case SLOT_POWER_OFF_PENDING_CYCLING:
@@ -377,21 +378,17 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d state is wait_stable", slotNum);
 #endif
-                        setVoltageLevel(slotNum, slotGroup.defaultLevel, false);
+                        setVoltageLevel(slotNum, slotRec._slotReqPowerControlLevelIdx);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
                     }
                     break;
-                case SLOT_POWER_ON_LOW_V:
-                case SLOT_POWER_ON_HIGH_V:
+                case SLOT_POWER_AT_REQUIRED_LEVEL:
                     break;
                 default:
                     break;
             }
         }
     }
-
-    // Action changes to I2C IO expanders
-    _busIOExpanders.syncI2CIOStateChanges(false, _busReqSyncFn);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -412,8 +409,8 @@ bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set voltage level for a slot
 /// @param slotNum Slot number (1-based)
-/// @param powerLevel enum PowerControlLevels
-void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels powerLevel, bool actionIOExpanderChanges)
+/// @param powerLevelIdx index of required power levels (POWER_CONTROL_OFF etc)
+void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelIdx)
 {
     // Get slot record
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
@@ -421,43 +418,46 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, PowerControlLevels po
     {
 #ifdef WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
         LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d slot is not power controlled", 
-                    slotNum, powerLevel);
+                    slotNum, powerLevelIdx);
 #endif
         return;
     }
 
-    // Compute pin action to set the voltage level
-    switch(powerLevel)
+    // Store required power control level index
+    pSlotRec->_slotReqPowerControlLevelIdx = powerLevelIdx;
+
+    // Check for off (turn all vPins to off level)
+    if (powerLevelIdx == POWER_CONTROL_OFF)
     {
-        case POWER_CONTROL_OFF:
-            // Turn off all pins
-            for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
+        for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
+        {
+            _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
+        }
+    }
+
+    // Check for other voltage levels (values start at powerLevelIdx == 1)
+    else if (powerLevelIdx - 1 < pSlotRec->voltageLevelPins.size())
+    {
+        // First turn off all pins other than voltage level we want
+        uint32_t levelIdx = 1;
+        for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
+        {
+            if (levelIdx != powerLevelIdx)
             {
                 _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
             }
-            break;
-        case POWER_CONTROL_LOW_V:
-        case POWER_CONTROL_HIGH_V:
-            uint32_t reqLevelIdx = powerLevel - POWER_CONTROL_LOW_V;
-            // First turn off all pins other than voltage level we want
-            uint32_t levelIdx = 0;
-            for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
-            {
-                if (levelIdx != reqLevelIdx)
-                {
-                    _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
-                }
-                levelIdx++;
-            }
-            // Now turn on the required voltage level
-            VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[reqLevelIdx];
-            _busIOExpanders.virtualPinWrite(vPinRec.pinNum, vPinRec.onLevel);
-            break;
-    }
+            levelIdx++;
+        }
 
-    // Action changes in I2C IO state (if required)
-    if (actionIOExpanderChanges)
-        _busIOExpanders.syncI2CIOStateChanges(false, _busReqSyncFn);
+        // Now turn on the required voltage level
+        VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[powerLevelIdx - 1];
+        _busIOExpanders.virtualPinWrite(vPinRec.pinNum, vPinRec.onLevel);
+    }
+    else
+    {
+        LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d INVALID", slotNum, powerLevelIdx);
+        return;
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -482,7 +482,7 @@ BusPowerController::SlotPowerControlRec* BusPowerController::getSlotRecord(uint3
 void BusPowerController::powerOffAll()
 {
     // Set main bus power off
-    setVoltageLevel(0, POWER_CONTROL_OFF, false);
+    setVoltageLevel(0, POWER_CONTROL_OFF);
 
     // Iterate slot groups
     for (SlotPowerControlGroup& slotGroup : _slotPowerCtrlGroups)
@@ -490,10 +490,7 @@ void BusPowerController::powerOffAll()
         // Iterate slots
         for (uint32_t slotNum = slotGroup.startSlotNum; slotNum < slotGroup.startSlotNum + slotGroup.slotRecs.size(); slotNum++)
         {
-            setVoltageLevel(slotNum, POWER_CONTROL_OFF, false);
+            setVoltageLevel(slotNum, POWER_CONTROL_OFF);
         }
     }
-
-    // Action changes
-    _busIOExpanders.syncI2CIOStateChanges(true, _busReqSyncFn);
 }

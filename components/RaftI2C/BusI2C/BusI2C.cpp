@@ -137,10 +137,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
     if (config.getType("pwr", arrayLen) == RaftJsonIF::RAFT_JSON_OBJECT)
     {
         RaftJsonPrefixed busPowerConfig(config, "pwr");
-        _pBusPowerController = new BusPowerController(
-            std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2),
-            _busIOExpanders
-        );
+        _pBusPowerController = new BusPowerController(_busIOExpanders);
         _busMultiplexers.setBusPowerController(_pBusPowerController);
         if (_pBusPowerController)
             _pBusPowerController->setup(busPowerConfig);
@@ -409,6 +406,9 @@ void BusI2C::i2cWorkerTask()
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
         delayMicroseconds(1);
 #endif
+
+        // Update IO expanders (if dirty)
+        _busIOExpanders.syncI2CIOStateChanges(false, std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2));
 
         // Device polling
         _devicePollingMgr.taskService(micros());
