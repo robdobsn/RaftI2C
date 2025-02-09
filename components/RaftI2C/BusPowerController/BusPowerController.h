@@ -30,26 +30,20 @@ public:
     void loop();
 
     // Service called from I2C task
-    void taskService(uint64_t timeNowUs);
+    void taskService(uint32_t timeNowMs);
 
     // Check if slot has stable power
     bool isSlotPowerStable(uint32_t slotNum);
 
     /// @brief Power cycle slot
-    /// @param slotNum slot number (1 based) (0 to power cycle bus)
-    void powerCycleSlot(uint32_t slotNum);
+    /// @param slotNum slot number (0 is the main bus)
+    /// @param timeMs time in milliseconds
+    void powerCycleSlot(uint32_t slotNum, uint32_t timeMs);
 
     /// @brief Check if slot power is controlled
-    /// @param slotNum slot number (1 based)
+    /// @param slotNum slot number (0 is the main bus)
     /// @return true if slot power is controlled
     bool isSlotPowerControlled(uint32_t slotNum);
-
-    // /// @brief Check if address is a bus power controller
-    // /// @param i2cAddr address of bus power controller
-    // /// @param muxAddr address of mux (0 if on main I2C bus)
-    // /// @param muxChannel channel on mux
-    // /// @return true if address is a bus power controller
-    // bool isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel);
 
 private:
 
@@ -104,7 +98,7 @@ private:
         SLOT_POWER_OFF_PERMANENTLY = 0,
         SLOT_POWER_OFF_PRE_INIT = 1,
         SLOT_POWER_ON_WAIT_STABLE = 2,
-        SLOT_POWER_OFF_PENDING_CYCLING = 3,
+        SLOT_POWER_OFF_DURING_CYCLING = 3,
         SLOT_POWER_AT_REQUIRED_LEVEL = 4
     };
 
@@ -118,7 +112,7 @@ private:
             case SLOT_POWER_OFF_PERMANENTLY: return "OFF_PERMANENTLY";
             case SLOT_POWER_OFF_PRE_INIT: return "OFF_PRE_INIT";
             case SLOT_POWER_ON_WAIT_STABLE: return "ON_WAIT_STABLE";
-            case SLOT_POWER_OFF_PENDING_CYCLING: return "OFF_PENDING_CYCLING";
+            case SLOT_POWER_OFF_DURING_CYCLING: return "OFF_PENDING_CYCLING";
             case SLOT_POWER_AT_REQUIRED_LEVEL: return "AT_REQUIRED_LEVEL";
             default: return "INVALID";
         }
@@ -145,7 +139,7 @@ private:
         uint8_t _slotReqPowerControlLevelIdx = POWER_CONTROL_OFF;
 
         // Time of last state change
-        uint16_t pwrCtrlStateLastMs = 0;
+        uint32_t pwrCtrlStateLastMs = 0;
 
         // Virtual pin records for each voltage level
         std::vector<VoltageLevelPinRec> voltageLevelPins;
@@ -174,12 +168,12 @@ private:
     std::vector<SlotPowerControlGroup> _slotPowerCtrlGroups;
 
     /// @brief Get slot record
-    /// @param slotNum Slot number (1-based)
+    /// @param slotNum Slot number (0 is the main bus)
     /// @return Slot record or nullptr if not found
     SlotPowerControlRec* getSlotRecord(uint32_t slotNum);
 
     /// @brief Set slot state (and time of state change)
-    /// @param slotNum slot number (1 based)
+    /// @param slotNum slot number (0 is the main bus)
     /// @param newState
     /// @param timeMs 
     void setSlotState(uint32_t slotNum, SlotPowerControlState newState, uint32_t timeMs)
@@ -190,7 +184,7 @@ private:
     }
 
     /// @brief Set voltage level for a slot
-    /// @param slotNum slot number (1 based)
+    /// @param slotNum slot number (0 is the main bus)
     /// @param powerLevelIdx power control level index (POWER_CONTROL_OFF to turn off)
     void setVoltageLevel(uint32_t slotNum, uint32_t powerLevelIdx);
 

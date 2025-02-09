@@ -13,7 +13,7 @@
 
 // #define VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
 
-#define DEBUG_IO_EXPANDER_SETUP
+// #define DEBUG_IO_EXPANDER_SETUP
 // #define DEBUG_IO_BIT_SETTINGS
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,8 +116,8 @@ void BusIOExpanders::syncI2CIOStateChanges(bool force, BusReqSyncFn busI2CReqSyn
 /// @brief Set virtual pin mode on IO expander
 /// @param pinNum - pin number
 /// @param mode - mode INPUT/OUTPUT
-/// @param level - initial level (true for high, false for low)
-void BusIOExpanders::virtualPinMode(int pinNum, uint8_t mode, bool level)
+/// @param level - level (only used for OUTPUT)
+void BusIOExpanders::virtualPinSet(int pinNum, uint8_t mode, bool level)
 {
     // Check if pin valid
     if (pinNum < 0)
@@ -137,47 +137,14 @@ void BusIOExpanders::virtualPinMode(int pinNum, uint8_t mode, bool level)
 #ifdef DEBUG_IO_BIT_SETTINGS
         LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO pin %d level %d", pinNum, level);
 #endif
+#elif defined(DEBUG_IO_BIT_SETTINGS)
+        LOG_I(MODULE_PREFIX, "setVirtualPinLevel vPin %d not registered", pinNum);
 #endif
         return;
     }
 
     // Perform the IO expander operation
-    pBusIOExpander->virtualPinMode(pinNum, mode, level);
-
-#ifdef DEBUG_IO_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "setVirtualPinLevel IOExp vPin %d level %d", pinNum, level);
-#endif
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set virtual pin level on IO expander
-/// @param pinNum - pin number
-/// @param level - true for on, false for off
-void BusIOExpanders::virtualPinWrite(int pinNum, bool level)
-{
-    // Check if pin valid
-    if (pinNum < 0)
-        return;
-
-    // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
-    BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
-
-    // Handle not found
-    if (pBusIOExpander == nullptr)
-    {
-#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
-        // Set the GPIO pin
-        digitalWrite(pinNum, level);
-
-#ifdef DEBUG_IO_BIT_SETTINGS
-        LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO vPin %d level %d", pinNum, level);
-#endif
-#endif
-        return;
-    }
-
-    // Perform the IO expander operation
-    pBusIOExpander->virtualPinWrite(pinNum, level);
+    pBusIOExpander->virtualPinSet(pinNum, mode, level);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
     LOG_I(MODULE_PREFIX, "setVirtualPinLevel IOExp vPin %d level %d", pinNum, level);

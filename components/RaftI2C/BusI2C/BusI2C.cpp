@@ -245,7 +245,7 @@ void BusI2C::loop()
     _busScanner.loop();
 
     // Service bus status change detection
-    bool busIsStuck = _busStuckHandler.isStuck();
+    bool busIsStuck = _busStuckHandler.isStuckAsync();
     _busStatusMgr.loop(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
 
     // Service bus mux
@@ -254,9 +254,6 @@ void BusI2C::loop()
     // Bus power controller loop
     if (_pBusPowerController)
         _pBusPowerController->loop();
-
-    // Service bus stuck handler
-    _busStuckHandler.loop();
 
     // Service bus accessor
     _busAccessor.loop();
@@ -398,7 +395,7 @@ void BusI2C::i2cWorkerTask()
 
         // Bus power controller loop
         if (_pBusPowerController)
-            _pBusPowerController->taskService(micros());
+            _pBusPowerController->taskService(millis());
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -423,6 +420,9 @@ void BusI2C::i2cWorkerTask()
         // Perform any user-defined access
         // TODO - remove or reconsider how polling works
         _busAccessor.processPolling();
+
+        // Service bus stuck handler
+        _busStuckHandler.loopSync();
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         // Debug

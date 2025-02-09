@@ -41,12 +41,12 @@ void BusStuckHandler::setup(const RaftJsonIF& config)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Service
-void BusStuckHandler::loop()
+void BusStuckHandler::loopSync()
 {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Check bus stuck
+/// @brief Check bus stuck (must be called from I2C task)
 bool BusStuckHandler::isStuck()
 {
     // Check if pins are pulled up
@@ -58,8 +58,10 @@ bool BusStuckHandler::isStuck()
     {
         // Wait a moment and check again just in case it was a spurious measurement
         delayMicroseconds(1);
-        return !(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin));
+        _wasStuck = !(gpio_get_level(_sdaPin) && gpio_get_level(_sclPin));
+        return _wasStuck;
     }
+    _wasStuck = false;
     return false;
 }
 

@@ -27,17 +27,11 @@ public:
     void setup(const RaftJsonIF& config);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set virtual pin mode on IO expander
+    /// @brief Set virtual pin mode (and level if output) on IO expander
     /// @param pinNum - pin number
     /// @param mode - INPUT or OUTPUT (as defined in Arduino)
-    /// @param level - initial level (true for high, false for low)
-    void virtualPinMode(int pinNum, uint8_t mode, bool level);
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set virtual pin level on IO expander
-    /// @param pinNum - pin number
-    /// @param level - true for on, false for off
-    void virtualPinWrite(int pinNum, bool level);
+    /// @param level - level (only used for OUTPUT)
+    void virtualPinSet(int pinNum, uint8_t mode, bool level);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get virtual pin level on IO expander

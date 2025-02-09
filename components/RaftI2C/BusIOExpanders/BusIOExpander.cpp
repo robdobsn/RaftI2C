@@ -13,62 +13,53 @@
 // Uncomment to support Async I2C requests (not currently used)
 // #define I2C_IO_EXP_SUPPORT_ASYNC
 
+// #define DEBUG_SET_VIRTUAL_PIN_LEVEL
 // #define DEBUG_IO_EXPANDER_SYNC_COMMS
 // #define DEBUG_IO_EXPANDER_ASYNC_COMMS
 // #define DEBUG_IO_EXPANDER_RESET
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set virtual pin mode on IO expander
 /// @param pinNum - pin number
 /// @param mode - INPUT or OUTPUT (as defined in Arduino)
-/// @param level - true for high, false for low
-void BusIOExpander::virtualPinMode(int pinNum, uint8_t mode, bool level)
+/// @param level - true for high, false for low (only used for OUTPUT)
+void BusIOExpander::virtualPinSet(int pinNum, uint8_t mode, bool level)
 {
     // Check if pin valid
     if (pinNum < 0)
         return;
 
     // Check if pin is within range
-    if (pinNum < virtualPinBase || pinNum >= virtualPinBase + numPins)
+    int pinIdx = pinNum - virtualPinBase;
+    if ((pinIdx < 0) || (pinIdx >= numPins))
+    {
+#ifdef DEBUG_SET_VIRTUAL_PIN_LEVEL
+        LOG_W(MODULE_PREFIX, "virtualPinSet pinNum %d pinIdx %d numPins %d out of range", pinNum, pinIdx, numPins);
+#endif
         return;
+    }
 
     // Set the pin mode
+    uint32_t pinMask = 1 << pinIdx;
     if (mode == OUTPUT)
-        configReg &= ~(1 << (pinNum - virtualPinBase));
+        configReg &= ~pinMask;
     else
-        configReg |= (1 << (pinNum - virtualPinBase));
+        configReg |= pinMask;
 
     // Set the level
     if (level)
-        outputsReg |= (1 << (pinNum - virtualPinBase));
+        outputsReg |= pinMask;
     else
-        outputsReg &= ~(1 << (pinNum - virtualPinBase));
+        outputsReg &= ~pinMask;
 
     // Set dirty flag
     configRegDirty = true;
     outputsRegDirty = true;
-}
 
-/// @brief Set virtual pin level on IO expander
-/// @param pinNum - pin number
-/// @param level - true for on, false for off
-void BusIOExpander::virtualPinWrite(int pinNum, bool level)
-{
-    // Check if pin valid
-    if (pinNum < 0)
-        return;
-
-    // Check if pin is within range
-    if (pinNum < virtualPinBase || pinNum >= virtualPinBase + numPins)
-        return;
-
-    // Set the level
-    if (level)
-        outputsReg |= (1 << (pinNum - virtualPinBase));
-    else
-        outputsReg &= ~(1 << (pinNum - virtualPinBase));
-
-    // Set dirty flag
-    outputsRegDirty = true;
+#ifdef DEBUG_SET_VIRTUAL_PIN_LEVEL
+    LOG_W(MODULE_PREFIX, "virtualPinSet pinNum %d mode %d level %d config 0x%04x data 0x%04x", 
+        pinNum, mode, level, configReg, outputsReg);
+#endif    
 }
 
 /// @brief Get virtual pin level on IO expander
@@ -83,7 +74,8 @@ void BusIOExpander::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, V
         return;
 
     // Check if pin is within range
-    if (pinNum < virtualPinBase || pinNum >= virtualPinBase + numPins)
+    int pinIdx = pinNum - virtualPinBase;
+    if ((pinIdx < 0) || (pinIdx >= numPins))
     {
         if (vPinCallback)
             vPinCallback(pCallbackData, VirtualPinResult(-1, false, RAFT_INVALID_DATA));
@@ -92,7 +84,6 @@ void BusIOExpander::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, V
 
     // Create the bus request to get the input register
     uint8_t regNumberBuf[1] = {PCA9535_INPUT_PORT_0};
-    uint32_t relativePin = pinNum - virtualPinBase;
     BusRequestInfo reqRec(BUS_REQ_TYPE_STD,
         addr,
         0, 
@@ -100,7 +91,7 @@ void BusIOExpander::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, V
         regNumberBuf,
         2,
         0,
-        [vPinCallback, pCallbackData, pinNum, relativePin](void* pBusReqCBData, BusRequestResult& busRequestResult) {
+        [vPinCallback, pCallbackData, pinNum, pinIdx](void* pBusReqCBData, BusRequestResult& busRequestResult) {
             if (busRequestResult.getReadDataVec().size() != 2)
             {
                 if (vPinCallback)
@@ -108,7 +99,7 @@ void BusIOExpander::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, V
                 return;
             }
             uint32_t readInputReg = busRequestResult.getReadDataVec()[0] | (busRequestResult.getReadDataVec()[1] << 8);
-            bool pinLevel = (readInputReg & (1 << relativePin)) != 0;
+            bool pinLevel = (readInputReg & (1 << pinIdx)) != 0;
             vPinCallback(pCallbackData, VirtualPinResult(pinNum, pinLevel, busRequestResult.getResult()));
         },
         this);

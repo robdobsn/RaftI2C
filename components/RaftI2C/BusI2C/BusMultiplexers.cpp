@@ -693,7 +693,7 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
 
             // Start power cycling the slot
             if(_pBusPowerController)
-                _pBusPowerController->powerCycleSlot(slotNum);
+                _pBusPowerController->powerCycleSlot(slotNum, millis());
         }
         else
         {
@@ -704,7 +704,7 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
 
             // Clear the stuck bus problem by power cycling the entire bus
             if (_pBusPowerController)
-                _pBusPowerController->powerCycleSlot(0);
+                _pBusPowerController->powerCycleSlot(0, millis());
         }
     }
 

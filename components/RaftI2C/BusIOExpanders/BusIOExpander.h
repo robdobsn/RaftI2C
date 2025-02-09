@@ -57,13 +57,8 @@ public:
     /// @brief Set virtual pin mode on IO expander
     /// @param pinNum - pin number
     /// @param mode - mode (INPUT or OUTPUT)
-    /// @param level - true for high, false for low
-    void virtualPinMode(int pinNum, uint8_t mode, bool level);
-
-    /// @brief Set virtual pin level on IO expander
-    /// @param pinNum - pin number
-    /// @param level - true for on, false for off
-    void virtualPinWrite(int pinNum, bool level);
+    /// @param level - true for high, false for low (only used for OUTPUT)
+    void virtualPinSet(int pinNum, uint8_t mode, bool level);
 
     /// @brief Get virtual pin level on IO expander
     /// @param pinNum - pin number

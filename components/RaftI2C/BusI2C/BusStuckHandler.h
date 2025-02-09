@@ -23,11 +23,17 @@ public:
     // Setup
     void setup(const RaftJsonIF& config);
 
-    // Service
-    void loop();
+    // Service (from I2C task only)
+    void loopSync();
 
-    // Check bus stuck
+    /// @brief Check bus stuck (must be called from I2C task)
     bool isStuck();
+
+    /// @brief Check bus stuck (async version)
+    bool isStuckAsync()
+    {
+        return _wasStuck;
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Clear bus stuck problems by clocking the bus
@@ -41,6 +47,9 @@ private:
     // Pins
     gpio_num_t _sdaPin = GPIO_NUM_NC;
     gpio_num_t _sclPin = GPIO_NUM_NC;
+
+    // Last state
+    bool _wasStuck = false;
 
     // Bus I2C Request Sync function
     BusReqSyncFn _busReqSyncFn = nullptr;

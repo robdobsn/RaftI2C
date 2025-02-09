@@ -75,7 +75,8 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
         return;
 
     // If no lockup detection addresses are used then rely on the bus's isOperatingOk() result
-    BusOperationStatus newBusOperationStatus = _busOperationStatus; 
+    BusOperationStatus prevBusOperationStatus = _busOperationStatus;
+    BusOperationStatus newBusOperationStatus = prevBusOperationStatus;
     if (!_addrForLockupDetectValid)
     {
         newBusOperationStatus = hwIsOperatingOk ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
@@ -158,15 +159,15 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 #endif
 
     // Bus operation change callback if required
-    if (_busOperationStatus != newBusOperationStatus)
+    if (prevBusOperationStatus != newBusOperationStatus)
     {
 #ifdef DEBUG_BUS_OPERATION_STATUS
         LOG_I(MODULE_PREFIX, "loop newOpStatus %s (was %s)", 
                     newBusOperationStatus ? "online" : "offline",
-                    _busOperationStatus ? "online" : "offline");
+                    prevBusOperationStatus ? "online" : "offline");
 #endif
         _busOperationStatus = newBusOperationStatus;
-        _raftBus.callBusOperationStatusCB(_busOperationStatus);
+        _raftBus.callBusOperationStatusCB(newBusOperationStatus);
     }
 }
 

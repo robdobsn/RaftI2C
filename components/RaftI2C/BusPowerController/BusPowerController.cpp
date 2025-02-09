@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-#define WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
+// #define WARN_ON_SLOT_NOT_POWER_CONTROLLED
 
 // #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
@@ -203,7 +203,6 @@ void BusPowerController::setup(const RaftJsonIF& config)
     }
 
 #endif
-
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -229,32 +228,9 @@ void BusPowerController::loop()
 {
 }
 
-// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// /// @brief Check if address is a bus power controller
-// /// @param i2cAddr address of bus power controller
-// /// @param muxAddr address of mux (0 if on main I2C bus)
-// /// @param muxChannel channel on mux
-// /// @return true if address is a bus power controller
-// bool BusPowerController::isBusPowerController(uint16_t i2cAddr, uint16_t muxAddr, uint16_t muxChannel)
-// {
-//     // Check if power control is enabled
-//     if (!_powerControlEnabled)
-//         return false;
-
-//     // Check if address is in the IO expander range
-//     for (IOExpanderRec& ioExpRec : _ioExpanderRecs)
-//     {
-//         if ((i2cAddr == ioExpRec.addr) && (muxAddr == ioExpRec.muxAddr) && (muxChannel == ioExpRec.muxChanIdx))
-//             return true;
-//     }
-
-//     // Not found
-//     return false;
-// }
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if power on a slot is stable
-/// @param slotNum Slot number (1-based)
+/// @param slotNum Slot number (0 is the main bus)
 /// @return True if power is stable
 bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 {
@@ -305,39 +281,29 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Power cycle slot
-/// @param slotNum slot number (1 based) (0 to power cycle bus)
-void BusPowerController::powerCycleSlot(uint32_t slotNum)
+/// @param slotNum slot number (0 is the main bus)
+void BusPowerController::powerCycleSlot(uint32_t slotNum, uint32_t timeMs)
 {
     
 #ifdef DEBUG_POWER_CONTROL_STATES
-    LOG_I(MODULE_PREFIX, "powerCycleSlot POWER OFF slotNum %d slotNum %d", slotNum, slotNum);
+    LOG_I(MODULE_PREFIX, "powerCycleSlot POWER OFF slotNum %d slotNum %d timeMs %d", slotNum, slotNum, timeMs);
 #endif
-
-    // Check for slot 0 (power cycle bus)
-    if (slotNum == 0)
-    {
-        // Turn off the main bus power
-        setVoltageLevel(0, POWER_CONTROL_OFF);
-        return;
-    }
 
     // Turn the slot power off
     setVoltageLevel(slotNum, POWER_CONTROL_OFF);
 
     // Set the state to power off pending cycling
-    setSlotState(slotNum, SLOT_POWER_OFF_PENDING_CYCLING, millis());
+    setSlotState(slotNum, SLOT_POWER_OFF_DURING_CYCLING, timeMs);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Task loop (called from I2C task)
-void BusPowerController::taskService(uint64_t timeNowUs)
+/// @param timeNowMs Time now in milliseconds
+void BusPowerController::taskService(uint32_t timeNowMs)
 {
     // Enaure hardware initialized
     if (!_hardwareInitialized)
         return;
-
-    // Service state machine for power cycling
-    uint32_t timeNowMs = timeNowUs / 1000;
 
     // Iterate over slot groups
     for (SlotPowerControlGroup& slotGroup : _slotPowerCtrlGroups)
@@ -354,17 +320,17 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                 case SLOT_POWER_OFF_PERMANENTLY:
                     break;
                 case SLOT_POWER_OFF_PRE_INIT:
-                    if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, STARTUP_POWER_OFF_MS))
+                    if (Raft::isTimeout(timeNowMs, slotRec.pwrCtrlStateLastMs, STARTUP_POWER_OFF_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d now off pending cycling", slotNum);
 #endif
                         setVoltageLevel(slotNum, POWER_CONTROL_OFF);
-                        slotRec.setState(SLOT_POWER_OFF_PENDING_CYCLING, timeNowMs);
+                        slotRec.setState(SLOT_POWER_OFF_DURING_CYCLING, timeNowMs);
                     }
                     break;
                 case SLOT_POWER_ON_WAIT_STABLE:
-                    if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, VOLTAGE_STABILIZING_TIME_MS))
+                    if (Raft::isTimeout(timeNowMs, slotRec.pwrCtrlStateLastMs, VOLTAGE_STABILIZING_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d voltage is stable", slotNum);
@@ -372,13 +338,14 @@ void BusPowerController::taskService(uint64_t timeNowUs)
                         slotRec.setState(SLOT_POWER_AT_REQUIRED_LEVEL, timeNowMs);
                     }
                     break;
-                case SLOT_POWER_OFF_PENDING_CYCLING:
-                    if (Raft::isTimeout(millis(), slotRec.pwrCtrlStateLastMs, POWER_CYCLE_OFF_TIME_MS))
+                case SLOT_POWER_OFF_DURING_CYCLING:
+                    if (Raft::isTimeout(timeNowMs, slotRec.pwrCtrlStateLastMs, POWER_CYCLE_OFF_TIME_MS))
                     {
 #ifdef DEBUG_POWER_CONTROL_STATES
-                        LOG_I(MODULE_PREFIX, "taskService slotNum %d state is wait_stable", slotNum);
+                        LOG_I(MODULE_PREFIX, "taskService slotNum %d state is wait_stable timeMd %d lastStateMs %d", 
+                                slotNum, timeNowMs, slotRec.pwrCtrlStateLastMs);
 #endif
-                        setVoltageLevel(slotNum, slotRec._slotReqPowerControlLevelIdx);
+                        setVoltageLevel(slotNum, slotGroup.defaultLevelIdx);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
                     }
                     break;
@@ -393,7 +360,7 @@ void BusPowerController::taskService(uint64_t timeNowUs)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if slot is power controlled
-/// @param slotNum Slot number (1-based)
+/// @param slotNum Slot number (0 is the main bus)
 /// @return True if slot is power controlled
 bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
 {
@@ -408,7 +375,7 @@ bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set voltage level for a slot
-/// @param slotNum Slot number (1-based)
+/// @param slotNum Slot number (0 is the main bus)
 /// @param powerLevelIdx index of required power levels (POWER_CONTROL_OFF etc)
 void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelIdx)
 {
@@ -416,7 +383,7 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     if (!pSlotRec)
     {
-#ifdef WARN_ON_SLOT_0_NOT_POWER_CONTROLLED
+#ifdef WARN_ON_SLOT_NOT_POWER_CONTROLLED
         LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d slot is not power controlled", 
                     slotNum, powerLevelIdx);
 #endif
@@ -431,7 +398,10 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
     {
         for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
         {
-            _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
+            _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, !vPinRec.onLevel);
+#ifdef DEBUG_SET_VOLTAGE_LEVEL
+            LOG_I(MODULE_PREFIX, "setVoltageLevel POWER_CONTROL_OFF slotNum %d level %d pin %d off", slotNum, powerLevelIdx, vPinRec.pinNum);
+#endif
         }
     }
 
@@ -444,25 +414,32 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
         {
             if (levelIdx != powerLevelIdx)
             {
-                _busIOExpanders.virtualPinWrite(vPinRec.pinNum, !vPinRec.onLevel);
+                _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, !vPinRec.onLevel);
+#ifdef DEBUG_SET_VOLTAGE_LEVEL
+                LOG_I(MODULE_PREFIX, "setVoltageLevel OTHER_OFF slotNum %d level %d pin %d off", slotNum, powerLevelIdx, vPinRec.pinNum);
+#endif
             }
             levelIdx++;
         }
 
         // Now turn on the required voltage level
         VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[powerLevelIdx - 1];
-        _busIOExpanders.virtualPinWrite(vPinRec.pinNum, vPinRec.onLevel);
+        _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, vPinRec.onLevel);
+#ifdef DEBUG_SET_VOLTAGE_LEVEL
+        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum PIN_ON %d level %d pin %d on", slotNum, powerLevelIdx, vPinRec.pinNum);
+#endif
     }
     else
     {
+#ifdef DEBUG_SET_VOLTAGE_LEVEL
         LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d INVALID", slotNum, powerLevelIdx);
-        return;
+#endif
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get slot record
-/// @param slotNum Slot number (1-based)
+/// @param slotNum Slot number (0 is the main bus)
 /// @return Slot record or nullptr if not found
 BusPowerController::SlotPowerControlRec* BusPowerController::getSlotRecord(uint32_t slotNum)
 {
@@ -481,9 +458,6 @@ BusPowerController::SlotPowerControlRec* BusPowerController::getSlotRecord(uint3
 /// @brief Power off all
 void BusPowerController::powerOffAll()
 {
-    // Set main bus power off
-    setVoltageLevel(0, POWER_CONTROL_OFF);
-
     // Iterate slot groups
     for (SlotPowerControlGroup& slotGroup : _slotPowerCtrlGroups)
     {
