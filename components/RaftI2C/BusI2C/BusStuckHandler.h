@@ -29,12 +29,6 @@ public:
     /// @brief Check bus stuck (must be called from I2C task)
     bool isStuck();
 
-    /// @brief Check bus stuck (async version)
-    bool isStuckAsync()
-    {
-        return _wasStuck;
-    }
-
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Clear bus stuck problems by clocking the bus
     void clearStuckByClocking();

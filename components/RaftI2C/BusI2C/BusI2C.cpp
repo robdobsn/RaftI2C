@@ -245,8 +245,7 @@ void BusI2C::loop()
     _busScanner.loop();
 
     // Service bus status change detection
-    bool busIsStuck = _busStuckHandler.isStuckAsync();
-    _busStatusMgr.loop(busIsStuck ? false : (_pI2CCentral ? _pI2CCentral->isOperatingOk() : false));
+    _busStatusMgr.loop(_pI2CCentral ? _pI2CCentral->isOperatingOk() : false);
 
     // Service bus mux
     _busMultiplexers.loop();
