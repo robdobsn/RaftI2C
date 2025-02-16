@@ -62,7 +62,7 @@ private:
 
     // Polling vector and mutex controlling access
     std::vector<PollingVectorItem> _pollingVector;
-    SemaphoreHandle_t _pollingMutex = nullptr;
+    RaftMutex _pollingMutex;
     static const int MAX_POLLING_LIST_RECS = 30;
     static const int MAX_POLLING_LIST_RECS_LOW_LOAD = 4;
     static const int MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND = 2;

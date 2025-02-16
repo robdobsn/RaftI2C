@@ -34,7 +34,7 @@ BusAccessor::BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn) :
         _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
     // Create the mutex for the polling list
-    _pollingMutex = xSemaphoreCreateMutex();
+    RaftMutex_init(&_pollingMutex);
 }
 
 BusAccessor::~BusAccessor()
@@ -54,10 +54,10 @@ void BusAccessor::setup(const RaftJsonIF& config)
     _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
     // Obtain semaphore to polling vector
-    if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(50)))
     {
         _scheduler.clear();
-        xSemaphoreGive(_pollingMutex);
+        RaftMutex_unlock(&_pollingMutex);
     }
 }
 
@@ -116,14 +116,14 @@ void BusAccessor::clear(bool incPolling)
     if (incPolling)
     {
         // We're going to mess with the polling list so obtain the semaphore
-        if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+        if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(10)))
         {
             // Clear all lists
             _scheduler.clear();
             _pollingVector.clear();
 
             // Return semaphore
-            xSemaphoreGive(_pollingMutex);
+            RaftMutex_unlock(&_pollingMutex);
         }
     }
 }
@@ -187,7 +187,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
 void BusAccessor::processPolling()
 {
     // Obtain semaphore to polling vector
-    if (xSemaphoreTake(_pollingMutex, 0) == pdTRUE)
+    if (RaftMutex_lock(&_pollingMutex, 0))
     {
         // Get the next element to poll
         int pollListIdx = _scheduler.getNext();
@@ -231,7 +231,7 @@ void BusAccessor::processPolling()
         }
 
         // Free the semaphore
-        xSemaphoreGive(_pollingMutex);
+        RaftMutex_unlock(&_pollingMutex);
     }
 }
 
@@ -336,7 +336,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 #endif
 
     // We're going to mess with the polling list so obtain the semaphore
-    if (xSemaphoreTake(_pollingMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+    if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(50)))
     {
         // See if already in the list
         bool addedOk = false;
@@ -378,7 +378,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
         }
 
         // Return semaphore
-        xSemaphoreGive(_pollingMutex);
+        RaftMutex_unlock(&_pollingMutex);
         return true;
     }
     return false;
