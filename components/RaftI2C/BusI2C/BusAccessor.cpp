@@ -25,46 +25,42 @@
 // #define DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM 5
 // #define DEBUG_ADD_TO_QUEUED_REC_FIFO
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Constructor and destructor
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Constructor
+/// @param raftBus RaftBus instance
+/// @param busI2CReqAsyncFn Function to call to send I2C request async
 BusAccessor::BusAccessor(RaftBus& raftBus, BusReqAsyncFn busI2CReqAsyncFn) :
         _raftBus(raftBus),
         _busI2CReqAsyncFn(busI2CReqAsyncFn)
 {
     // Create the mutex for the polling list
-    RaftMutex_init(&_pollingMutex);
+    RaftMutex_init(_pollingMutex);
 }
 
+/// @brief Destructor
 BusAccessor::~BusAccessor()
 {
     // Remove mutex
-    if (_pollingMutex)
-        vSemaphoreDelete(_pollingMutex);
+    RaftMutex_destroy(_pollingMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Setup
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Setup
+/// @param config Configuration
 void BusAccessor::setup(const RaftJsonIF& config)
 {
     // Setup
     _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
     // Obtain semaphore to polling vector
-    if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(50)))
+    if (RaftMutex_lock(_pollingMutex, 50))
     {
         _scheduler.clear();
-        RaftMutex_unlock(&_pollingMutex);
+        RaftMutex_unlock(_pollingMutex);
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Service
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Loop function
 void BusAccessor::loop()
 {
     // Stats
@@ -93,9 +89,7 @@ void BusAccessor::loop()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Pause
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Pause or resume bus operation
 void BusAccessor::pause(bool pause)
 {
     // Suspend all polling (or unsuspend)
@@ -104,9 +98,8 @@ void BusAccessor::pause(bool pause)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Clear
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/// @brief Clear queues
+/// @param incPolling Clear polling list if true
 void BusAccessor::clear(bool incPolling)
 {
     // Clear the action queue
@@ -116,14 +109,14 @@ void BusAccessor::clear(bool incPolling)
     if (incPolling)
     {
         // We're going to mess with the polling list so obtain the semaphore
-        if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(10)))
+        if (RaftMutex_lock(_pollingMutex, 10))
         {
             // Clear all lists
             _scheduler.clear();
             _pollingVector.clear();
 
             // Return semaphore
-            RaftMutex_unlock(&_pollingMutex);
+            RaftMutex_unlock(_pollingMutex);
         }
     }
 }
@@ -187,7 +180,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
 void BusAccessor::processPolling()
 {
     // Obtain semaphore to polling vector
-    if (RaftMutex_lock(&_pollingMutex, 0))
+    if (RaftMutex_lock(_pollingMutex, 10))
     {
         // Get the next element to poll
         int pollListIdx = _scheduler.getNext();
@@ -231,7 +224,7 @@ void BusAccessor::processPolling()
         }
 
         // Free the semaphore
-        RaftMutex_unlock(&_pollingMutex);
+        RaftMutex_unlock(_pollingMutex);
     }
 }
 
@@ -336,7 +329,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 #endif
 
     // We're going to mess with the polling list so obtain the semaphore
-    if (RaftMutex_lock(&_pollingMutex, pdMS_TO_TICKS(50)))
+    if (RaftMutex_lock(_pollingMutex, 50))
     {
         // See if already in the list
         bool addedOk = false;
@@ -378,7 +371,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
         }
 
         // Return semaphore
-        RaftMutex_unlock(&_pollingMutex);
+        RaftMutex_unlock(_pollingMutex);
         return true;
     }
     return false;
@@ -390,11 +383,8 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 
 bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
 {
-    // Result
-    bool retc = false;
-
     // Send to the request FIFO
-    retc = _requestQueue.put(reqRec, ADD_REQ_TO_QUEUE_MAX_MS);
+    bool putOk = _requestQueue.put(reqRec, ADD_REQ_TO_QUEUE_MAX_MS);
 
 #ifdef DEBUG_ADD_TO_QUEUED_REC_FIFO
     // Debug
@@ -406,7 +396,7 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
 #endif
 
     // Msg buffer full
-    if (retc != pdTRUE)
+    if (!putOk)
     {
         _raftBus.getBusStats().reqBufferFull();
 
@@ -422,5 +412,5 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
 #endif
     }
 
-    return retc;
+    return putOk;
 }
