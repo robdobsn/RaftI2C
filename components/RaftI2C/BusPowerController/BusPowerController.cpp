@@ -345,7 +345,8 @@ void BusPowerController::taskService(uint32_t timeNowMs)
                         LOG_I(MODULE_PREFIX, "taskService slotNum %d state is wait_stable timeMd %d lastStateMs %d", 
                                 slotNum, timeNowMs, slotRec.pwrCtrlStateLastMs);
 #endif
-                        setVoltageLevel(slotNum, slotGroup.defaultLevelIdx);
+                        if (slotRec.powerEnabled)
+                            setVoltageLevel(slotNum, slotGroup.defaultLevelIdx);
                         slotRec.setState(SLOT_POWER_ON_WAIT_STABLE, timeNowMs);
                     }
                     break;
@@ -466,5 +467,19 @@ void BusPowerController::powerOffAll()
         {
             setVoltageLevel(slotNum, POWER_CONTROL_OFF);
         }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Enable bus slot
+/// @param slotNum - slot number
+/// @param enablePower - true to enable, false to disable
+void BusPowerController::enableSlot(uint32_t slotNum, bool enablePower)
+{
+    // Get slot record
+    SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
+    if (pSlotRec)
+    {
+        pSlotRec->powerEnabled = enablePower;
     }
 }

@@ -221,6 +221,17 @@ public:
         _busIOExpanders.virtualPinRead(pinNum, _busReqAsyncFn, vPinCallback, pCallbackData);
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Enable bus slot
+    /// @param slotNum - slot number
+    /// @param enablePower - true to enable, false to disable
+    /// @param enableData - true to enable data, false to disable
+    virtual void enableSlot(uint32_t slotNum, bool enablePower, bool enableData)
+    {
+        _pBusPowerController->enableSlot(slotNum, enablePower);
+        _busMultiplexers.enableSlot(slotNum, enableData);
+    }
+
 private:
 
     // Yield value on each bus processing loop

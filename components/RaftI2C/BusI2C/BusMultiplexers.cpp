@@ -14,6 +14,7 @@
 #include "RaftThreading.h"
 
 #define DEBUG_BUS_MUX_SETUP
+// #define DEBUG_SLOT_DATA_ENABLE
 // #define DEBUG_BUS_STUCK_WITH_GPIO_NUM 18
 // #define DEBUG_BUS_STUCK
 // #define DEBUG_BUS_MUX_ELEM_STATE_CHANGE
@@ -331,19 +332,20 @@ RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx,
 {
     // Check if slot initialized
     BusMux& busMux = _busMuxRecs[muxIdx];
-    bool isInit = true;
-    if (!busMux.maskWrittenOk)
-    {
-        isInit = false;
-        busMux.maskWrittenOk = true;
-    }
+    bool isInit = busMux.maskWrittenOk;
+
+#ifdef DEBUG_SLOT_DATA_ENABLE
+    LOG_I(MODULE_PREFIX, "writeSlotMaskToMux muxIdx %d slotMask 0x%08x disableMask 0x%08x finalMask 0x%08x force %d recurseLevel %d isInit %d", 
+            muxIdx, slotMask, busMux.disabledSlotsMask, slotMask & ~busMux.disabledSlotsMask, 
+            force, recurseLevel, isInit);
+#endif
+
+    // Mask off disabled slots
+    slotMask &= ~busMux.disabledSlotsMask;
+
     // Check if status indicates that the mask is already correct
-    bool writeNeeded = true;
-    if (!force && isInit)
-    {
-        if (busMux.curBitMask == slotMask)
-            writeNeeded = false;
-    }
+    bool writeNeeded = force || !isInit || (busMux.curBitMask != slotMask);
+
     // Handle write to mux register if needed
     RaftRetCode rslt = RAFT_OK;
     if (writeNeeded)
@@ -363,8 +365,7 @@ RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx,
         rslt = _busReqSyncFn(&reqRec, nullptr);
         busMux.curBitMask = slotMask;
         // Store the resulting mask information if the operation was successful
-        if (rslt != RAFT_OK)
-            busMux.maskWrittenOk = false;
+        busMux.maskWrittenOk = rslt == RAFT_OK;
     }
 #ifdef DEBUG_SET_SLOT_ENABLES
         LOG_I(MODULE_PREFIX, "writeSlotMaskToMux rslt %s(%d) muxIdx %d slotMask 0x%02x force %d recurseLevel %d isInit %d writeNeeded %d", 
@@ -719,4 +720,30 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
 #endif
 
     return !_busStuckHandler.isStuck();
+}
+
+/// @brief Enable bus slot
+/// @param slotNum - slot number
+/// @param enableData - true to enable data, false to disable
+void BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
+{
+    // Get the bus multiplexer index and slot index
+    uint32_t slotIdx = 0;
+    uint32_t muxIdx = 0;
+    if (!getMuxAndSlotIdx(slotNum, muxIdx, slotIdx))
+    {
+        LOG_E(MODULE_PREFIX, "enableSlot slotNum %d invalid", slotNum);
+        return;
+    }
+    
+    // Get the mux
+    BusMux& busMux = _busMuxRecs[muxIdx];
+
+    // Set or clear the bit in the disabled slots mask (1 to disable)
+    busMux.disabledSlotsMask = enableData ? (busMux.disabledSlotsMask & ~(1 << slotIdx)) : (busMux.disabledSlotsMask | (1 << slotIdx));
+
+#ifdef DEBUG_SLOT_DATA_ENABLE
+    LOG_I(MODULE_PREFIX, "enableSlot slotNum %d muxIdx %d slotIdx %d enableData %d disabledSlotsMask 0x%02x", 
+            slotNum, muxIdx, slotIdx, enableData, busMux.disabledSlotsMask);
+#endif
 }

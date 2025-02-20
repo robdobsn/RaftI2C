@@ -132,6 +132,12 @@ public:
         _pBusPowerController = pBusPowerController;
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Enable bus slot
+    /// @param slotNum - slot number
+    /// @param enableData - true to enable data, false to disable
+    void enableSlot(uint32_t slotNum, bool enableData);
+
 private:
 
     // Bus mux slot count
@@ -197,6 +203,9 @@ private:
 
         // Current bit mask (each bit enables a slot when 1)
         uint32_t curBitMask = 0;
+
+        // Disabled slots mask (each bit disables a slot when 1)
+        uint32_t disabledSlotsMask = 0;
     };
 
     // Bus multiplexer records

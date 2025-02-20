@@ -45,6 +45,11 @@ public:
     /// @return true if slot power is controlled
     bool isSlotPowerControlled(uint32_t slotNum);
 
+    /// @brief Enable bus slot
+    /// @param slotNum - slot number
+    /// @param enablePower - true to enable, false to disable
+    void enableSlot(uint32_t slotNum, bool enablePower);
+
 private:
 
     // IO Expanders
@@ -143,6 +148,9 @@ private:
 
         // Virtual pin records for each voltage level
         std::vector<VoltageLevelPinRec> voltageLevelPins;
+
+        // Power enbled flag (can be used to disable power to a slot)
+        bool powerEnabled = true;
     };
 
     // Power control slot group
