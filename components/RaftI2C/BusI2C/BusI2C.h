@@ -202,13 +202,17 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set virtual pin mode (and level if output) on IO expander
-    /// @param pinNum - pin number
-    /// @param mode - mode (INPUT or OUTPUT)
-    /// @param level - level (only used for OUTPUT)
-    virtual void virtualPinSet(int pinNum, uint8_t mode, bool level) override final
+    /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
+    /// @param numPins - number of pins to set
+    /// @param pPinNums - array of pin numbers
+    /// @param pLevels - array of levels (0 for low)
+    /// @param pResultCallback - callback for result when complete/failed
+    /// @param pCallbackData - callback data
+    /// @return RAFT_OK if successful
+    RaftRetCode virtualPinsSet(uint32_t numPins, const int* pPinNums, const uint8_t* pLevels, 
+        VirtualPinSetCallbackType pResultCallback, void* pCallbackData)
     {
-        _busIOExpanders.virtualPinSet(pinNum, mode, level);
+        return _busIOExpanders.virtualPinsSet(numPins, pPinNums, pLevels, pResultCallback, pCallbackData);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -216,9 +220,10 @@ public:
     /// @param pinNum - pin number
     /// @param vPinCallback - callback for virtual pin changes
     /// @param pCallbackData - callback data
-    virtual void virtualPinRead(int pinNum, VirtualPinCallbackType vPinCallback, void* pCallbackData = nullptr) override final
+    /// @return RAFT_OK if successful
+    virtual RaftRetCode virtualPinRead(int pinNum, VirtualPinReadCallbackType vPinCallback, void* pCallbackData = nullptr) override final
     {
-        _busIOExpanders.virtualPinRead(pinNum, _busReqAsyncFn, vPinCallback, pCallbackData);
+        return _busIOExpanders.virtualPinRead(pinNum, _busReqAsyncFn, vPinCallback, pCallbackData);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

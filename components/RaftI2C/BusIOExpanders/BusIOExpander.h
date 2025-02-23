@@ -12,6 +12,7 @@
 #include "RaftUtils.h"
 #include "VirtualPinResult.h"
 #include "BusRequestInfo.h"
+#include "RaftThreading.h"
 
 #define DEBUG_IO_EXPANDER_
 
@@ -19,29 +20,23 @@ class BusIOExpander
 {
 public:
     BusIOExpander(uint32_t addr, uint32_t muxAddr, uint32_t muxChanIdx, int8_t muxResetPin, uint32_t virtualPinBase, uint32_t numPins) : 
-        addr(addr), muxAddr(muxAddr), muxChanIdx(muxChanIdx), muxResetPin(muxResetPin), virtualPinBase(virtualPinBase), numPins(numPins)
+        _addr(addr), _muxAddr(muxAddr), _muxChanIdx(muxChanIdx), _muxResetPin(muxResetPin), _virtualPinBase(virtualPinBase), _numVirtualPins(numPins)
     {
-    }
-
-    /// @brief Set to use async I2C requests
-    /// @param useAsync true to use async requests
-    void setUseAsyncI2C(bool useAsync)
-    {
-        useAsyncI2C = useAsync;
+        RaftMutex_init(_regMutex);
     }
     
     /// @brief Get virtual pin base
     /// @return virtual pin base
     uint32_t getVirtualPinBase() const
     {
-        return virtualPinBase;
+        return _virtualPinBase;
     }
 
     /// @brief Get number of pins
     /// @return number of pins
     uint32_t getNumPins() const
     {
-        return numPins;
+        return _numVirtualPins;
     }
 
     /// @brief Check if this is a match to the IO expander address, and mux address and channel
@@ -51,42 +46,42 @@ public:
     /// @return true if this is a match
     bool isMatch(uint32_t i2cAddr, uint32_t muxAddr, uint32_t muxChanIdx)
     {
-        return (addr == i2cAddr) && (muxAddr == this->muxAddr) && (muxChanIdx == this->muxChanIdx);
+        return (_addr == i2cAddr) && (muxAddr == this->_muxAddr) && (muxChanIdx == this->_muxChanIdx);
     }
 
-    /// @brief Set virtual pin mode on IO expander
-    /// @param pinNum - pin number
-    /// @param mode - mode (INPUT or OUTPUT)
-    /// @param level - true for high, false for low (only used for OUTPUT)
-    void virtualPinSet(int pinNum, uint8_t mode, bool level);
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
+    /// @param numPins - number of pins to set
+    /// @param pPinNums - array of pin numbers
+    /// @param pLevels - array of levels (0 for low)
+    /// @param pResultCallback - callback for result when complete/failed
+    /// @param pCallbackData - callback data
+    /// @return RAFT_OK if successful
+    RaftRetCode virtualPinsSet(uint32_t numPins, const int* pPinNums, const uint8_t* pLevels, 
+                VirtualPinSetCallbackType pResultCallback, void* pCallbackData);
 
     /// @brief Get virtual pin level on IO expander
     /// @param pinNum - pin number
     /// @param busI2CReqAsyncFn - function to call to perform I2C request
     /// @param vPinCallback - callback for virtual pin changes
     /// @param pCallbackData - callback data
-    void virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData);
+    /// @return RAFT_OK if successful
+    RaftRetCode virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
+                VirtualPinReadCallbackType vPinCallback, void* pCallbackData);
 
     /// @brief Update power control registers for all slots
     /// @param force true to force update (even if not dirty)
     /// @param busI2CReqSyncFn function to call to perform I2C request
     void updateSync(bool force, BusReqSyncFn busI2CReqSyncFn);
 
-    /// @brief Update power control registers for all slots
-    /// @param force true to force update (even if not dirty)
-    /// @param busI2CReqSyncFn function to call to perform I2C request
-    /// @param vPinCallback callback for virtual pin changes
-    /// @param pCallbackData callback data
-    void updateAsync(bool force, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void *pCallbackData);
-
     /// @brief Get debug info
     /// @return debug info
     String getDebugStr()
     {
         return Raft::formatString(100, "addr 0x%02x %s vPinBase %d numPins %d ; ", 
-            addr, 
-            muxAddr != 0 ? Raft::formatString(100, "muxAddr 0x%02x muxChanIdx %d", muxAddr, muxChanIdx).c_str() : "MAIN_BUS",
-            virtualPinBase, numPins);
+            _addr, 
+            _muxAddr != 0 ? Raft::formatString(100, "muxAddr 0x%02x muxChanIdx %d", _muxAddr, _muxChanIdx).c_str() : "MAIN_BUS",
+            _virtualPinBase, _numVirtualPins);
     }
 
 private:
@@ -97,38 +92,47 @@ private:
     static const uint8_t PCA9535_CONFIG_PORT_0 = 0x06;
 
     // Power controller address
-    uint8_t addr = 0;
+    uint8_t _addr = 0;
 
     // Muliplexer address (0 if connected directly to main I2C bus)
-    uint8_t muxAddr = 0;
+    uint8_t _muxAddr = 0;
 
     // Multiplexer channel index
-    uint8_t muxChanIdx = 0;
+    uint8_t _muxChanIdx = 0;
 
     // Multiplexer reset pin
-    int8_t muxResetPin = -1;
+    int8_t _muxResetPin = -1;
 
     // virtual pin (an extension of normal microcontroller pin numbering to include expander
     // pins based at this number for this device) start number
-    uint16_t virtualPinBase = 0;
+    uint16_t _virtualPinBase = 0;
 
     // Number of pins
-    uint16_t numPins = 0;
+    uint16_t _numVirtualPins = 0;
 
     // Power controller output register
-    uint16_t outputsReg = 0xffff;
+    uint16_t _outputsReg = 0xffff;
 
     // Power controller config bits record
-    uint16_t configReg = 0xffff;
+    uint16_t _configReg = 0xffff;
 
     // Output data is dirty
-    bool outputsRegDirty = true;
+    bool _outputsRegDirty = true;
 
     // Config register is dirty
-    bool configRegDirty = true;
+    bool _configRegDirty = true;
 
-    // Use Async I2C requests
-    bool useAsyncI2C = true;
+    // Semaphore controlling access to register values
+    RaftMutex _regMutex;
+
+    // Callbacks for set operations
+    class VirtualPinSetCallbackInfo
+    {
+    public:
+        VirtualPinSetCallbackType pResultCallback = nullptr;
+        void* pCallbackData = nullptr;
+    };
+    std::vector<VirtualPinSetCallbackInfo> _virtualPinSetCallbacks;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "BusIOExpander";

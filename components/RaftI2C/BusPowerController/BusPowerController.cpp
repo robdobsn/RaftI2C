@@ -13,7 +13,7 @@
 
 // #define WARN_ON_SLOT_NOT_POWER_CONTROLLED
 
-// #define DEBUG_POWER_CONTROL_SETUP
+#define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 // #define DEBUG_POWER_CONTROL_SLOT_STABLE
@@ -394,48 +394,30 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
     // Store required power control level index
     pSlotRec->_slotReqPowerControlLevelIdx = powerLevelIdx;
 
-    // Check for off (turn all vPins to off level)
-    if (powerLevelIdx == POWER_CONTROL_OFF)
+    // Check valid
+    uint32_t numPins = pSlotRec->voltageLevelPins.size();
+    if (powerLevelIdx >= numPins)
+        return;
+
+    // List of pins and levels
+    std::vector<int> voltageLevelPins(numPins);
+    std::vector<uint8_t> voltageLevelValues(numPins);
+
+    // Iterate over pins
+    for (uint32_t pinIdx = 0; pinIdx < numPins; pinIdx++)
     {
-        for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
-        {
-            _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, !vPinRec.onLevel);
+        uint32_t pinPowerLevelIdx = pinIdx + 1;
+        VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[pinIdx];
+        voltageLevelPins[pinIdx] = vPinRec.pinNum;
+        voltageLevelValues[pinIdx] = (pinPowerLevelIdx == powerLevelIdx) ? vPinRec.onLevel : !vPinRec.onLevel;
 #ifdef DEBUG_SET_VOLTAGE_LEVEL
-            LOG_I(MODULE_PREFIX, "setVoltageLevel POWER_CONTROL_OFF slotNum %d level %d pin %d off", slotNum, powerLevelIdx, vPinRec.pinNum);
+        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d pin %d = %d", slotNum, 
+                        powerLevelIdx, vPinRec.pinNum, pVoltageLevelValues[pinIdx]);
 #endif
-        }
     }
 
-    // Check for other voltage levels (values start at powerLevelIdx == 1)
-    else if (powerLevelIdx - 1 < pSlotRec->voltageLevelPins.size())
-    {
-        // First turn off all pins other than voltage level we want
-        uint32_t levelIdx = 1;
-        for (VoltageLevelPinRec& vPinRec : pSlotRec->voltageLevelPins)
-        {
-            if (levelIdx != powerLevelIdx)
-            {
-                _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, !vPinRec.onLevel);
-#ifdef DEBUG_SET_VOLTAGE_LEVEL
-                LOG_I(MODULE_PREFIX, "setVoltageLevel OTHER_OFF slotNum %d level %d pin %d off", slotNum, powerLevelIdx, vPinRec.pinNum);
-#endif
-            }
-            levelIdx++;
-        }
-
-        // Now turn on the required voltage level
-        VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[powerLevelIdx - 1];
-        _busIOExpanders.virtualPinSet(vPinRec.pinNum, OUTPUT, vPinRec.onLevel);
-#ifdef DEBUG_SET_VOLTAGE_LEVEL
-        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum PIN_ON %d level %d pin %d on", slotNum, powerLevelIdx, vPinRec.pinNum);
-#endif
-    }
-    else
-    {
-#ifdef DEBUG_SET_VOLTAGE_LEVEL
-        LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d INVALID", slotNum, powerLevelIdx);
-#endif
-    }
+    // Set pins
+    _busIOExpanders.virtualPinsSet(numPins, voltageLevelPins.data(), voltageLevelValues.data(), nullptr, nullptr);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -27,11 +27,15 @@ public:
     void setup(const RaftJsonIF& config);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set virtual pin mode (and level if output) on IO expander
-    /// @param pinNum - pin number
-    /// @param mode - INPUT or OUTPUT (as defined in Arduino)
-    /// @param level - level (only used for OUTPUT)
-    void virtualPinSet(int pinNum, uint8_t mode, bool level);
+    /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
+    /// @param numPins - number of pins to set
+    /// @param pPinNums - array of pin numbers
+    /// @param pLevels - array of levels (0 for low)
+    /// @param pResultCallback - callback for result when complete/failed
+    /// @param pCallbackData - callback data
+    /// @return RAFT_OK if successful
+    RaftRetCode virtualPinsSet(uint32_t numPins, const int* pPinNums, const uint8_t* pLevels, 
+            VirtualPinSetCallbackType pResultCallback, void* pCallbackData);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get virtual pin level on IO expander
@@ -39,7 +43,9 @@ public:
     /// @param busI2CReqAsyncFn Function to call to perform I2C request
     /// @param vPinCallback - callback for virtual pin changes
     /// @param pCallbackData - callback data
-    void virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData);
+    /// @return RAFT_OK if successful
+    RaftRetCode virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
+            VirtualPinReadCallbackType vPinCallback, void* pCallbackData);
 
     /// @brief Sync state changes in I2C IO expanders
     /// @param force true to force action
@@ -86,5 +92,5 @@ private:
     }
 
     // Debug
-    static constexpr const char* MODULE_PREFIX = "I2CIOExps";    
+    static constexpr const char* MODULE_PREFIX = "RaftI2CIOExps";    
 };

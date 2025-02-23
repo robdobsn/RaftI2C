@@ -11,9 +11,7 @@
 #include "Logger.h"
 #include "RaftJson.h"
 
-// #define VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
-
-// #define DEBUG_IO_EXPANDER_SETUP
+#define DEBUG_IO_EXPANDER_SETUP
 // #define DEBUG_IO_BIT_SETTINGS
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,7 +93,7 @@ void BusIOExpanders::setup(const RaftJsonIF& config)
     {        
         ioExpRecStr += ioExpander.getDebugStr();
     }
-    LOG_I(MODULE_PREFIX, "setup IO expanders: %s", ioExpRecStr.c_str());
+    LOG_I(MODULE_PREFIX, "setup %s", ioExpRecStr.c_str());
 #endif
 }
 
@@ -113,42 +111,40 @@ void BusIOExpanders::syncI2CIOStateChanges(bool force, BusReqSyncFn busI2CReqSyn
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set virtual pin mode on IO expander
-/// @param pinNum - pin number
-/// @param mode - mode INPUT/OUTPUT
-/// @param level - level (only used for OUTPUT)
-void BusIOExpanders::virtualPinSet(int pinNum, uint8_t mode, bool level)
+/// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
+/// @param numPins - number of pins to set
+/// @param pPinNums - array of pin numbers
+/// @param pLevels - array of levels (0 for low)
+/// @param pResultCallback - callback for result when complete/failed
+/// @param pCallbackData - callback data
+/// @return RAFT_OK if successful
+RaftRetCode BusIOExpanders::virtualPinsSet(uint32_t numPins, const int* pPinNums, const uint8_t* pLevels, 
+            VirtualPinSetCallbackType pResultCallback, void* pCallbackData)
 {
-    // Check if pin valid
-    if (pinNum < 0)
-        return;
+    // Check if pins valid
+    if ((numPins == 0) || (pPinNums == nullptr) || (pLevels == nullptr))
+        return RAFT_INVALID_DATA;
 
-    // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
-    BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
+    // Find the IO expander record for this virtual pin (or nullptr if not found)
+    BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pPinNums[0]);
 
     // Handle not found
     if (pBusIOExpander == nullptr)
     {
-#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
-        // Set the GPIO pin
-        pinMode(pinNum, mode);
-        digitalWrite(pinNum, level);
-
-#ifdef DEBUG_IO_BIT_SETTINGS
-        LOG_I(MODULE_PREFIX, "setVirtualPinLevel GPIO pin %d level %d", pinNum, level);
+#if defined(DEBUG_IO_BIT_SETTINGS)
+        LOG_I(MODULE_PREFIX, "setVirtualPinsSet vPin %d not registered", pPinNums[0]);
 #endif
-#elif defined(DEBUG_IO_BIT_SETTINGS)
-        LOG_I(MODULE_PREFIX, "setVirtualPinLevel vPin %d not registered", pinNum);
-#endif
-        return;
+        return RAFT_INVALID_DATA;
     }
 
     // Perform the IO expander operation
-    pBusIOExpander->virtualPinSet(pinNum, mode, level);
+    RaftRetCode retc = pBusIOExpander->virtualPinsSet(numPins, pPinNums, pLevels, pResultCallback, pCallbackData);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "setVirtualPinLevel IOExp vPin %d level %d", pinNum, level);
+    LOG_I(MODULE_PREFIX, "virtualPinsSet IOExp first vPin %d level %d retc %d", pPinNums[0], pLevels[0], retc);
 #endif
+
+    return retc;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,28 +153,20 @@ void BusIOExpanders::virtualPinSet(int pinNum, uint8_t mode, bool level)
 /// @param busI2CReqAsyncFn Function to call to perform I2C request
 /// @param vPinCallback - callback for virtual pin changes
 /// @param pCallbackData - callback data
-void BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, VirtualPinCallbackType vPinCallback, void* pCallbackData)
+/// @return RAFT_OK if successful
+RaftRetCode BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
+                VirtualPinReadCallbackType vPinCallback, void* pCallbackData)
 {
     // Check if pin valid
     if (pinNum < 0)
-        return;
+        return RAFT_INVALID_DATA;
 
     // Find the IO expander record for this virtual pin (or nullptr if it's a GPIO pin)
     BusIOExpander* pBusIOExpander = findIOExpanderFromVPin(pinNum);
 
     // Handle not found
     if (pBusIOExpander == nullptr)
-    {
-#ifdef VIRTUAL_PIN_ASSUME_GPIO_IF_NOT_REGISTERED
-        // Read the GPIO pin
-        bool level = digitalRead(pinNum);
-        
-        // Callback
-        if (vPinCallback)
-            vPinCallback(pCallbackData, VirtualPinResult(pinNum, level, RAFT_OK));
-#endif
-        return;
-    }
+        return RAFT_INVALID_DATA;
 
     // Perform the IO expander operation
     pBusIOExpander->virtualPinRead(pinNum, busI2CReqAsyncFn, vPinCallback, pCallbackData);
@@ -186,4 +174,6 @@ void BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsyncFn, 
 #ifdef DEBUG_IO_BIT_SETTINGS
     LOG_I(MODULE_PREFIX, "getVirtualPinLevel IOExp vPin %d callback pending", pinNum);
 #endif
+
+    return RAFT_OK;
 }
