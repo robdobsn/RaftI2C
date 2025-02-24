@@ -174,7 +174,7 @@ private:
 
     // Bus mux address range
     BusElemAddrType _minAddr = I2C_BUS_MUX_BASE_DEFAULT;
-    BusElemAddrType _maxAddr = I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX_DEFAULT-1;
+    BusElemAddrType _maxAddr = I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX-1;
 
     // Bus mux reset pin(s)
     std::vector<int8_t> _resetPins;
@@ -218,9 +218,6 @@ private:
     // Flag indicating at least one second-level mux is detected
     // A second-level mux is where one mux is connected via another mux
     bool _secondLevelMuxDetected = false;
-
-    // Init bus mux records
-    void initBusMuxRecs();
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set slot enables on mux

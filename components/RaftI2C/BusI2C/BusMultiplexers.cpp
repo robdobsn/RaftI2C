@@ -40,7 +40,8 @@ BusMultiplexers::BusMultiplexers(BusStuckHandler& busStuckHandler,
     _busReqSyncFn(busI2CReqSyncFn)
 {
     // Init bus multiplexer records
-    initBusMuxRecs();
+    _busMuxRecs.clear();
+    _busMuxRecs.resize(I2C_BUS_MUX_MAX);    
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,10 +63,10 @@ void BusMultiplexers::setup(const RaftJsonIF& config)
 
     // Get the bus multiplexer address range
     _minAddr = config.getLong("minAddr", I2C_BUS_MUX_BASE_DEFAULT);
-    _maxAddr = config.getLong("maxAddr", I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX_DEFAULT-1);
+    _maxAddr = config.getLong("maxAddr", I2C_BUS_MUX_BASE_DEFAULT+I2C_BUS_MUX_MAX-1);
 
     // Check if mux is specified
-    if (!_isEnabled || (_minAddr < I2C_BUS_ADDRESS_MIN) || (_maxAddr > I2C_BUS_ADDRESS_MAX) || (_minAddr > _maxAddr))
+    if (!_isEnabled || (_minAddr < I2C_BUS_ADDRESS_MIN) || (_maxAddr > I2C_BUS_ADDRESS_MAX) || (_minAddr > _maxAddr) || ((_maxAddr-_minAddr+1) > I2C_BUS_MUX_MAX))
     {
         LOG_E(MODULE_PREFIX, "setup DISABLED (or invalid addr min 0x%02x max 0x%02x)", _minAddr, _maxAddr);
         _isEnabled = false;
@@ -588,15 +589,6 @@ void BusMultiplexers::clearCascadedMuxes(uint32_t muxIdx)
 
         }
     }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Initialise bus multiplexer records
-void BusMultiplexers::initBusMuxRecs()
-{
-    // Clear existing records
-    _busMuxRecs.clear();
-    _busMuxRecs.resize(_maxAddr-_minAddr+1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
