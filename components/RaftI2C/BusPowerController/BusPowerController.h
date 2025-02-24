@@ -46,9 +46,10 @@ public:
     bool isSlotPowerControlled(uint32_t slotNum);
 
     /// @brief Enable bus slot
-    /// @param slotNum - slot number
+    /// @param slotNum - slot number (0 is the main bus)
     /// @param enablePower - true to enable, false to disable
-    void enableSlot(uint32_t slotNum, bool enablePower);
+    /// @return RAFT_OK if successful
+    RaftRetCode enableSlot(uint32_t slotNum, bool enablePower);
 
 private:
 

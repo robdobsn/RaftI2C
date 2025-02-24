@@ -132,7 +132,7 @@ RaftRetCode BusIOExpanders::virtualPinsSet(uint32_t numPins, const int* pPinNums
     if (pBusIOExpander == nullptr)
     {
 #if defined(DEBUG_IO_BIT_SETTINGS)
-        LOG_I(MODULE_PREFIX, "setVirtualPinsSet vPin %d not registered", pPinNums[0]);
+        LOG_I(MODULE_PREFIX, "virtualPinsSet vPin %d not registered", pPinNums[0]);
 #endif
         return RAFT_INVALID_DATA;
     }

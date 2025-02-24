@@ -392,7 +392,7 @@ RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
         for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
         {
             // Attempt to clear bus-stuck (returns true if it resolved the issue)
-            if (attemptToClearBusStuck(true, slotNum))
+            if (attemptToClearBusStuck(false, slotNum))
                 break;
         }
 
@@ -684,29 +684,15 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
         // Clear the stuck bus problem by initially disabling all slots 
         disableAllSlots(true);
 
-        // Check if failure occurred after the slot was set
-        if (failAfterSlotSet && (_pBusPowerController ? _pBusPowerController->isSlotPowerControlled(slotNum) : true))
-        {
-            // Inform the bus status manager that a slot is powering down
-            std::vector<BusElemAddrType> listOfAddr;
-            _busElemTracker.getAddrList(slotNum, listOfAddr);
-            _busStatusMgr.goingOffline(listOfAddr);
+        // Inform the bus status manager that a slot is powering down
+        bool isSingleSlot = failAfterSlotSet && (_pBusPowerController ? _pBusPowerController->isSlotPowerControlled(slotNum) : true);
+        std::vector<BusElemAddrType> listOfAddr;
+        _busElemTracker.getAddrList(isSingleSlot ? slotNum : 0, listOfAddr);
+        _busStatusMgr.goingOffline(listOfAddr);
 
-            // Start power cycling the slot
-            if(_pBusPowerController)
-                _pBusPowerController->powerCycleSlot(slotNum, millis());
-        }
-        else
-        {
-            // Inform the bus status manager that the bus is powering down
-            std::vector<BusElemAddrType> listOfAddr;
-            _busElemTracker.getAddrList(0, listOfAddr);
-            _busStatusMgr.goingOffline(listOfAddr);
-
-            // Clear the stuck bus problem by power cycling the entire bus
-            if (_pBusPowerController)
-                _pBusPowerController->powerCycleSlot(0, millis());
-        }
+        // Start power cycling the slot
+        if(_pBusPowerController)
+            _pBusPowerController->powerCycleSlot(isSingleSlot ? slotNum : 0, millis());
     }
 
 #ifdef DEBUG_BUS_STUCK_WITH_GPIO_NUM
@@ -723,9 +709,10 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
 }
 
 /// @brief Enable bus slot
-/// @param slotNum - slot number
+/// @param slotNum - slot number (0 is the main bus)
 /// @param enableData - true to enable data, false to disable
-void BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
+/// @return result code
+RaftRetCode BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
 {
     // Get the bus multiplexer index and slot index
     uint32_t slotIdx = 0;
@@ -733,7 +720,7 @@ void BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
     if (!getMuxAndSlotIdx(slotNum, muxIdx, slotIdx))
     {
         LOG_E(MODULE_PREFIX, "enableSlot slotNum %d invalid", slotNum);
-        return;
+        return RAFT_INVALID_DATA;
     }
     
     // Get the mux
@@ -746,4 +733,5 @@ void BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
     LOG_I(MODULE_PREFIX, "enableSlot slotNum %d muxIdx %d slotIdx %d enableData %d disabledSlotsMask 0x%02x", 
             slotNum, muxIdx, slotIdx, enableData, busMux.disabledSlotsMask);
 #endif
+    return RAFT_OK;
 }

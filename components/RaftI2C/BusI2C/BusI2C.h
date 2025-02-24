@@ -228,13 +228,15 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Enable bus slot
-    /// @param slotNum - slot number
+    /// @param slotNum - slot number (0 is the main bus)
     /// @param enablePower - true to enable, false to disable
     /// @param enableData - true to enable data, false to disable
-    virtual void enableSlot(uint32_t slotNum, bool enablePower, bool enableData)
+    /// @return RAFT_OK if successful
+    virtual RaftRetCode enableSlot(uint32_t slotNum, bool enablePower, bool enableData)
     {
-        _pBusPowerController->enableSlot(slotNum, enablePower);
-        _busMultiplexers.enableSlot(slotNum, enableData);
+        RaftRetCode retc = _pBusPowerController->enableSlot(slotNum, enablePower);
+        RaftRetCode retc2 = _busMultiplexers.enableSlot(slotNum, enableData);
+        return retc == RAFT_OK ? retc2 : retc;
     }
 
 private:

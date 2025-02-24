@@ -15,6 +15,7 @@
 
 #define DEBUG_POWER_CONTROL_SETUP
 // #define DEBUG_POWER_CONTROL_STATES
+// #define DEBUG_SET_VOLTAGE_LEVEL
 // #define DEBUG_POWER_CONTROL_BIT_SETTINGS
 // #define DEBUG_POWER_CONTROL_SLOT_STABLE
 // #define DEBUG_POWER_CONTROL_SLOT_UNSTABLE
@@ -396,8 +397,10 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
 
     // Check valid
     uint32_t numPins = pSlotRec->voltageLevelPins.size();
-    if (powerLevelIdx >= numPins)
+    if (powerLevelIdx > numPins)
+    {
         return;
+    }
 
     // List of pins and levels
     std::vector<int> voltageLevelPins(numPins);
@@ -411,8 +414,8 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
         voltageLevelPins[pinIdx] = vPinRec.pinNum;
         voltageLevelValues[pinIdx] = (pinPowerLevelIdx == powerLevelIdx) ? vPinRec.onLevel : !vPinRec.onLevel;
 #ifdef DEBUG_SET_VOLTAGE_LEVEL
-        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d level %d pin %d = %d", slotNum, 
-                        powerLevelIdx, vPinRec.pinNum, pVoltageLevelValues[pinIdx]);
+        LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d levelIdx %d pinNum %d = %d", slotNum, 
+                        powerLevelIdx, vPinRec.pinNum, voltageLevelValues[pinIdx]);
 #endif
     }
 
@@ -454,14 +457,29 @@ void BusPowerController::powerOffAll()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Enable bus slot
-/// @param slotNum - slot number
+/// @param slotNum - slot number (0 is the main bus)
 /// @param enablePower - true to enable, false to disable
-void BusPowerController::enableSlot(uint32_t slotNum, bool enablePower)
+/// @return RAFT_OK if successful
+RaftRetCode BusPowerController::enableSlot(uint32_t slotNum, bool enablePower)
 {
     // Get slot record
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
-    if (pSlotRec)
+    if (!pSlotRec)
+        return RAFT_INVALID_OBJECT;
+
+    // Check if currently active and going to be disabled
+    if (!enablePower && pSlotRec->powerEnabled)
     {
-        pSlotRec->powerEnabled = enablePower;
+        // Power off
+        pSlotRec->setState(SLOT_POWER_OFF_PERMANENTLY, millis());
+        setVoltageLevel(slotNum, POWER_CONTROL_OFF);
     }
+    
+    // Check if currently inactive and going to be enabled
+    if (enablePower && !pSlotRec->powerEnabled)
+    {
+        pSlotRec->setState(SLOT_POWER_OFF_PRE_INIT, millis());
+    }
+    pSlotRec->powerEnabled = enablePower;
+    return RAFT_OK;
 }
