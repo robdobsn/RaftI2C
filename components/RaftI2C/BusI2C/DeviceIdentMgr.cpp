@@ -13,6 +13,10 @@
 #include "BusI2CAddrAndSlot.h"
 #include "Logger.h"
 
+// Info
+#define INFO_NEW_DEVICE_IDENTIFIED
+
+// Debug
 // #define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
@@ -93,6 +97,12 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
             LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
 #endif
+#ifdef INFO_NEW_DEVICE_IDENTIFIED
+            LOG_I(MODULE_PREFIX, "identifyDevice new device %s at address %s", 
+                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", 
+                    BusI2CAddrAndSlot::toString(address).c_str());
+#endif
+
             // Initialise the device if required
             processDeviceInit(address, &devTypeRec);
 
