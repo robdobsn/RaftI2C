@@ -200,6 +200,10 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                         continue;
                 }
 
+                // Check if the address is being polled
+                if (_busStatusMgr.isAddrBeingPolled(BusI2CAddrAndSlot(addr, slotNum).toBusElemAddrType()))
+                    continue;
+
                 // Scan the address
                 bool failedToEnableSlot = false;
                 auto rslt = scanOneAddress(addr, slotNum, failedToEnableSlot);

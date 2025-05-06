@@ -47,6 +47,9 @@ public:
     // Get count of address status records
     uint32_t getAddrStatusCount() const;
 
+    // Check if an address is being polled
+    bool isAddrBeingPolled(BusElemAddrType address) const;
+
     // Set bus element device status (which includes device type and can be empty) for an address
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
@@ -56,9 +59,17 @@ public:
     // Get pending ident poll
     bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
 
-    // Handle poll result
-    bool handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
-                    const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo);
+    /// @brief Handle poll result
+    /// @param nextReqIdx index of next request to store (0 = full poll, 1+ = partial poll)
+    /// @param timeNowUs time in us (passed in to aid testing)
+    /// @param address address
+    /// @param pollResultData poll result data
+    /// @param pPollInfo pointer to device polling info (maybe nullptr)
+    /// @param pauseAfterSendMs pause after send in ms
+    /// @return true if result stored
+    bool handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, BusElemAddrType address, 
+                    const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo,
+                    uint32_t pauseAfterSendMs);
 
     /// @brief Get latest timestamp of change to device info (online/offline, new data, etc)
     /// @param includeElemOnlineStatusChanges include changes in online status of elements

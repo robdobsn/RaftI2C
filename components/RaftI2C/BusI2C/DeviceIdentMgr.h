@@ -92,7 +92,7 @@ public:
     virtual bool handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
                             const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo) override final
     {
-        return _busStatusMgr.handlePollResult(timeNowUs, address, pollResultData, pPollInfo);
+        return _busStatusMgr.handlePollResult(0, timeNowUs, address, pollResultData, pPollInfo, 0);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

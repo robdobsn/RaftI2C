@@ -456,6 +456,30 @@ uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType address) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if an address is being polled
+/// @param address address
+/// @return true if the address is being polled
+bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
+{
+    // Obtain semaphore
+    if (xSemaphoreTake(_busElemStatusMutex, pdMS_TO_TICKS(1)) != pdTRUE)
+        return false;
+
+    // Check if the address is being polled
+    bool isBeingPolled = false;
+    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+    if (pAddrStatus)
+    {
+        // Check if the address is being polled
+        isBeingPolled = pAddrStatus->deviceStatus.getNumPollRequests() > 0;
+    }
+
+    // Return semaphore
+    xSemaphoreGive(_busElemStatusMutex);
+    return isBeingPolled;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Inform that addresses are going offline
 /// @param addrList list of addresses
 void BusStatusMgr::goingOffline(std::vector<BusElemAddrType>& addrList)
@@ -537,13 +561,16 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Store poll results
+/// @param nextReqIdx index of next request to store (0 = completed poll, 1+ = partial poll results)
 /// @param timeNowUs time in us (passed in to aid testing)
 /// @param address address
 /// @param pollResultData poll result data
 /// @param pPollInfo pointer to device polling info (maybe nullptr)
+/// @param pauseAfterSendMs pause after send in ms
 /// @return true if result stored
-bool BusStatusMgr::handlePollResult(uint64_t timeNowUs, BusElemAddrType address, 
-                        const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo)
+bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, BusElemAddrType address, 
+                        const std::vector<uint8_t>& pollResultData, const DevicePollingInfo* pPollInfo,
+                        uint32_t pauseAfterSendMs)
 {
     // Callback
     RaftDeviceDataChangeCB pCallback = nullptr;
@@ -561,30 +588,34 @@ bool BusStatusMgr::handlePollResult(uint64_t timeNowUs, BusElemAddrType address,
     if (pAddrStatus)
     {
         // Add result to aggregator
-        putResult = pAddrStatus->deviceStatus.storePollResults(timeNowUs, pollResultData, pPollInfo);
+        putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs);
 
-        // Check for callback
-        pCallback = pAddrStatus->getDataChangeCB();
-        if (pCallback)
-        {
-            // Check min time between reports
-            if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
+        // Check if this is a completed poll
+        if (nextReqIdx == 0)
+        {            
+            // Check for callback
+            pCallback = pAddrStatus->getDataChangeCB();
+            if (pCallback)
             {
-                // Get device type index and callback info
-                deviceTypeIdx = pAddrStatus->deviceStatus.getDeviceTypeIndex();
-                pCallbackInfo = pAddrStatus->getCallbackInfo();
-                pAddrStatus->lastDataChangeReportTimeMs = timeNowMs;
+                // Check min time between reports
+                if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
+                {
+                    // Get device type index and callback info
+                    deviceTypeIdx = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+                    pCallbackInfo = pAddrStatus->getCallbackInfo();
+                    pAddrStatus->lastDataChangeReportTimeMs = timeNowMs;
+                }
+                else
+                {
+                    pCallback = nullptr;
+                }
             }
-            else
-            {
-                pCallback = nullptr;
-            }
+
+            // Store time of last status update
+            _lastIdentPollUpdateTimeMs = timeNowMs;
+            _lastPollOrStatusUpdateTimeMs = timeNowMs;
         }
     }
-
-    // Store time of last status update
-    _lastIdentPollUpdateTimeMs = timeNowMs;
-    _lastPollOrStatusUpdateTimeMs = timeNowMs;
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
