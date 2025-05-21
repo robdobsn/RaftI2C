@@ -148,26 +148,216 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceT
     bool detectionValuesMatch = true;
     for (const auto& detectionRec : detectionRecs)
     {
+        // Check if using multi-field check with CRC validation
+        if (detectionRec.useMultiFieldCheck && !detectionRec.fieldChecks.empty())
+        {
+            // Calculate total bytes needed
+            uint32_t totalReadBytes = 0;
+            for (const auto& fieldCheck : detectionRec.fieldChecks)
+            {
+                totalReadBytes += fieldCheck.expectedValue.size();
+                if (fieldCheck.hasCRC)
+                {
+                    totalReadBytes += fieldCheck.crcValidation.size;
+                }
+            }
 
-        // Check there is a read data check
-        uint32_t readDataCheckBytes = 0;
-        if (detectionRec.checkValues.size() == 0)
-            continue;
-        readDataCheckBytes = detectionRec.checkValues[0].second.size();
+            // Create a bus request to read all data at once
+            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    address,
+                    0, 
+                    detectionRec.writeData.size(), 
+                    detectionRec.writeData.data(),
+                    totalReadBytes,
+                    detectionRec.pauseAfterSendMs, 
+                    nullptr, 
+                    this);
+            std::vector<uint8_t> readData;
+            RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
 
-        // Create a bus request to read the detection value
-        // Create the poll request
-        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
-                address,
-                0, 
-                detectionRec.writeData.size(), 
-                detectionRec.writeData.data(),
-                readDataCheckBytes,
-                detectionRec.pauseAfterSendMs, 
-                nullptr, 
-                this);
-        std::vector<uint8_t> readData;
-        RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            String writeStr;
+            Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
+            String readDataStr;
+            Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch MultiField %s addr %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+                        rslt == RAFT_OK ? "OK" : "BUS ACCESS FAILED",
+                        BusI2CAddrAndSlot::toString(address).c_str(), 
+                        writeStr.c_str(), rslt, 
+                        readDataStr.c_str(), readData.size(), 
+                        detectionRec.pauseAfterSendMs);
+#endif
+
+            // Check ok result
+            if (rslt != RAFT_OK)
+                return false;
+
+            // Validate each field
+            bool allFieldsValid = true;
+            uint32_t offset = 0;
+
+            for (const auto& fieldCheck : detectionRec.fieldChecks)
+            {
+                // Check if we have enough data
+                if (offset + fieldCheck.expectedValue.size() > readData.size())
+                {
+                    allFieldsValid = false;
+                    break;
+                }
+
+                // Validate the field data
+                bool fieldValid = true;
+                for (size_t i = 0; i < fieldCheck.expectedValue.size(); i++)
+                {
+                    if ((readData[offset + i] & fieldCheck.mask[i]) != fieldCheck.expectedValue[i])
+                    {
+                        fieldValid = false;
+                        break;
+                    }
+                }
+
+                // Move past the data field
+                offset += fieldCheck.expectedValue.size();
+
+                // Check CRC if present
+                if (fieldValid && fieldCheck.hasCRC)
+                {
+                    // Check if we have enough data for CRC
+                    if (offset + fieldCheck.crcValidation.size > readData.size())
+                    {
+                        fieldValid = false;
+                        break;
+                    }
+
+                    // Calculate CRC on the field data
+                    uint8_t calculatedCRC = deviceTypeRecords.calculateCRC(
+                        &readData[offset - fieldCheck.expectedValue.size()],
+                        fieldCheck.expectedValue.size(),
+                        fieldCheck.crcValidation.algorithm
+                    );
+
+                    // Compare with received CRC
+                    if (calculatedCRC != readData[offset])
+                    {
+#ifdef DEBUG_DEVICE_IDENT_MGR
+                        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch CRC mismatch calculated %02x received %02x", 
+                                calculatedCRC, readData[offset]);
+#endif
+                        fieldValid = false;
+                    }
+
+                    // Move past the CRC
+                    offset += fieldCheck.crcValidation.size;
+                }
+
+                if (!fieldValid)
+                {
+                    allFieldsValid = false;
+                    break;
+                }
+            }
+
+            // Update match status
+            if (!allFieldsValid)
+                detectionValuesMatch = false;
+        }
+        else
+        {
+            // Traditional check without CRC
+
+            // Check there is a read data check
+            uint32_t readDataCheckBytes = 0;
+            if (detectionRec.checkValues.size() == 0)
+                continue;
+            readDataCheckBytes = detectionRec.checkValues[0].second.size();
+
+            // Create a bus request to read the detection value
+            // Create the poll request
+            BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+                    address,
+                    0, 
+                    detectionRec.writeData.size(), 
+                    detectionRec.writeData.data(),
+                    readDataCheckBytes,
+                    detectionRec.pauseAfterSendMs, 
+                    nullptr, 
+                    this);
+            std::vector<uint8_t> readData;
+            RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            String writeStr;
+            Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
+            String readDataStr;
+            Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+                        rslt == RAFT_OK ? "OK" : "BUS ACCESS FAILED",
+                        BusI2CAddrAndSlot::toString(address).c_str(), 
+                        writeStr.c_str(), rslt, 
+                        readDataStr.c_str(), readData.size(), 
+                        detectionRec.pauseAfterSendMs);
+#endif
+
+            // Check ok result
+            if (rslt != RAFT_OK)
+                return false;
+
+            // Iterate through check values to see if one of them matches
+            bool checkValueMatch = false;
+            for (const auto& checkValue : detectionRec.checkValues)
+            {
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+                String readMaskStr;
+                Raft::getHexStrFromBytes(checkValue.first.data(), checkValue.first.size(), readMaskStr);
+                String readCheckStr;
+                Raft::getHexStrFromBytes(checkValue.second.data(), checkValue.second.size(), readCheckStr);
+                LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readDataMask %s readDataCheck %s VS readData %s",
+                            readMaskStr.c_str(),
+                            readCheckStr.c_str(),
+                            readDataStr.c_str());
+#endif
+
+                // Check the read data
+                bool sizeMatch = readData.size() == checkValue.second.size();
+                if (sizeMatch)
+                {
+                    bool checkByteMatch = true;
+                    for (int i = 0; i < readData.size(); i++)
+                    {
+                        if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
+                        {
+                            checkByteMatch = false;
+                            break;
+                        }
+                    }
+                    if (checkByteMatch)
+                    {
+                        checkValueMatch = true;
+                        break;
+                    }
+                }
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+                LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readData %s sizeMatch %d checkValueMatch %d", 
+                            readDataStr.c_str(), sizeMatch, checkValueMatch);
+#endif
+            }
+
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %s %s", 
+                        BusI2CAddrAndSlot::toString(address).c_str(),
+                        checkValueMatch ? "MATCH" : "NO MATCH");
+#endif
+
+            // Check if all values match
+            if (!checkValueMatch)
+                detectionValuesMatch = false;
+        }
+
+        if (detectionRec.pauseAfterSendMs > 0)
+            delay(detectionRec.pauseAfterSendMs);
+    }
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         String writeStr;
