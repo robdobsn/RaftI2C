@@ -22,6 +22,7 @@
 // #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_HANDLE_POLL_RESULT
+// #define DEBUG_GET_POLL_RESULT
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -620,16 +621,18 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
 
-#ifdef DEBUG_HANDLE_POLL_RESULT
-    LOG_I(MODULE_PREFIX, "handlePollResult address %04x pAddrStatus %p", address, pAddrStatus);
-#endif
-
     // Check if a callback is required
     if (pCallback)
     {
         // Call the callback
         pCallback(deviceTypeIdx, pollResultData, pCallbackInfo);
     }
+
+#ifdef DEBUG_HANDLE_POLL_RESULT
+    LOG_I(MODULE_PREFIX, "handlePollResult address %04x pAddrStatus %p deviceTypeIdx %d callbackValid %s", 
+                address, pAddrStatus, deviceTypeIdx,
+                pCallback ? "Y" : "N");
+#endif
 
     return putResult;
 }
@@ -710,6 +713,12 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& is
 
     // Return semaphore
     xSemaphoreGive(_busElemStatusMutex);
+
+#ifdef DEBUG_GET_POLL_RESULT
+    LOG_I(MODULE_PREFIX, "getBusElemPollResponses address %04x isOnline %d deviceTypeIndex %d numResponses %d responseSize %d",
+                address, isOnline, deviceTypeIndex, numResponses, responseSize);
+#endif
+
     return numResponses;
 }
 

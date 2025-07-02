@@ -20,6 +20,7 @@
 // #define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
+// #define DEBUG_GET_DECODED_POLL_RESPONSES
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consructor
@@ -413,6 +414,12 @@ uint32_t DeviceIdentMgr::getDecodedPollResponses(BusElemAddrType address,
     std::vector<uint8_t> devicePollResponseData;
     uint32_t responseSize = 0;
     _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+#ifdef DEBUG_GET_DECODED_POLL_RESPONSES
+    LOG_I(MODULE_PREFIX, "getDecodedPollResponses address %s isOnline %d deviceTypeIndex %d responseSize %d",
+                BusI2CAddrAndSlot::toString(address).c_str(),
+                isOnline, deviceTypeIndex, responseSize);
+#endif
 
     // Decode the poll response
     return decodePollResponses(deviceTypeIndex, devicePollResponseData.data(), responseSize, 

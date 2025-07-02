@@ -11,6 +11,7 @@
 
 // #define DEBUG_POLL_REQUEST
 // #define DEBUG_POLL_RESULT
+// #define DEBUG_POLL_RESULT_SPECIFIC_ADDRESS 0x15
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -86,16 +87,21 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             auto rslt = _busReqSyncFn(&busReqRec, &readData);
 
 #ifdef DEBUG_POLL_RESULT
-            String writeDataHexStr;
-            Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
-            String readDataHexStr;
-            Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
-            LOG_I(MODULE_PREFIX, "taskService poll addr %s (%04x) writeData %s readData %s rslt %s", 
-                            addrAndSlot.toString().c_str(),
-                            address,
-                            writeDataHexStr.c_str(),
-                            readDataHexStr.c_str(),
-                            Raft::getRetCodeStr(rslt));
+#ifdef DEBUG_POLL_RESULT_SPECIFIC_ADDRESS
+            if (addrAndSlot.i2cAddr == DEBUG_POLL_RESULT_SPECIFIC_ADDRESS)
+#endif
+            {
+                String writeDataHexStr;
+                Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
+                String readDataHexStr;
+                Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
+                LOG_I(MODULE_PREFIX, "taskService poll addr %s (%04x) writeData %s readData %s rslt %s", 
+                                addrAndSlot.toString().c_str(),
+                                address,
+                                writeDataHexStr.c_str(),
+                                readDataHexStr.c_str(),
+                                Raft::getRetCodeStr(rslt));
+            }
 #endif
 
             if (rslt != RAFT_OK)
