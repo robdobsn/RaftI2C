@@ -113,18 +113,28 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
           _i2cPort, _pinSDA, _pinSCL, sda_out_sig, sda_in_sig, scl_out_sig, scl_in_sig);
     if (_pinSDA >= 0)
     {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+        gpio_set_direction((gpio_num_t)_pinSDA, GPIO_MODE_INPUT_OUTPUT_OD);
+        gpio_set_level((gpio_num_t)_pinSDA, 1);
+#else
         gpio_set_level((gpio_num_t)_pinSDA, 1);
         gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[_pinSDA], PIN_FUNC_GPIO);
         gpio_set_direction((gpio_num_t)_pinSDA, GPIO_MODE_INPUT_OUTPUT_OD);
+#endif
         gpio_set_pull_mode((gpio_num_t)_pinSDA, GPIO_PULLUP_ONLY);
         esp_rom_gpio_connect_out_signal((gpio_num_t)_pinSDA, sda_out_sig, false, false);
         esp_rom_gpio_connect_in_signal((gpio_num_t)_pinSDA, sda_in_sig, false);
     }
     if (_pinSCL >= 0)
     {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+        gpio_set_direction((gpio_num_t)_pinSCL, GPIO_MODE_INPUT_OUTPUT_OD);
+        gpio_set_level((gpio_num_t)_pinSCL, 1);
+#else
         gpio_set_level((gpio_num_t)_pinSCL, 1);
         gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[_pinSCL], PIN_FUNC_GPIO);
         gpio_set_direction((gpio_num_t)_pinSCL, GPIO_MODE_INPUT_OUTPUT_OD);
+#endif
         gpio_set_pull_mode((gpio_num_t)_pinSCL, GPIO_PULLUP_ONLY);
         esp_rom_gpio_connect_out_signal((gpio_num_t)_pinSCL, scl_out_sig, false, false);
         esp_rom_gpio_connect_in_signal((gpio_num_t)_pinSCL, scl_in_sig, false);
