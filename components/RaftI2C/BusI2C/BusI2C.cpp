@@ -14,9 +14,18 @@
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 
+// Auto-select I2C implementation based on chip if not explicitly defined
+#if !defined(I2C_USE_RAFT_I2C) && !defined(I2C_USE_ESP_IDF_5)
+    #if defined(CONFIG_IDF_TARGET_ESP32C6)
+        #define I2C_USE_ESP_IDF_5
+    #else
+        #define I2C_USE_RAFT_I2C
+    #endif
+#endif
+
 #if defined(I2C_USE_RAFT_I2C)
 #include "RaftI2CCentral.h"
-#elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
+#elif defined(I2C_USE_ESP_IDF_5)
 #include "RaftI2CCentral_ESPIDF.h"
 #endif
 
@@ -63,9 +72,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     _pI2CCentral = pI2CCentralIF;
     if (!_pI2CCentral)
     {
-#if defined(I2C_USE_RAFT_I2C) 
+#if defined(I2C_USE_RAFT_I2C)
         _pI2CCentral = new RaftI2CCentral();
-#elif (defined(I2C_USE_ESP_IDF_5) || defined(I2C_USE_RAFT_I2C)) && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3))
+#elif defined(I2C_USE_ESP_IDF_5)
         _pI2CCentral = new RaftI2CCentral_ESPIDF();
 #endif
         _i2cCentralNeedsToBeDeleted = true;
