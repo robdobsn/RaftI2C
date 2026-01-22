@@ -106,6 +106,8 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
             if (rslt != RAFT_OK)
             {
+                bool isOnline = false;
+                _busStatusMgr.updateBusElemState(address, false, isOnline);
                 allResultsOkAndComplete = false;
                 break;
             }

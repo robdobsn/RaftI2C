@@ -120,6 +120,13 @@ public:
     /// @return JSON string
     String getDebugJSON(bool includeBraces) const;
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set device polling interval (us) for a specific address
+    /// @param address Composite address (slot+I2C)
+    /// @param pollIntervalUs Poll interval in microseconds
+    /// @return true if updated
+    bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalUs);
+
 private:
     // Bus element status change mutex
     SemaphoreHandle_t _busElemStatusMutex = nullptr;
