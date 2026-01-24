@@ -285,38 +285,37 @@ bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, const DeviceType
 String DeviceIdentMgr::deviceStatusToJson(BusElemAddrType address, bool isOnline, uint16_t deviceTypeIndex, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
-    // Get device type info
-    DeviceTypeRecord devTypeRec;
-    if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
-        return "";
-
     // Get the poll response JSON
-    return deviceTypeRecords.deviceStatusToJson(address, isOnline, &devTypeRec, devicePollResponseData);
+    return deviceTypeRecords.deviceStatusToJson(address, isOnline, deviceTypeIndex, devicePollResponseData);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for device type info
 /// @param address Address of element
+/// @param includePlugAndPlayInfo true to include plug and play information
+/// @param deviceTypeIndex (out) device type index
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByAddr(BusElemAddrType address, bool includePlugAndPlayInfo) const
+String DeviceIdentMgr::getDevTypeInfoJsonByAddr(BusElemAddrType address, bool includePlugAndPlayInfo, uint32_t& deviceTypeIndex) const
 {
     // Get device type index
-    uint16_t deviceTypeIdx = _busStatusMgr.getDeviceTypeIndexByAddr(address);
-    if (deviceTypeIdx == DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
+    deviceTypeIndex = _busStatusMgr.getDeviceTypeIndexByAddr(address);
+    if (deviceTypeIndex == DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
         return "{}";
 
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIndex, includePlugAndPlayInfo);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for device type info
 /// @param deviceType Device type
+/// @param includePlugAndPlayInfo true to include plug and play information
+/// @param deviceTypeIndex (out) device type index
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo) const
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo, uint32_t& deviceTypeIndex) const
 {
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo, deviceTypeIndex);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

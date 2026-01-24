@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include "RaftArduino.h"
+#include "RaftBusConsts.h"
 #include "BusI2CConsts.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,15 +40,15 @@ public:
         addrAndSlot.slotNum = (compositeAddrAndSlot >> 8) & 0x3F;
         return addrAndSlot;
     }
-    BusElemAddrType toBusElemAddrType() const
+    inline BusElemAddrType toBusElemAddrType() const
     {
         return (i2cAddr & 0xFF) | ((slotNum & 0x3F) << 8);
     }
-    static uint16_t getI2CAddr(BusElemAddrType compositeAddrAndSlot)
+    static inline uint16_t getI2CAddr(BusElemAddrType compositeAddrAndSlot)
     {
         return compositeAddrAndSlot & 0xFF;
     }
-    static uint16_t getSlotNum(BusElemAddrType compositeAddrAndSlot)
+    static inline uint16_t getSlotNum(BusElemAddrType compositeAddrAndSlot)
     {
         return (compositeAddrAndSlot >> 8) & 0x3F;
     }
@@ -66,11 +67,15 @@ public:
     }
     String toString() const
     {
-        return "0x" + String(i2cAddr, 16) + "@" + String(slotNum);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%s%x@%u", RAFT_BUS_ADDR_PREFIX, i2cAddr, slotNum);
+        return String(buf);
     }
     static String toString(BusElemAddrType address)
     {
-        return "0x" + String(getI2CAddr(address), 16) + "@" + String(getSlotNum(address));
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%s%x@%u", RAFT_BUS_ADDR_PREFIX, getI2CAddr(address), getSlotNum(address));
+        return String(buf);
     }
     void fromString(const String& str)
     {

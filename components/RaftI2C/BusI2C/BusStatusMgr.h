@@ -129,7 +129,7 @@ public:
 
 private:
     // Bus element status change mutex
-    SemaphoreHandle_t _busElemStatusMutex = nullptr;
+    mutable RaftMutex _busElemStatusMutex;
 
     // Bus base
     RaftBus& _raftBus;

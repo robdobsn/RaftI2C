@@ -52,7 +52,7 @@ void BusAccessor::setup(const RaftJsonIF& config)
     _lowLoadBus = config.getLong("lowLoad", 0) != 0;
 
     // Obtain semaphore to polling vector
-    if (RaftMutex_lock(_pollingMutex, 50))
+    if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         _scheduler.clear();
         RaftMutex_unlock(_pollingMutex);
@@ -109,7 +109,7 @@ void BusAccessor::clear(bool incPolling)
     if (incPolling)
     {
         // We're going to mess with the polling list so obtain the semaphore
-        if (RaftMutex_lock(_pollingMutex, 10))
+        if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
         {
             // Clear all lists
             _scheduler.clear();
@@ -175,7 +175,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
 void BusAccessor::processPolling()
 {
     // Obtain semaphore to polling vector
-    if (RaftMutex_lock(_pollingMutex, 10))
+    if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         // Get the next element to poll
         int pollListIdx = _scheduler.getNext();
@@ -326,7 +326,7 @@ bool BusAccessor::addToPollingList(BusRequestInfo& busReqInfo)
 #endif
 
     // We're going to mess with the polling list so obtain the semaphore
-    if (RaftMutex_lock(_pollingMutex, 50))
+    if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         // See if already in the list
         bool addedOk = false;

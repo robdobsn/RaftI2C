@@ -125,6 +125,10 @@ private:
     // Semaphore controlling access to register values
     RaftMutex _regMutex;
 
+    // Max wait for mutex
+    static const uint32_t REG_MUTEX_MAX_WAIT_UPDATE_MS = 10;
+    static const uint32_t REG_MUTEX_MAX_WAIT_VPIN_MS = 10;
+
     // Callbacks for set operations
     class VirtualPinSetCallbackInfo
     {
