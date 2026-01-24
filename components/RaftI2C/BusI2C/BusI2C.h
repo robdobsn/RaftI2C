@@ -203,7 +203,7 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set device polling interval (us) for an address
-    /// @param address Composite address (slot in high bits, i2c in low)
+    /// @param address Composite address
     /// @param pollIntervalUs Polling interval in microseconds
     /// @return true if applied
     virtual bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalUs) override final
