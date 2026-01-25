@@ -752,11 +752,11 @@ String BusStatusMgr::getDebugJSON(bool includeBraces) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Set device polling interval (us) for a specific address
+/// @brief Set device polling interval for a specific address
 /// @param address address
-/// @param pollIntervalUs poll interval in microseconds
+/// @param pollIntervalMs poll interval in milliseconds
 /// @return true if address found and updated
-bool BusStatusMgr::setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalUs)
+bool BusStatusMgr::setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs)
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
@@ -766,7 +766,7 @@ bool BusStatusMgr::setDevicePollInterval(BusElemAddrType address, uint32_t pollI
     BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
-        pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalUs;
+        pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalMs * 1000;
         updated = true;
     }
 

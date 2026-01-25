@@ -121,12 +121,12 @@ public:
     String getDebugJSON(bool includeBraces) const;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set device polling interval (us) for a specific address
+    /// @brief Set device polling interval for a specific address
     /// @param address Composite address (slot+I2C)
-    /// @param pollIntervalUs Poll interval in microseconds
+    /// @param pollIntervalMs Poll interval in milliseconds
     /// @return true if updated
-    bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalUs);
-
+    bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs);
+    
 private:
     // Bus element status change mutex
     mutable RaftMutex _busElemStatusMutex;

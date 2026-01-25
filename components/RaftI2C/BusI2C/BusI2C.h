@@ -202,13 +202,13 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Set device polling interval (us) for an address
+    /// @brief Set device polling interval for an address
     /// @param address Composite address
-    /// @param pollIntervalUs Polling interval in microseconds
+    /// @param pollIntervalMs Polling interval in milliseconds
     /// @return true if applied
-    virtual bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalUs) override final
+    virtual bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs) override final
     {
-        return _busStatusMgr.setDevicePollInterval(address, pollIntervalUs);
+        return _busStatusMgr.setDevicePollInterval(address, pollIntervalMs);
     }
         
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
