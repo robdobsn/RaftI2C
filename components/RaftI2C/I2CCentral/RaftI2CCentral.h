@@ -9,9 +9,8 @@
 
 #pragma once
 
+#include "RaftCore.h"
 #include "RaftI2CCentralIF.h"
-#include "RaftUtils.h"
-#include "RaftThreading.h"
 #include "soc/i2c_struct.h"
 #include "soc/i2c_reg.h"
 #include "esp_intr_alloc.h"
@@ -260,10 +259,10 @@ private:
     bool initInterrupts();
     void initBusFiltering();
     bool checkI2CLinesOk(String& busLinesErrorMsg);
-    static void IRAM_ATTR i2cISRStatic(void* arg);
-    void IRAM_ATTR i2cISR();
-    uint32_t IRAM_ATTR fillTxFifo();
-    uint32_t IRAM_ATTR emptyRxFifo();
+    static void FUNCTION_DECORATOR_IRAM_ATTR i2cISRStatic(void* arg);
+    void FUNCTION_DECORATOR_IRAM_ATTR i2cISR();
+    uint32_t FUNCTION_DECORATOR_IRAM_ATTR fillTxFifo();
+    uint32_t FUNCTION_DECORATOR_IRAM_ATTR emptyRxFifo();
     void setDefaultTimeout();
 
     // Debugging
@@ -279,8 +278,8 @@ private:
     {
     public:
         DebugI2CISRElem();
-        void IRAM_ATTR clear();
-        void IRAM_ATTR set(const char* msg, uint32_t intStatus, 
+        void FUNCTION_DECORATOR_IRAM_ATTR clear();
+        void FUNCTION_DECORATOR_IRAM_ATTR set(const char* msg, uint32_t intStatus, 
                         uint32_t mainStatus, uint32_t txFifoStatus);
         String toStr();
         uint64_t _micros;
@@ -293,11 +292,11 @@ private:
     {
     public:
         DebugI2CISR();
-        void IRAM_ATTR clear();
+        void FUNCTION_DECORATOR_IRAM_ATTR clear();
         static const uint32_t DEBUG_RAFT_I2C_CENTRAL_ISR_MAX = 100;
         DebugI2CISRElem _i2cISRDebugElems[DEBUG_RAFT_I2C_CENTRAL_ISR_MAX];
         uint32_t _i2cISRDebugCount;
-        void IRAM_ATTR debugISRAdd(const char* msg, uint32_t intStatus, 
+        void FUNCTION_DECORATOR_IRAM_ATTR debugISRAdd(const char* msg, uint32_t intStatus, 
                         uint32_t mainStatus, uint32_t txFifoStatus);
         uint32_t getCount();
         DebugI2CISRElem& getElem(uint32_t i);
