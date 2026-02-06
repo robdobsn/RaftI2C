@@ -28,7 +28,7 @@ static const uint32_t lockupDetectAddr = 0x55;
 static RaftJson configJson = "{\"lockupDetect\":\"0x55\",\"scanBoost\":[\"0x55\"],\"busScanPeriodMs\":0}";
 
 // List of status changes
-std::vector<BusElemAddrAndStatus> statusChangesList;
+std::vector<BusAddrStatus> statusChangesList;
 BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
 
 // Test configuration
@@ -47,7 +47,7 @@ BusOperationStatusCB busOperationStatusCB = [](RaftBus& bus, BusOperationStatus 
 };
 
 // Callback for bus element status
-BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusElemAddrAndStatus>& statusChanges) {
+BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusAddrStatus>& statusChanges) {
 
     // Append to status changes list for later checking
     if (statusChangesList.size() < 500)
@@ -67,7 +67,7 @@ BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusElemAddr
 
 BusReqSyncFn busReqSyncFn = [](const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) {
     
-    BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(pReqRec->getAddress());
+    BusI2CAddrAndSlot addrAndSlot(pReqRec->getAddress());
     uint32_t addr = addrAndSlot.i2cAddr;
     RaftRetCode reslt = RAFT_BUS_ACK_ERROR;
 
@@ -186,7 +186,7 @@ void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
     helper_set_online_addrs(onlineAddrs);
 
     // Config
-    raftBus.setup(configJson);
+    raftBus.setup(DeviceIDType::BUS_NUM_FIRST_BUS, configJson);
     busStatusMgr.setup(configJson);
     RaftJsonPrefixed busExtenderConfigJson(configJson, "mux");
     busMultiplexers.setup(busExtenderConfigJson);

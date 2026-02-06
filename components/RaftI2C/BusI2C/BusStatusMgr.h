@@ -103,7 +103,7 @@ public:
     /// @param dataChangeCB Callback for data change
     /// @param minTimeBetweenReportsMs Minimum time between reports (ms)
     /// @param pCallbackInfo Callback info (passed to the callback)
-    void registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB,
+    void registerForDeviceData(BusElemAddrType addrAndSlot, RaftDeviceDataChangeCB dataChangeCB,
                 uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -178,5 +178,5 @@ private:
     uint32_t _lastPollOrStatusUpdateTimeMs = 0;
 
     // Debug
-    static constexpr const char* MODULE_PREFIX = "RaftBusStMgr";    
+    static constexpr const char* MODULE_PREFIX = "I2CBusStMgr";    
 };

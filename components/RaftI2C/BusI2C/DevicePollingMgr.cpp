@@ -46,17 +46,17 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         if (pollInfo.pollReqs.size() == 0)
             return;
         BusElemAddrType address = pollInfo.pollReqs[0].getAddress();
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(address);
+        BusI2CAddrAndSlot addrAndSlot(address);
 
         // Get the next request index
         uint32_t nextReqIdx = pollInfo.partialPollNextReqIdx;
 
 #ifdef DEBUG_POLL_REQUEST
-        LOG_I(MODULE_PREFIX, "taskService poll %s (%04x)", addrAndSlot.toString().c_str(), address);
+        LOG_I(MODULE_PREFIX, "taskService pollreq %s (%04x)", addrAndSlot.toString().c_str(), address);
 #endif
 
         // Enable the slot
-        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.slotNum);
+        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.getSlotNum());
         if (rslt != RAFT_OK)
             return;
 
@@ -95,7 +95,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
                 Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
                 String readDataHexStr;
                 Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
-                LOG_I(MODULE_PREFIX, "taskService poll addr %s (%04x) writeData %s readData %s rslt %s", 
+                LOG_I(MODULE_PREFIX, "taskService pollrslt addr %s (%04x) writeData %s readData %s rslt %s", 
                                 addrAndSlot.toString().c_str(),
                                 address,
                                 writeDataHexStr.c_str(),

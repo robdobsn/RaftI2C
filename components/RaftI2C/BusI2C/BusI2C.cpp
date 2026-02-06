@@ -13,6 +13,7 @@
 #include "RaftJsonPrefixed.h"
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
+#include "BusI2CAddrAndSlot.h"
 
 // Auto-select I2C implementation based on chip if not explicitly defined
 #if !defined(I2C_USE_RAFT_I2C) && !defined(I2C_USE_ESP_IDF_5)
@@ -99,9 +100,10 @@ BusI2C::~BusI2C()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Setup
+/// @param busNum - bus number
 /// @param config Configuration
 /// @return true if successful
-bool BusI2C::setup(const RaftJsonIF& config)
+bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
 {
     // Note:
     // No attempt is made here to clean-up properly
@@ -111,6 +113,7 @@ bool BusI2C::setup(const RaftJsonIF& config)
     // Check if already configured
     if (_initOk)
         return false;
+    _busNum = busNum;
 
     // Get bus details
     _i2cPort = config.getLong("i2cPort", 0);

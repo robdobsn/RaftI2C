@@ -12,15 +12,16 @@
 #include "DeviceIdentMgr.h"
 #include <algorithm>
 
-// #define DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
+#define WARN_ON_FAILED_TO_GET_SEMAPHORE
+
+// #define DEBUG_UPDATE_BUS_ELEM_STATE
+// #define DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS 0x310
+// #define DEBUG_LOOP_PROCESS_BUS_ELEM_STATUS_CHANGES
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING
 // #define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x55
-// #define WARN_ON_FAILED_TO_GET_SEMAPHORE
 // #define DEBUG_BUS_OPERATION_STATUS
 // #define DEBUG_NO_SCANNING
-// #define DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
 // #define DEBUG_ACCESS_BARRING_FOR_MS
-// #define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_HANDLE_POLL_RESULT
 // #define DEBUG_GET_POLL_RESULT
 
@@ -85,7 +86,6 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
     // Obtain semaphore controlling access to busElemChange list and flag
     // so we can update bus and element operation status - don't worry if we can't
     // access the list as there will be other service loops
-    std::vector<BusElemAddrAndStatus> statusChanges;
     uint32_t numChanges = 0;
     if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
@@ -104,7 +104,8 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
     if (numChanges > 0)
     {
         // Make space for changes
-        statusChanges.reserve(numChanges+1);
+        std::vector<BusAddrStatus> statusChanges;
+        statusChanges.reserve(numChanges);
 
         // Get semaphore again
         if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
@@ -114,15 +115,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                 if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 {
                     // Handle element change
-                    BusElemAddrAndStatus statusChange = 
-                        {
-                            addrStatus.address, 
-                            (addrStatus.onlineState == DeviceOnlineState::ONLINE) && addrStatus.isChange,
-                            (addrStatus.onlineState == DeviceOnlineState::OFFLINE) && addrStatus.isChange,
-                            addrStatus.isNewlyIdentified,
-                            addrStatus.deviceStatus.getDeviceTypeIndex()
-                        };
-                    statusChanges.push_back(statusChange);
+                    statusChanges.push_back(addrStatus);
                     addrStatus.isChange = false;
                     addrStatus.isNewlyIdentified = false;
                 }
@@ -140,25 +133,25 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
            RaftMutex_unlock(_busElemStatusMutex);
         }
 
+        // Perform elem state change callback if required
+        if ((statusChanges.size() > 0))
+        {
+#ifdef DEBUG_LOOP_PROCESS_BUS_ELEM_STATUS_CHANGES
+            for (auto& statusChange : statusChanges)
+            {
+                LOG_I(MODULE_PREFIX, "service busElemStatusChange addr %04x isChange %s status %s devTypeIdx %d",
+                            statusChange.address,
+                            statusChange.isChange ? "Y" : "N",
+                            BusAddrStatus::getOnlineStateStr(statusChange.onlineState),
+                            statusChange.deviceStatus.deviceTypeIndex);
+            }
+#endif            
+            _raftBus.callBusElemStatusCB(statusChanges);
+        }
+
         // No more changes
-        _busElemStatusChangeDetected = false;
+        _busElemStatusChangeDetected = false;            
     }
-
-    // Return semaphore
-
-    // Perform elem state change callback if required
-    if ((statusChanges.size() > 0))
-        _raftBus.callBusElemStatusCB(statusChanges);
-
-    // Debug
-#ifdef DEBUG_SERVICE_BUS_ELEM_STATUS_CHANGE
-    for (auto& statusChange : statusChanges)
-    {
-        LOG_I(MODULE_PREFIX, "loop address %04x status change to %s",
-                    statusChange.address,
-                    statusChange.isChangeToOnline ? "online" : "offline");
-    }
-#endif
 
     // Bus operation change callback if required
     if (prevBusOperationStatus != newBusOperationStatus)
@@ -181,8 +174,13 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 /// @return true if state has changed
 bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemResponding, bool& isOnline)
 {
-#ifdef DEBUG_HANDLE_BUS_ELEM_STATE_CHANGES
-    LOG_I(MODULE_PREFIX, "updateBusElemState address %04x isResponding %d", address, elemResponding);
+#ifdef DEBUG_UPDATE_BUS_ELEM_STATE
+#if defined(DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS)
+    if (address == DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS)
+#endif
+    {
+        LOG_I(MODULE_PREFIX, "updateBusElemState address %04x isResponding %d", address, elemResponding);
+    }
 #endif
 
     // Check for new status change
@@ -207,8 +205,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
             // Add new record
-            BusAddrStatus newAddrStatus;
-            newAddrStatus.address = address;
+            BusAddrStatus newAddrStatus(address, DeviceOnlineState::INITIAL, true, true);
             _addrStatus.push_back(newAddrStatus);
             pAddrStatus = &_addrStatus.back();
         }
@@ -260,10 +257,8 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
             LOG_I(MODULE_PREFIX, "updateBusElemState address %04x count %d(prev %d) state %s(prev %s) isChange %d(was %d) isResponding %d",
                         newStatus.address,
                         newStatus.count, prevStatus.count, 
-                        newStatus.onlineState == DeviceOnlineState::ONLINE ? "ONLINE" : 
-                            (newStatus.onlineState == DeviceOnlineState::OFFLINE ? "OFFLINE" : "INITIAL"),
-                        prevStatus.onlineState == DeviceOnlineState::ONLINE ? "ONLINE" : 
-                            (prevStatus.onlineState == DeviceOnlineState::OFFLINE ? "OFFLINE" :
+                        BusAddrStatus::getOnlineStateStr(newStatus.onlineState),
+                        BusAddrStatus::getOnlineStateStr(prevStatus.onlineState),
                         newStatus.isChange, prevStatus.isChange, 
                         elemResponding);
         }
@@ -425,9 +420,10 @@ void BusStatusMgr::setBusElemDeviceStatus(BusElemAddrType address, const DeviceS
         pAddrStatus->deviceStatus = deviceStatus;
 
         // Check if device type index is valid - if so this is a new identification
-        if (deviceStatus.getDeviceTypeIndex() != DeviceStatus::DEVICE_TYPE_INDEX_INVALID)
+        if (deviceStatus.getDeviceTypeIndex() != DEVICE_TYPE_INDEX_INVALID)
         {
             pAddrStatus->isNewlyIdentified = true;
+            _busElemStatusChangeDetected = true;
         }
     }
 
@@ -439,14 +435,13 @@ void BusStatusMgr::setBusElemDeviceStatus(BusElemAddrType address, const DeviceS
 /// @brief Get device type index by address
 /// @param address address
 /// @return device type index
-uint16_t BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType address) const
+DeviceTypeIndexType BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType address) const
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
-        return DeviceStatus::DEVICE_TYPE_INDEX_INVALID;
-
+        return DEVICE_TYPE_INDEX_INVALID;
     // Find address record
-    uint16_t deviceTypeIndex = DeviceStatus::DEVICE_TYPE_INDEX_INVALID;
+    DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
     const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {

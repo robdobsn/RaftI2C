@@ -19,7 +19,6 @@
 #include "DevicePollingMgr.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
-#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -51,9 +50,10 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief setup
+    /// @param busNum - bus number
     /// @param config - configuration
     /// @return true if setup was successful
-    virtual bool setup(const RaftJsonIF& config) override final;
+    virtual bool setup(BusNumType busNum, const RaftJsonIF& config) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Close bus
@@ -178,27 +178,6 @@ public:
     virtual uint32_t getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const override final
     {
         return _busStatusMgr.getDeviceInfoTimestampMs(includeElemOnlineStatusChanges, includeDeviceDataUpdates);
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Convert bus address to string
-    /// @param addr - address
-    /// @return address as a string
-    virtual String addrToString(BusElemAddrType addr) const override final
-    {
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(addr);
-        return addrAndSlot.toString();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Convert string to bus address
-    /// @param addrStr - address as a string
-    /// @return address
-    virtual BusElemAddrType stringToAddr(const String& addrStr) const override final
-    {
-        BusI2CAddrAndSlot addrAndSlot;
-        addrAndSlot.fromString(addrStr);
-        return addrAndSlot.toBusElemAddrType();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

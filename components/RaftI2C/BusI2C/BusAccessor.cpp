@@ -388,7 +388,7 @@ bool BusAccessor::addToQueuedReqFIFO(BusRequestInfo& reqRec)
     String writeDataStr;
     Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
     LOG_I(MODULE_PREFIX, "addToQueuedRecFIFO addr@slotNum %s writeData %s readLen %d delayMs %d", 
-                BusI2CAddrAndSlot::fromBusElemAddrType(reqRec.getAddress()).toString().c_str(),
+                BusI2CAddrAndSlot(reqRec.getAddress()).toString().c_str(),
                 writeDataStr.c_str(), reqRec.getReadReqLen(), reqRec.getBarAccessForMsAfterSend());
 #endif
 

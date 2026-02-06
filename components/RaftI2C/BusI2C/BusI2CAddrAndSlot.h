@@ -15,12 +15,9 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @class BusI2CAddrAndSlot
-/// @brief I2C address and slot (0 when device is not connected through bus extender)
-/// @details The address is the I2C address and the slotNum is a number from 1 to 64
-///          which is used to identify the device when connected through a bus extender
-/// @note The slotNum value of 0 can also be used to address a device which is connected
-///       to a bus expander and if more than one device is on the same address, the
-///       first device found will be used
+/// @brief I2C address and slot
+/// @details The address is the I2C address and the slotNum is a number which is 0 for devices not connected 
+///          through a bus extender or from 1 to 64 for devices connected through a bus extender
 class BusI2CAddrAndSlot
 {
 public:
@@ -30,19 +27,23 @@ public:
     }
     BusI2CAddrAndSlot(uint32_t i2cAddr, uint32_t slotNum)
     {
-        this->i2cAddr = i2cAddr;
-        this->slotNum = slotNum;
+        _address = (i2cAddr & 0xFF) | ((slotNum & 0x3F) << 8);
     }
-    static BusI2CAddrAndSlot fromBusElemAddrType(BusElemAddrType compositeAddrAndSlot)
+    BusI2CAddrAndSlot(BusElemAddrType compositeAddrAndSlot)
     {
-        BusI2CAddrAndSlot addrAndSlot;
-        addrAndSlot.i2cAddr = compositeAddrAndSlot & 0xFF;
-        addrAndSlot.slotNum = (compositeAddrAndSlot >> 8) & 0x3F;
-        return addrAndSlot;
+        _address = compositeAddrAndSlot;
     }
-    inline BusElemAddrType toBusElemAddrType() const
+    operator BusElemAddrType() const
     {
-        return (i2cAddr & 0xFF) | ((slotNum & 0x3F) << 8);
+        return _address;
+    }
+    uint16_t getI2CAddr() const
+    {
+        return _address & 0xFF;
+    }
+    uint16_t getSlotNum() const
+    {
+        return (_address >> 8) & 0x3F;
     }
     static inline uint16_t getI2CAddr(BusElemAddrType compositeAddrAndSlot)
     {
@@ -54,44 +55,24 @@ public:
     }
     void clear()
     {
-        i2cAddr = 0;
-        slotNum = 0;
+        _address = 0;
     }
     bool operator==(const BusI2CAddrAndSlot& other) const
     {
-        return i2cAddr == other.i2cAddr && slotNum == other.slotNum;
+        return _address == other._address;
     }
     bool operator==(BusElemAddrType address) const
     {
-        return address == toBusElemAddrType();
+        return _address == address;
     }
     String toString() const
     {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%s%x@%u", RAFT_BUS_ADDR_PREFIX, i2cAddr, slotNum);
-        return String(buf);
+        return String(_address, 16);
     }
     static String toString(BusElemAddrType address)
     {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%s%x@%u", RAFT_BUS_ADDR_PREFIX, getI2CAddr(address), getSlotNum(address));
-        return String(buf);
+        return String(address, 16);
     }
-    void fromString(const String& str)
-    {
-        // Split into address and slot
-        int atPos = str.indexOf('@');
-        if (atPos < 0)
-        {
-            i2cAddr = strtol(str.c_str(), NULL, 0);
-            slotNum = 0;
-        }
-        else
-        {
-            i2cAddr = strtol(str.substring(0, atPos).c_str(), NULL, 0);
-            slotNum = strtol(str.substring(atPos + 1).c_str(), NULL, 0);
-        }
-    }
-    uint16_t i2cAddr:10;
-    uint8_t slotNum:6;
+private:
+    BusElemAddrType _address;
 };
