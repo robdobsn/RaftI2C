@@ -186,7 +186,7 @@ void helper_setup_i2c_tests(std::vector<BusI2CAddrAndSlot> onlineAddrs)
     helper_set_online_addrs(onlineAddrs);
 
     // Config
-    raftBus.setup(DeviceIDType::BUS_NUM_FIRST_BUS, configJson);
+    raftBus.setup(RaftDeviceID::BUS_NUM_FIRST_BUS, configJson);
     busStatusMgr.setup(configJson);
     RaftJsonPrefixed busExtenderConfigJson(configJson, "mux");
     busMultiplexers.setup(busExtenderConfigJson);
