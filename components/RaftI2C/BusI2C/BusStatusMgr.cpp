@@ -664,7 +664,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<BusElemAddrType>& addresses, 
     // Iterate address status records
     for (const BusAddrStatus& addrStatus : _addrStatus)
     {
-        bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.dataAggregator.count() > 0;
+        bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.getPollRespCount() > 0;
         if (includeAddr)
         {
             // Add address to list
@@ -706,7 +706,7 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& is
         deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
 
         // Get results from aggregator
-        numResponses = pAddrStatus->deviceStatus.dataAggregator.get(devicePollResponseData, responseSize, maxResponsesToReturn);
+        numResponses = pAddrStatus->deviceStatus.getPollResponses(devicePollResponseData, responseSize, maxResponsesToReturn);
     }
 
     // Return semaphore

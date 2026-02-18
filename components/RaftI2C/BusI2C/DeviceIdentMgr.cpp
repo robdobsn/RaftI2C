@@ -11,7 +11,9 @@
 #include "BusRequestInfo.h"
 #include "RaftDevice.h"
 #include "BusI2CAddrAndSlot.h"
+#include "PollDataAggregator.h"
 #include "Logger.h"
+#include <memory>
 
 // Info
 #define INFO_NEW_DEVICE_IDENTIFIED
@@ -114,8 +116,10 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
             deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
-            deviceStatus.dataAggregator.init(deviceStatus.deviceIdentPolling.numPollResultsToStore, 
+            auto pDataAggregator = std::make_shared<PollDataAggregator>(
+                    deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+            deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
 
 #ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
             LOG_I(MODULE_PREFIX, "setBusElemDevInfo address %s numPollResToStore %d pollResSizeIncTimestamp %d", 
