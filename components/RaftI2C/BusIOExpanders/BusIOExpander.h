@@ -14,8 +14,6 @@
 #include "BusRequestInfo.h"
 #include "RaftThreading.h"
 
-#define DEBUG_IO_EXPANDER_
-
 class BusIOExpander
 {
 public:
