@@ -47,7 +47,7 @@ public:
         {
             clear();
         }
-        void IRAM_ATTR clear()
+        void FUNCTION_DECORATOR_IRAM_ATTR clear()
         {
             isrCount = 0;
             startCount = 0;
@@ -60,7 +60,7 @@ public:
             txFifoEmptyCount = 0;
             incompleteTransaction = 0;
         }
-        void IRAM_ATTR update(bool transStart,
+        void FUNCTION_DECORATOR_IRAM_ATTR update(bool transStart,
             bool ackErr,
             bool timeOut,
             bool transComplete,
@@ -84,11 +84,11 @@ public:
             if (txFifoEmpty)
                 txFifoEmptyCount++;
         }
-        void IRAM_ATTR recordSoftwareTimeout()
+        void FUNCTION_DECORATOR_IRAM_ATTR recordSoftwareTimeout()
         {
             softwareTimeOutCount++;
         }
-        void IRAM_ATTR recordIncompleteTransaction()
+        void FUNCTION_DECORATOR_IRAM_ATTR recordIncompleteTransaction()
         {
             incompleteTransaction++;
         }

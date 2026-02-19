@@ -103,7 +103,7 @@ public:
     /// @param dataChangeCB Callback for data change
     /// @param minTimeBetweenReportsMs Minimum time between reports (ms)
     /// @param pCallbackInfo Callback info (passed to the callback)
-    void registerForDeviceData(BusElemAddrType address, RaftDeviceDataChangeCB dataChangeCB,
+    void registerForDeviceData(BusElemAddrType addrAndSlot, RaftDeviceDataChangeCB dataChangeCB,
                 uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -120,9 +120,16 @@ public:
     /// @return JSON string
     String getDebugJSON(bool includeBraces) const;
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set device polling interval for a specific address
+    /// @param address Composite address (slot+I2C)
+    /// @param pollIntervalMs Poll interval in milliseconds
+    /// @return true if updated
+    bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs);
+    
 private:
     // Bus element status change mutex
-    SemaphoreHandle_t _busElemStatusMutex = nullptr;
+    mutable RaftMutex _busElemStatusMutex;
 
     // Bus base
     RaftBus& _raftBus;
@@ -171,5 +178,5 @@ private:
     uint32_t _lastPollOrStatusUpdateTimeMs = 0;
 
     // Debug
-    static constexpr const char* MODULE_PREFIX = "RaftBusStMgr";    
+    static constexpr const char* MODULE_PREFIX = "I2CBusStMgr";    
 };

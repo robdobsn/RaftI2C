@@ -19,7 +19,6 @@
 #include "DevicePollingMgr.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
-#include "BusI2CAddrAndSlot.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -51,9 +50,10 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief setup
+    /// @param busNum - bus number
     /// @param config - configuration
     /// @return true if setup was successful
-    virtual bool setup(const RaftJsonIF& config) override final;
+    virtual bool setup(BusNumType busNum, const RaftJsonIF& config) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Close bus
@@ -181,26 +181,15 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Convert bus address to string
-    /// @param addr - address
-    /// @return address as a string
-    virtual String addrToString(BusElemAddrType addr) const override final
+    /// @brief Set device polling interval for an address
+    /// @param address Composite address
+    /// @param pollIntervalMs Polling interval in milliseconds
+    /// @return true if applied
+    virtual bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs) override final
     {
-        BusI2CAddrAndSlot addrAndSlot = BusI2CAddrAndSlot::fromBusElemAddrType(addr);
-        return addrAndSlot.toString();
+        return _busStatusMgr.setDevicePollInterval(address, pollIntervalMs);
     }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Convert string to bus address
-    /// @param addrStr - address as a string
-    /// @return address
-    virtual BusElemAddrType stringToAddr(const String& addrStr) const override final
-    {
-        BusI2CAddrAndSlot addrAndSlot;
-        addrAndSlot.fromString(addrStr);
-        return addrAndSlot.toBusElemAddrType();
-    }
-
+        
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
     /// @param numPins - number of pins to set

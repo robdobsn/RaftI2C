@@ -12,7 +12,8 @@
 #include "DeviceTypeRecords.h"
 #include "BusI2CAddrAndSlot.h"
 
-// #define DEBUG_ELEM_STATUS_UPDATE
+// #define DEBUG_ELEM_STATUS_DEVICE_IDENT
+// #define DEBUG_ELEM_STATUS_UPDATE_ALL
 // #define DEBUG_MOVE_TO_NORMAL_SCANNING
 // #define DEBUG_SCAN_PRIORITY_LISTS
 // #define DEBUG_SCAN_SEQUENCE
@@ -200,9 +201,13 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                         continue;
                 }
 
-                // Check if the address is being polled
-                if (_busStatusMgr.isAddrBeingPolled(BusI2CAddrAndSlot(addr, slotNum).toBusElemAddrType()))
-                    continue;
+                // Check if the address is being polled and is online
+                // If offline, continue scanning to detect when it comes back online
+                if (_busStatusMgr.isAddrBeingPolled(BusI2CAddrAndSlot(addr, slotNum)))
+                {
+                    if (_busStatusMgr.isElemOnline(BusI2CAddrAndSlot(addr, slotNum)) == BUS_OPERATION_OK)
+                        continue;
+                }
 
                 // Scan the address
                 bool failedToEnableSlot = false;
@@ -215,7 +220,12 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                         // so we need to move back to scanning muliplexers
                         setScanMode(SCAN_MODE_MAIN_BUS_MUX_ONLY);
                     }
-                    updateBusElemState(addr, slotNum, rslt);
+                    // Only update bus element state for non-multiplexer devices
+                    // Multiplexers are handled separately via elemStateChange()
+                    if (!_busMultiplexers.isBusMultiplexer(addr))
+                    {
+                        updateBusElemState(addr, slotNum, rslt);
+                    }
                 }
                 else if (rslt == RAFT_BUS_STUCK)
                 {
@@ -561,13 +571,13 @@ RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& fa
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Update bus element state
-/// @param addr Address
+/// @param i2cAddr Address on the I2C bus (not including slot)
 /// @param slot Slot
 /// @param accessResult Access result code
 void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode accessResult)
 {
     // Update bus element state
-    BusElemAddrType address = BusI2CAddrAndSlot(i2cAddr, slot).toBusElemAddrType();
+    BusElemAddrType address(BusI2CAddrAndSlot(i2cAddr, slot));
     bool isOnline = false;
     bool isChange = _busStatusMgr.updateBusElemState(address, accessResult == RAFT_OK, isOnline);
 
@@ -577,14 +587,19 @@ void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode
         _busElemTracker.setElemFound(i2cAddr, slot);
     }
 
-#ifdef DEBUG_BUS_SCANNER
-    LOG_I(MODULE_PREFIX, "updateBusElemState addr %02x slot %d accessResult %d isOnline %d isChange %d", 
-                addr, slot, accessResult, isOnline, isChange);
+#ifdef DEBUG_ELEM_STATUS_UPDATE_ALL
+    LOG_I(MODULE_PREFIX, "updateBusElemState addr&slot %04x (addr %02x slot %d) accessResult %d isOnline %d isChange %d", 
+                address, i2cAddr, slot, accessResult, isOnline, isChange);
 #endif
 
     // Change to online so start device identification
     if (isChange && isOnline)
     {
+#ifdef DEBUG_ELEM_STATUS_DEVICE_IDENT
+        LOG_I(MODULE_PREFIX, "updateBusElemState addr&slot %04x (addr %02x slot %d) accessResult %d isOnline %d isChange %d", 
+                address, i2cAddr, slot, accessResult, isOnline, isChange);
+#endif
+
         // Attempt to identify the device
         DeviceStatus deviceStatus;
         _deviceIdentMgr.identifyDevice(address, deviceStatus);

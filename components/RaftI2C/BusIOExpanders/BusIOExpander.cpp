@@ -41,7 +41,7 @@ RaftRetCode BusIOExpander::virtualPinsSet(uint32_t numPins, const int* pPinNums,
     }
 
     // Lock access to registers
-    if (RaftMutex_lock(_regMutex, 10))
+    if (RaftMutex_lock(_regMutex, REG_MUTEX_MAX_WAIT_VPIN_MS))
     {
         for (uint32_t idx = 0; idx < numPins; idx++)
         {
@@ -160,7 +160,7 @@ void BusIOExpander::updateSync(bool force, BusReqSyncFn busI2CReqSyncFn)
         return;
 
     // Get the values to write and any callback info
-    if (!RaftMutex_lock(_regMutex, 10))
+    if (!RaftMutex_lock(_regMutex, REG_MUTEX_MAX_WAIT_UPDATE_MS))
         return;
     uint32_t outputsRegLocal = _outputsReg;
     uint32_t configRegLocal = _configReg;
