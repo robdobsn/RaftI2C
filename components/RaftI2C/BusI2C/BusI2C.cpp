@@ -508,14 +508,14 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 #ifdef DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES
     String writeDataHexStr;
     Raft::getHexStrFromBytes(pReqRec->getWriteData(), Raft::clamp(pReqRec->getWriteDataLen(), 0, DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
-    LOG_I(MODULE_PREFIX, "I2CSendSync %s i2cAddr 0x%02x writeLen %d readLen %d reqType %d writeData %s",
+    LOG_I(MODULE_PREFIX, "I2CSendSync %s i2cAddr %s writeLen %d readLen %d reqType %d writeData %s",
                     addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR",
-                    i2cAddr, pReqRec->getWriteDataLen(),
+                    BusI2CAddrAndSlot::toString(address).c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType(), writeDataHexStr.c_str());
 #else
-    LOG_I(MODULE_PREFIX, "I2CSendSync %saddr 0x%02x writeLen %d readLen %d reqType %d",
-                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR ",
-                    i2cAddr, pReqRec->getWriteDataLen(),
+    LOG_I(MODULE_PREFIX, "I2CSendSync %s addr %s writeLen %d readLen %d reqType %d",
+                    addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR",
+                    BusI2CAddrAndSlot::toString(address).c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType());
 #endif
 #ifdef DEBUG_I2C_SYNC_SEND_HELPER_ADDR_LIST
@@ -539,7 +539,7 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
     uint16_t slotNum = BusI2CAddrAndSlot::getSlotNum(address);
 
 #ifdef DEBUG_I2C_ASYNC_SEND_HELPER
-    LOG_I(MODULE_PREFIX, "I2CSendAsync i2cAddr@slotNum %s writeLen %d readLen %d reqType %d pollListIdx %d",
+    LOG_I(MODULE_PREFIX, "I2CSendAsync addr %s writeLen %d readLen %d reqType %d pollListIdx %d",
                     BusI2CAddrAndSlot::toString(address).c_str(), pReqRec->getWriteDataLen(),
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType(), pollListIdx);
 #endif
