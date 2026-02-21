@@ -183,13 +183,22 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set device polling interval for an address
     /// @param address Composite address
-    /// @param pollIntervalMs Polling interval in milliseconds
+    /// @param pollIntervalUs Polling interval in microseconds
     /// @return true if applied
-    virtual bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs) override final
+    virtual bool setDevicePollIntervalUs(BusElemAddrType address, uint64_t pollIntervalUs) override final
     {
-        return _busStatusMgr.setDevicePollInterval(address, pollIntervalMs);
+        return _busStatusMgr.setDevicePollIntervalUs(address, pollIntervalUs);
     }
-        
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device polling interval for an address
+    /// @param address Composite address
+    /// @return Polling interval in microseconds (0 if not supported)
+    virtual uint64_t getDevicePollIntervalUs(BusElemAddrType address) const override final
+    {
+        return _busStatusMgr.getDevicePollIntervalUs(address);
+    }
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
     /// @param numPins - number of pins to set
