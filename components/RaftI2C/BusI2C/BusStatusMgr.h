@@ -19,44 +19,75 @@
 class BusStatusMgr {
 
 public:
-    // Constructor and destructor
+    /// @brief Constructor
+    /// @param raftBus 
     BusStatusMgr(RaftBus& raftBus);
+
+    /// @brief Destructor
     ~BusStatusMgr();
 
-    // Setup & loop
+    /// @brief Setup
+    /// @param config Configuration (JSON)
     void setup(const RaftJsonIF& config);
+
+    /// @brief Loop (called frequently)
+    /// @param hwIsOperatingOk true if the hardware is operating correctly
     void loop(bool hwIsOperatingOk);
 
-    // Get bus operation status
+    /// @brief Check if bus is operating ok
+    /// @return true if bus is operating ok
     BusOperationStatus isOperatingOk() const
     {
         return _busOperationStatus;
     }
 
-    // Bus element access barring
+    /// @brief Bus element access barring
+    /// @param timeNowMs current time in ms (used to calculate if barring is still in effect)
+    /// @param address address of the bus element
+    /// @param barAccessAfterSendMs time to bar access after send in ms
     void barElemAccessSet(uint32_t timeNowMs, BusElemAddrType address, uint32_t barAccessAfterSendMs);
+
+    /// @brief Check if bus element access is barred
+    /// @param timeNowMs current time in ms (used to calculate if barring is still in effect)
+    /// @param address address of the bus element
+    /// @return true if access is barred
     bool barElemAccessGet(uint32_t timeNowMs, BusElemAddrType address);
 
-    // Check if element is online
+    /// @brief Check if a bus element is online
+    /// @param address address of the bus element
+    /// @return true if the bus element is online
     BusOperationStatus isElemOnline(BusElemAddrType address) const;
 
-    // Update bus element state
-    // Returns true if state has changed
+    /// @brief Update bus element state
+    /// @param address address of the bus element
+    /// @param elemResponding true if the element is responding
+    /// @param isOnline (out) true if the element is online
+    /// @return true if state has changed
     bool updateBusElemState(BusElemAddrType address, bool elemResponding, bool& isOnline);
 
-    // Get count of address status records
+    /// @brief Get count of address status records
+    /// @return count of address status records
     uint32_t getAddrStatusCount() const;
 
-    // Check if an address is being polled
+    /// @brief Check if an address is being polled
+    /// @param address address of the bus element
+    /// @return true if the address is being polled
     bool isAddrBeingPolled(BusElemAddrType address) const;
 
-    // Set bus element device status (which includes device type and can be empty) for an address
+    /// @brief Set bus element device status (which includes device type and can be empty) for an address
+    /// @param address address of the bus element
+    /// @param deviceStatus device status to set
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
-    // Get device type index by address
+    /// @brief Get device type index by address
+    /// @param address address of the bus element
+    /// @return device type index (DEVICE_TYPE_INDEX_INVALID if not known)
     uint16_t getDeviceTypeIndexByAddr(BusElemAddrType address) const;
 
-    // Get pending ident poll
+    /// @brief Get pending ident poll (this is the poll of the device based on its identified type)
+    /// @param timeNowUs current time in us
+    /// @param pollInfo (out) device polling info
+    /// @return true if there is a pending ident poll
     bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
 
     /// @brief Handle poll result
@@ -77,14 +108,12 @@ public:
     /// @return latest update time ms
     uint64_t getDeviceInfoTimestampMs(bool includeElemOnlineStatusChanges, bool includeDeviceDataUpdates) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Return addresses of devices attached to the bus
     /// @param addresses - vector to store the addresses of devices
     /// @param onlyAddressesWithIdentPollResponses - true to only return addresses with ident poll responses
     /// @return true if there are any ident poll responses available
     bool getBusElemAddresses(std::vector<uint32_t>& addresses, bool onlyAddressesWithIdentPollResponses) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
     /// @brief Get bus element poll responses for a specific address
     /// @param address - address of device to get responses for
     /// @param isOnline - (out) true if device is online
@@ -97,7 +126,6 @@ public:
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Register for device data notifications
     /// @param addrAndSlot address
     /// @param dataChangeCB Callback for data change
@@ -106,26 +134,27 @@ public:
     void registerForDeviceData(BusElemAddrType addrAndSlot, RaftDeviceDataChangeCB dataChangeCB,
                 uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo);
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Inform that an address is going offline
     /// @param addrList list of addresses
     void goingOffline(std::vector<BusElemAddrType>& addrList);
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Inform that the bus is stuck
     void informBusStuck();
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get debug JSON
     /// @return JSON string
     String getDebugJSON(bool includeBraces) const;
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set device polling interval for a specific address
-    /// @param address Composite address (slot+I2C)
-    /// @param pollIntervalMs Poll interval in milliseconds
+    /// @param address Composite address
+    /// @param pollIntervalUs Poll interval in microseconds
     /// @return true if updated
-    bool setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs);
+    bool setDevicePollIntervalUs(BusElemAddrType address, uint32_t pollIntervalUs);
+
+    /// @brief Get device polling interval for a specific address
+    /// @param address Composite address
+    /// @return Poll interval in microseconds (0 if not supported)
+    uint64_t getDevicePollIntervalUs(BusElemAddrType address) const;
     
 private:
     // Bus element status change mutex

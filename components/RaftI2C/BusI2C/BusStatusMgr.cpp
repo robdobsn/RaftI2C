@@ -749,9 +749,9 @@ String BusStatusMgr::getDebugJSON(bool includeBraces) const
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Set device polling interval for a specific address
 /// @param address address
-/// @param pollIntervalMs poll interval in milliseconds
+/// @param pollIntervalUs poll interval in microseconds
 /// @return true if address found and updated
-bool BusStatusMgr::setDevicePollInterval(BusElemAddrType address, uint32_t pollIntervalMs)
+bool BusStatusMgr::setDevicePollIntervalUs(BusElemAddrType address, uint32_t pollIntervalUs)
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
@@ -761,12 +761,33 @@ bool BusStatusMgr::setDevicePollInterval(BusElemAddrType address, uint32_t pollI
     BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
-        pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalMs * 1000;
+        pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalUs;
         updated = true;
     }
 
     RaftMutex_unlock(_busElemStatusMutex);
     return updated;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get device polling interval for a specific address
+/// @param address address
+/// @return poll interval in microseconds (0 if address not found or not being polled)
+uint64_t BusStatusMgr::getDevicePollIntervalUs(BusElemAddrType address) const
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint64_t pollIntervalUs = 0;
+    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+    if (pAddrStatus)
+    {
+        pollIntervalUs = pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return pollIntervalUs;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
