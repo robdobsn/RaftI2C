@@ -81,8 +81,8 @@ void BusAccessor::loop()
         {
             callback(reqResult.getCallbackParam(), reqResult);
 #ifdef DEBUG_SERVICE_RESPONSE_CALLBACK
-            LOG_I(MODULE_PREFIX, "loop response retval %d addr 0x%02x readLen %d", 
-                    reqResult.isResultOk(), reqResult.getAddress(), reqResult.getReadDataLen());
+            LOG_I(MODULE_PREFIX, "loop response retval %d addr %s readLen %d", 
+                    reqResult.isResultOk(), BusI2CAddrAndSlot::toString(reqResult.getAddress()).c_str(), reqResult.getReadDataLen());
 #endif
         }
     }
@@ -136,7 +136,7 @@ void BusAccessor::processRequestQueue(bool isPaused)
         // Debug
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr@slotNum %s write %s", 
+        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr %s write %s", 
                     BusI2CAddrAndSlot::toString(address).c_str(), writeDataStr.c_str());
 #endif
 
@@ -199,7 +199,7 @@ void BusAccessor::processPolling()
                 BusElemAddrType address = pReqRec->getAddress();
                 if (pReqRec->isPolling() && (BusI2CAddrAndSlot::getI2CAddr(address) == DEBUG_POLL_TIME_FOR_ADDR))
                 {
-                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr@slotNum %s elapsed %ld", 
+                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr %s elapsed %ld", 
                                 BusI2CAddrAndSlot::toString(address).c_str(), 
                                 Raft::timeElapsed(millis(), _debugLastPollTimeMs));
                     _debugLastPollTimeMs = millis();

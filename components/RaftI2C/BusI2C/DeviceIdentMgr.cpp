@@ -353,6 +353,10 @@ String DeviceIdentMgr::getQueuedDeviceDataJson() const
         uint32_t responseSize = 0;
         _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
 
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
+
         // Use device identity manager to convert to JSON
         String jsonData = deviceStatusToJson(address, 
                         isOnline, deviceTypeIndex, devicePollResponseData, responseSize);
@@ -384,6 +388,10 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
         std::vector<uint8_t> devicePollResponseData;
         uint32_t responseSize = 0;
         _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
 
         // Generate binary device message
         RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, isOnline, devicePollResponseData);

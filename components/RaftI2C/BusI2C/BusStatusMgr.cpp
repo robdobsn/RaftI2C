@@ -204,8 +204,8 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         // If not found and element is responding then add a new record
         if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
-            // Add new record
-            BusAddrStatus newAddrStatus(address, DeviceOnlineState::INITIAL, true, true);
+            // Add new record (isNewlyIdentified is false - set later by setBusElemDeviceStatus when identified)
+            BusAddrStatus newAddrStatus(address, DeviceOnlineState::INITIAL, true, false);
             _addrStatus.push_back(newAddrStatus);
             pAddrStatus = &_addrStatus.back();
         }
