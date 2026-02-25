@@ -357,6 +357,10 @@ String DeviceIdentMgr::getQueuedDeviceDataJson()
         if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
             continue;
 
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
+
         // Use device identity manager to convert to JSON
         String jsonData = deviceStatusToJson(address, 
                         onlineState, deviceTypeIndex, devicePollResponseData, responseSize);
@@ -404,6 +408,10 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
         std::vector<uint8_t> devicePollResponseData;
         uint32_t responseSize = 0;
         _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
 
         // Skip unidentified devices
         if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
