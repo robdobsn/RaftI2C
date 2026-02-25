@@ -227,7 +227,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
             // Add new record (isNewlyIdentified is false - set later by setBusElemDeviceStatus when identified)
-            BusAddrStatus newAddrStatus(address, DeviceOnlineState::INITIAL, true, false);
+            BusAddrRecord newAddrStatus(address, DeviceOnlineState::INITIAL, true, false);
             _addrStatus.push_back(newAddrStatus);
             pAddrStatus = &_addrStatus.back();
         }
