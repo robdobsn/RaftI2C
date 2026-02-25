@@ -159,17 +159,17 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
     /// @brief Get bus element poll responses for a specific address
     /// @param address - address of device to get responses for
-    /// @param isOnline - (out) true if device is online
+    /// @param onlineState - (out) device online state
     /// @param deviceTypeIndex - (out) device type index
     /// @param devicePollResponseData - (out) vector to store the device poll response data
     /// @param responseSize - (out) size of the response data
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
     /// @return number of responses returned
-    virtual uint32_t getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+    virtual uint32_t getBusElemPollResponses(uint32_t address, DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex, 
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn) override final
     {
-        return _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, maxResponsesToReturn);
+        return _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, maxResponsesToReturn);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////

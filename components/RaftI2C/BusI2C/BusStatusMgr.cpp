@@ -114,8 +114,8 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
             {
                 if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 {
-                    // Handle element change
-                    statusChanges.push_back(addrStatus);
+                    // Handle element change - create lightweight status for callback
+                    statusChanges.push_back(addrStatus.toStatusChange());
                     addrStatus.isChange = false;
                     addrStatus.isNewlyIdentified = false;
                 }
@@ -143,10 +143,32 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                             statusChange.address,
                             statusChange.isChange ? "Y" : "N",
                             BusAddrStatus::getOnlineStateStr(statusChange.onlineState),
-                            statusChange.deviceStatus.deviceTypeIndex);
+                            statusChange.deviceTypeIndex);
             }
 #endif            
             _raftBus.callBusElemStatusCB(statusChanges);
+
+            // Delete records that were pending deletion (OFFLINE devices) now that callback has been made
+            // First add them to the pending deletion queue for publishing
+            if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+            {
+                for (const auto& s : _addrStatus)
+                {
+                    if (s.onlineState == DeviceOnlineState::PENDING_DELETION)
+                    {
+                        // Add to pending deletion queue if not full
+                        if (_pendingDeletionQueue.size() < PENDING_DELETION_QUEUE_MAX)
+                        {
+                            _pendingDeletionQueue.push_back({s.address, s.deviceStatus.deviceTypeIndex});
+                        }
+                    }
+                }
+                _addrStatus.erase(
+                    std::remove_if(_addrStatus.begin(), _addrStatus.end(),
+                        [](const BusAddrRecord& s) { return s.onlineState == DeviceOnlineState::PENDING_DELETION; }),
+                    _addrStatus.end());
+                RaftMutex_unlock(_busElemStatusMutex);
+            }
         }
 
         // No more changes
@@ -190,8 +212,8 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
 
 #ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
     // Debug
-    BusAddrStatus prevStatus;
-    BusAddrStatus newStatus;
+    BusAddrRecord prevStatus;
+    BusAddrRecord newStatus;
 #endif
 
     // Obtain semaphore controlling access to busElemChange list and flag
@@ -199,13 +221,13 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
     {
 
         // Find address record
-        BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+        BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
 
         // If not found and element is responding then add a new record
         if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
-            // Add new record
-            BusAddrStatus newAddrStatus(address, DeviceOnlineState::INITIAL, true, true);
+            // Add new record (isNewlyIdentified is false - set later by setBusElemDeviceStatus when identified)
+            BusAddrRecord newAddrStatus(address, DeviceOnlineState::INITIAL, true, false);
             _addrStatus.push_back(newAddrStatus);
             pAddrStatus = &_addrStatus.back();
         }
@@ -234,6 +256,12 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
             _busElemStatusChangeDetected = true;
             _lastBusElemOnlineStatusUpdateTimeMs = millis();
             _lastPollOrStatusUpdateTimeMs = millis();
+
+            // Mark for deletion if device has gone offline (will be deleted after callback)
+            if (pAddrStatus && pAddrStatus->onlineState == DeviceOnlineState::OFFLINE)
+            {
+                pAddrStatus->onlineState = DeviceOnlineState::PENDING_DELETION;
+            }
         }
 
         // Check for spurious record detected
@@ -241,7 +269,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         {
             // Remove the record
             _addrStatus.erase(std::remove_if(_addrStatus.begin(), _addrStatus.end(), 
-                [address](BusAddrStatus& addrStatus) { return addrStatus.address == address; }), 
+                [address](BusAddrRecord& addrStatus) { return addrStatus.address == address; }), 
                 _addrStatus.end());
         }
 
@@ -290,7 +318,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(BusElemAddrType address) const
     if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         // Find address record
-        const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+        const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
         if (!pAddrStatus || (pAddrStatus->onlineState != DeviceOnlineState::OFFLINE))
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
@@ -330,7 +358,7 @@ void BusStatusMgr::barElemAccessSet(uint32_t timeNowMs, BusElemAddrType address,
         return;
 
     // Find address record
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Set access barring
@@ -364,7 +392,7 @@ bool BusStatusMgr::barElemAccessGet(uint32_t timeNowMs, BusElemAddrType address)
 #ifdef DEBUG_ACCESS_BARRING_FOR_MS
     bool barReleased = false;
 #endif
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
 
     // Check if access is barred
     if (pAddrStatus && pAddrStatus->barDurationMs != 0)
@@ -413,7 +441,7 @@ void BusStatusMgr::setBusElemDeviceStatus(BusElemAddrType address, const DeviceS
         return;
 
     // Find address record
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Set device status (includes device type index)
@@ -442,7 +470,7 @@ DeviceTypeIndexType BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType addre
         return DEVICE_TYPE_INDEX_INVALID;
     // Find address record
     DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
-    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+    const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
         // Get device type index
@@ -466,7 +494,7 @@ bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
 
     // Check if the address is being polled
     bool isBeingPolled = false;
-    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+    const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
         // Check if the address is being polled
@@ -488,7 +516,7 @@ void BusStatusMgr::goingOffline(std::vector<BusElemAddrType>& addrList)
         return;
 
     // Go through all devices and set status
-    for (BusAddrStatus& addrStatus : _addrStatus)
+    for (BusAddrRecord& addrStatus : _addrStatus)
     {
         if (std::find(addrList.begin(), addrList.end(), addrStatus.address) != addrList.end())
         {
@@ -514,7 +542,7 @@ void BusStatusMgr::informBusStuck()
 
     // Go through all devices and set status to offline
     bool anySet = false;
-    for (BusAddrStatus& addrStatus : _addrStatus)
+    for (BusAddrRecord& addrStatus : _addrStatus)
     {
         addrStatus.isChange = addrStatus.onlineState == DeviceOnlineState::ONLINE;
         addrStatus.onlineState = DeviceOnlineState::OFFLINE;
@@ -542,7 +570,7 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
         return false;
 
     // Check for any pending requests
-    for (BusAddrStatus& addrStatus : _addrStatus)
+    for (BusAddrRecord& addrStatus : _addrStatus)
     {
         // Check if a poll is due
         if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo))
@@ -582,7 +610,7 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
         return false;
 
     // Find address record
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     bool putResult = false;
     if (pAddrStatus)
     {
@@ -662,7 +690,7 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<BusElemAddrType>& addresses, 
         return false;
 
     // Iterate address status records
-    for (const BusAddrStatus& addrStatus : _addrStatus)
+    for (const BusAddrRecord& addrStatus : _addrStatus)
     {
         bool includeAddr = !onlyAddressesWithIdentPollResponses || addrStatus.deviceStatus.getPollRespCount() > 0;
         if (includeAddr)
@@ -680,13 +708,13 @@ bool BusStatusMgr::getBusElemAddresses(std::vector<BusElemAddrType>& addresses, 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
 /// @brief Get bus element poll responses for a specific address
 /// @param address - address of device to get responses for
-/// @param isOnline - (out) true if device is online
+/// @param onlineState - (out) device online state
 /// @param deviceTypeIndex - (out) device type index
 /// @param devicePollResponseData - (out) vector to store the device poll response data
 /// @param responseSize - (out) size of the response data
 /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
 /// @return number of responses returned
-uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& isOnline, uint16_t& deviceTypeIndex, 
+uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex, 
             std::vector<uint8_t>& devicePollResponseData, 
             uint32_t& responseSize, uint32_t maxResponsesToReturn)
 {
@@ -696,11 +724,11 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& is
 
     // Find address record
     uint32_t numResponses = 0;
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
-        // Elem online
-        isOnline = pAddrStatus->onlineState == DeviceOnlineState::ONLINE;
+        // Device online state
+        onlineState = pAddrStatus->onlineState;
         
         // Device type index
         deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
@@ -713,11 +741,25 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, bool& is
     RaftMutex_unlock(_busElemStatusMutex);
 
 #ifdef DEBUG_GET_POLL_RESULT
-    LOG_I(MODULE_PREFIX, "getBusElemPollResponses address %04x isOnline %d deviceTypeIndex %d numResponses %d responseSize %d",
-                address, isOnline, deviceTypeIndex, numResponses, responseSize);
+    LOG_I(MODULE_PREFIX, "getBusElemPollResponses address %04x onlineState %s deviceTypeIndex %d numResponses %d responseSize %d",
+                address, BusAddrStatus::getOnlineStateStr(onlineState), deviceTypeIndex, numResponses, responseSize);
 #endif
 
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get pending deletions and clear the queue
+/// @param deletions (out) vector to receive pending deletions
+void BusStatusMgr::getPendingDeletions(std::vector<DeletionNotice>& deletions)
+{
+    deletions.clear();
+    if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        deletions = std::move(_pendingDeletionQueue);
+        _pendingDeletionQueue.clear();
+        RaftMutex_unlock(_busElemStatusMutex);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -731,7 +773,7 @@ String BusStatusMgr::getDebugJSON(bool includeBraces) const
 
     // Create JSON
     String jsonStr;
-    for (const BusAddrStatus& addrStatus : _addrStatus)
+    for (const BusAddrRecord& addrStatus : _addrStatus)
     {
         if (jsonStr.length() > 0)
             jsonStr += ",";
@@ -758,7 +800,7 @@ bool BusStatusMgr::setDevicePollIntervalUs(BusElemAddrType address, uint32_t pol
         return false;
 
     bool updated = false;
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalUs;
@@ -780,7 +822,7 @@ uint64_t BusStatusMgr::getDevicePollIntervalUs(BusElemAddrType address) const
         return 0;
 
     uint64_t pollIntervalUs = 0;
-    const BusAddrStatus* pAddrStatus = findAddrStatusRecord(address);
+    const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
         pollIntervalUs = pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs;
@@ -804,7 +846,7 @@ void BusStatusMgr::registerForDeviceData(BusElemAddrType address, RaftDeviceData
         return;
 
     // Find address record
-    BusAddrStatus* pAddrStatus = findAddrStatusRecordEditable(address);
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
         // Register for data change

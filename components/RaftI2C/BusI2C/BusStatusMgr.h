@@ -13,7 +13,7 @@
 #include "RaftBus.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
-#include "BusAddrStatus.h"
+#include "BusAddrRecord.h"
 #include <list>
 
 class BusStatusMgr {
@@ -116,13 +116,13 @@ public:
 
     /// @brief Get bus element poll responses for a specific address
     /// @param address - address of device to get responses for
-    /// @param isOnline - (out) true if device is online
+    /// @param onlineState - (out) device online state
     /// @param deviceTypeIndex - (out) device type index
     /// @param devicePollResponseData - (out) vector to store the device poll response data
     /// @param responseSize - (out) size of the response data
     /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
     /// @return number of responses returned
-    uint32_t getBusElemPollResponses(uint32_t address, bool& isOnline, uint16_t& deviceTypeIndex, 
+    uint32_t getBusElemPollResponses(uint32_t address, DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex, 
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
 
@@ -155,6 +155,17 @@ public:
     /// @param address Composite address
     /// @return Poll interval in microseconds (0 if not supported)
     uint64_t getDevicePollIntervalUs(BusElemAddrType address) const;
+
+    /// @brief Deletion notice - used to queue deletion messages for publishing
+    struct DeletionNotice
+    {
+        BusElemAddrType address;
+        uint16_t deviceTypeIndex;
+    };
+
+    /// @brief Get pending deletions and clear the queue
+    /// @param deletions (out) vector to receive pending deletions
+    void getPendingDeletions(std::vector<DeletionNotice>& deletions);
     
 private:
     // Bus element status change mutex
@@ -163,15 +174,15 @@ private:
     // Bus base
     RaftBus& _raftBus;
 
-    // Address status
-    std::vector<BusAddrStatus> _addrStatus;
+    // Address status records (internal heavy structure)
+    std::vector<BusAddrRecord> _addrStatus;
     static const uint32_t ADDR_STATUS_MAX = 50;
 
     // Find address record
     // Assumes semaphore already taken
-    const BusAddrStatus* findAddrStatusRecord(BusElemAddrType address) const
+    const BusAddrRecord* findAddrStatusRecord(BusElemAddrType address) const
     {
-        for (const BusAddrStatus& addrStatus : _addrStatus)
+        for (const BusAddrRecord& addrStatus : _addrStatus)
         {
             if (addrStatus.address == address)
                 return &addrStatus;
@@ -181,9 +192,9 @@ private:
 
     // Find address record editable
     // Assumes semaphore already taken
-    BusAddrStatus* findAddrStatusRecordEditable(BusElemAddrType address)
+    BusAddrRecord* findAddrStatusRecordEditable(BusElemAddrType address)
     {
-        for (BusAddrStatus& addrStatus : _addrStatus)
+        for (BusAddrRecord& addrStatus : _addrStatus)
         {
             if (addrStatus.address == address)
                 return &addrStatus;
@@ -205,6 +216,10 @@ private:
     uint32_t _lastIdentPollUpdateTimeMs = 0;
     uint32_t _lastBusElemOnlineStatusUpdateTimeMs = 0;
     uint32_t _lastPollOrStatusUpdateTimeMs = 0;
+
+    // Pending deletion queue - holds deletion notices until they are published
+    std::vector<DeletionNotice> _pendingDeletionQueue;
+    static const uint32_t PENDING_DELETION_QUEUE_MAX = 20;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "I2CBusStMgr";    

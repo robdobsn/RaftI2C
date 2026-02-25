@@ -585,16 +585,7 @@ void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode
     if (isOnline && isChange)
     {
         _busElemTracker.setElemFound(i2cAddr, slot);
-    }
 
-#ifdef DEBUG_ELEM_STATUS_UPDATE_ALL
-    LOG_I(MODULE_PREFIX, "updateBusElemState addr&slot %04x (addr %02x slot %d) accessResult %d isOnline %d isChange %d", 
-                address, i2cAddr, slot, accessResult, isOnline, isChange);
-#endif
-
-    // Change to online so start device identification
-    if (isChange && isOnline)
-    {
 #ifdef DEBUG_ELEM_STATUS_DEVICE_IDENT
         LOG_I(MODULE_PREFIX, "updateBusElemState addr&slot %04x (addr %02x slot %d) accessResult %d isOnline %d isChange %d", 
                 address, i2cAddr, slot, accessResult, isOnline, isChange);

@@ -19,9 +19,9 @@
 #define INFO_NEW_DEVICE_IDENTIFIED
 
 // Debug
-// #define DEBUG_DEVICE_IDENT_MGR
+#define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
-// #define DEBUG_HANDLE_BUS_DEVICE_INFO
+#define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_GET_DECODED_POLL_RESPONSES
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -286,11 +286,11 @@ bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, const DeviceType
 // Format device poll responses to JSON
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-String DeviceIdentMgr::deviceStatusToJson(BusElemAddrType address, bool isOnline, uint16_t deviceTypeIndex, 
+String DeviceIdentMgr::deviceStatusToJson(BusElemAddrType address, DeviceOnlineState onlineState, uint16_t deviceTypeIndex, 
                 const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const
 {
-    // Get the poll response JSON
-    return deviceTypeRecords.deviceStatusToJson(address, isOnline, deviceTypeIndex, devicePollResponseData);
+    // Get the poll response JSON using DeviceOnlineState directly
+    return deviceTypeRecords.deviceStatusToJson(address, onlineState, deviceTypeIndex, devicePollResponseData);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -336,7 +336,7 @@ String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTyp
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get queued device data in JSON format
 /// @return JSON doc
-String DeviceIdentMgr::getQueuedDeviceDataJson() const
+String DeviceIdentMgr::getQueuedDeviceDataJson()
 {
     // Return string
     String jsonStr;
@@ -347,20 +347,40 @@ String DeviceIdentMgr::getQueuedDeviceDataJson() const
     for (auto address : addresses)
     {
         // Get bus status for each address
-        bool isOnline = false;
+        DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
         uint16_t deviceTypeIndex = 0;
         std::vector<uint8_t> devicePollResponseData;
         uint32_t responseSize = 0;
-        _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+        _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
 
         // Use device identity manager to convert to JSON
         String jsonData = deviceStatusToJson(address, 
-                        isOnline, deviceTypeIndex, devicePollResponseData, responseSize);
+                        onlineState, deviceTypeIndex, devicePollResponseData, responseSize);
         if (jsonData.length() > 0)
         {
             jsonStr += (jsonStr.length() == 0 ? "{" : ",") + jsonData;
         }
     }
+
+    // Add pending deletion notices (devices that have been removed)
+    std::vector<BusStatusMgr::DeletionNotice> deletions;
+    _busStatusMgr.getPendingDeletions(deletions);
+    for (const auto& deletion : deletions)
+    {
+        // Generate deletion notice with empty data and PENDING_DELETION state
+        std::vector<uint8_t> emptyData;
+        String jsonData = deviceStatusToJson(deletion.address, 
+                        DeviceOnlineState::PENDING_DELETION, deletion.deviceTypeIndex, emptyData, 0);
+        if (jsonData.length() > 0)
+        {
+            jsonStr += (jsonStr.length() == 0 ? "{" : ",") + jsonData;
+        }
+    }
+
     return jsonStr.length() == 0 ? "{}" : jsonStr + "}";
 }
 
@@ -368,7 +388,7 @@ String DeviceIdentMgr::getQueuedDeviceDataJson() const
 /// @brief Get queued device data in binary format
 /// @param connMode connection mode (inc bus number)
 /// @return Binary data vector
-std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode) const
+std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode)
 {
     // Return buffer
     std::vector<uint8_t> binData;
@@ -379,14 +399,29 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
     for (auto address : addresses)
     {
         // Get bus status for each address
-        bool isOnline = false;
+        DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
         uint16_t deviceTypeIndex = 0;
         std::vector<uint8_t> devicePollResponseData;
         uint32_t responseSize = 0;
-        _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+        _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+
+        // Skip unidentified devices
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+            continue;
 
         // Generate binary device message
-        RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, isOnline, devicePollResponseData);
+        RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, onlineState, devicePollResponseData);
+    }
+
+    // Add pending deletion notices (devices that have been removed)
+    std::vector<BusStatusMgr::DeletionNotice> deletions;
+    _busStatusMgr.getPendingDeletions(deletions);
+    for (const auto& deletion : deletions)
+    {
+        // Generate deletion notice with empty data and PENDING_DELETION state
+        std::vector<uint8_t> emptyData;
+        RaftDevice::genBinaryDataMsg(binData, connMode, deletion.address, deletion.deviceTypeIndex, 
+                        DeviceOnlineState::PENDING_DELETION, emptyData);
     }
 
     // Return binary data
@@ -408,16 +443,16 @@ uint32_t DeviceIdentMgr::getDecodedPollResponses(BusElemAddrType address,
                 uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
     // Get poll result for each address
-    bool isOnline = false;
+    DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
     uint16_t deviceTypeIndex = 0;
     std::vector<uint8_t> devicePollResponseData;
     uint32_t responseSize = 0;
-    _busStatusMgr.getBusElemPollResponses(address, isOnline, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+    _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, 0);
 
 #ifdef DEBUG_GET_DECODED_POLL_RESPONSES
-    LOG_I(MODULE_PREFIX, "getDecodedPollResponses address %s isOnline %d deviceTypeIndex %d responseSize %d",
+    LOG_I(MODULE_PREFIX, "getDecodedPollResponses address %s onlineState %s deviceTypeIndex %d responseSize %d",
                 BusI2CAddrAndSlot::toString(address).c_str(),
-                isOnline, deviceTypeIndex, responseSize);
+                BusAddrStatus::getOnlineStateStr(onlineState), deviceTypeIndex, responseSize);
 #endif
 
     // Decode the poll response

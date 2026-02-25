@@ -62,13 +62,13 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get queued device data in JSON format
     /// @return JSON string
-    virtual String getQueuedDeviceDataJson() const override final;
+    virtual String getQueuedDeviceDataJson() override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get queued device data in binary format
     /// @param connMode connection mode (inc bus number)
     /// @return Binary data vector
-    virtual std::vector<uint8_t> getQueuedDeviceDataBinary(uint32_t connMode) const override final;
+    virtual std::vector<uint8_t> getQueuedDeviceDataBinary(uint32_t connMode) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get decoded poll responses
@@ -147,12 +147,12 @@ private:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON
     /// @param address address
-    /// @param isOnline true if device is online
+    /// @param onlineState device online state
     /// @param deviceTypeIndex index of device type
     /// @param devicePollResponseData poll response data
     /// @param responseSize size of poll response data
     /// @return JSON string
-    String deviceStatusToJson(BusElemAddrType address, bool isOnline, DeviceTypeIndexType deviceTypeIndex, 
+    String deviceStatusToJson(BusElemAddrType address, DeviceOnlineState onlineState, DeviceTypeIndexType deviceTypeIndex, 
                     const std::vector<uint8_t>& devicePollResponseData, uint32_t responseSize) const;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
