@@ -202,6 +202,28 @@ public:
         return dataNew;
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    /// @brief Resize the aggregator to store a different number of results
+    /// @param numResultsToStore New number of results to store
+    /// @return true if resized successfully
+    /// @note This clears any existing buffered data
+    bool resize(uint32_t numResultsToStore) override
+    {
+        // Obtain access
+        if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
+            return false;
+
+        // Resize ring buffer (clears existing data)
+        _ringBuffer.resize(numResultsToStore * _resultSize);
+        _ringBufHeadOffset = 0;
+        _ringBufCount = 0;
+        _maxElems = numResultsToStore;
+
+        // Release access
+        RaftMutex_unlock(_accessMutex);
+        return true;
+    }
+
 private:
     // Circular buffer
     std::vector<uint8_t> _ringBuffer;

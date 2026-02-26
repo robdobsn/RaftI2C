@@ -833,6 +833,53 @@ uint64_t BusStatusMgr::getDevicePollIntervalUs(BusElemAddrType address) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set number of poll result samples to store for a specific address
+/// @param address address
+/// @param numSamples number of samples to store
+/// @return true if address found and updated
+bool BusStatusMgr::setDeviceNumSamples(BusElemAddrType address, uint32_t numSamples)
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+
+    bool updated = false;
+    BusAddrRecord* pAddrRecord = findAddrStatusRecordEditable(address);
+    if (pAddrRecord)
+    {
+        // Update the stored config value
+        pAddrRecord->deviceStatus.deviceIdentPolling.numPollResultsToStore = numSamples;
+        // Resize the live aggregator
+        if (pAddrRecord->deviceStatus.pDataAggregator)
+            updated = pAddrRecord->deviceStatus.pDataAggregator->resize(numSamples);
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return updated;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get number of poll result samples stored for a specific address
+/// @param address address
+/// @return number of samples (0 if address not found)
+uint32_t BusStatusMgr::getDeviceNumSamples(BusElemAddrType address) const
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint32_t numSamples = 0;
+    const BusAddrRecord* pAddrRecord = findAddrStatusRecord(address);
+    if (pAddrRecord)
+    {
+        numSamples = pAddrRecord->deviceStatus.deviceIdentPolling.numPollResultsToStore;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return numSamples;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Register for device data notifications
 /// @param addrAndSlot address
 /// @param dataChangeCB Callback for data change

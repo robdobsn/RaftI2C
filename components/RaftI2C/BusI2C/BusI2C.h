@@ -200,6 +200,25 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set number of poll result samples to store for an address
+    /// @param address Composite address
+    /// @param numSamples Number of samples to store
+    /// @return true if applied
+    virtual bool setDeviceNumSamples(BusElemAddrType address, uint32_t numSamples) override final
+    {
+        return _busStatusMgr.setDeviceNumSamples(address, numSamples);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get number of poll result samples stored for an address
+    /// @param address Composite address
+    /// @return Number of samples (0 if not supported)
+    virtual uint32_t getDeviceNumSamples(BusElemAddrType address) const override final
+    {
+        return _busStatusMgr.getDeviceNumSamples(address);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
     /// @param numPins - number of pins to set
     /// @param pPinNums - array of pin numbers

@@ -156,3 +156,57 @@ TEST_CASE("Test PollDataAggregator Put and Get Multiple", "[PollDataAggregator]"
     TEST_ASSERT_TRUE(dataTest5to7 == dataOut);
     TEST_ASSERT_FALSE(aggregator.get(dataOut));
 }
+
+TEST_CASE("Test PollDataAggregator Resize", "[PollDataAggregator]") 
+{
+    PollDataAggregator aggregator(3, 3);
+
+    // Fill buffer
+    std::vector<uint8_t> data1 = {1, 2, 3};
+    std::vector<uint8_t> data2 = {4, 5, 6};
+    std::vector<uint8_t> data3 = {7, 8, 9};
+    uint32_t timeVal = 12345;
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));
+    TEST_ASSERT_TRUE(aggregator.count() == 3);
+
+    // Resize to larger — should clear existing data
+    TEST_ASSERT_TRUE(aggregator.resize(5));
+    TEST_ASSERT_TRUE(aggregator.count() == 0);
+
+    // Verify we can now store 5 items
+    std::vector<uint8_t> data4 = {10, 11, 12};
+    std::vector<uint8_t> data5 = {13, 14, 15};
+    std::vector<uint8_t> data6 = {16, 17, 18};
+    std::vector<uint8_t> data7 = {19, 20, 21};
+    std::vector<uint8_t> data8 = {22, 23, 24};
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data4));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data5));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data6));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data7));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data8));
+    TEST_ASSERT_TRUE(aggregator.count() == 5);
+
+    // Read back and verify FIFO order
+    std::vector<uint8_t> dataOut;
+    TEST_ASSERT_TRUE(aggregator.get(dataOut));
+    TEST_ASSERT_TRUE(data4 == dataOut);
+    TEST_ASSERT_TRUE(aggregator.get(dataOut));
+    TEST_ASSERT_TRUE(data5 == dataOut);
+
+    // Resize to smaller — should clear again
+    TEST_ASSERT_TRUE(aggregator.resize(2));
+    TEST_ASSERT_TRUE(aggregator.count() == 0);
+
+    // Verify new capacity of 2
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data1));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data2));
+    TEST_ASSERT_TRUE(aggregator.put(timeVal++, data3));  // overwrites data1
+    TEST_ASSERT_TRUE(aggregator.count() == 2);
+    TEST_ASSERT_TRUE(aggregator.get(dataOut));
+    TEST_ASSERT_TRUE(data2 == dataOut);
+    TEST_ASSERT_TRUE(aggregator.get(dataOut));
+    TEST_ASSERT_TRUE(data3 == dataOut);
+    TEST_ASSERT_FALSE(aggregator.get(dataOut));
+}

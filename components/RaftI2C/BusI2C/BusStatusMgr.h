@@ -156,6 +156,17 @@ public:
     /// @return Poll interval in microseconds (0 if not supported)
     uint64_t getDevicePollIntervalUs(BusElemAddrType address) const;
 
+    /// @brief Set number of poll result samples to store for a specific address
+    /// @param address Composite address
+    /// @param numSamples Number of samples to store
+    /// @return true if updated
+    bool setDeviceNumSamples(BusElemAddrType address, uint32_t numSamples);
+
+    /// @brief Get number of poll result samples stored for a specific address
+    /// @param address Composite address
+    /// @return Number of samples (0 if not supported)
+    uint32_t getDeviceNumSamples(BusElemAddrType address) const;
+
     /// @brief Deletion notice - used to queue deletion messages for publishing
     struct DeletionNotice
     {
