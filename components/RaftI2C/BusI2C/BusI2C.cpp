@@ -57,7 +57,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busStatusMgr(*this),
         _busStuckHandler(_busReqSyncFn),
         _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker, _busReqSyncFn),
-        _deviceIdentMgr(_busStatusMgr, _busReqSyncFn),
+        _deviceIdentMgr(_busStatusMgr, _busReqSyncFn, _busReqAsyncFn),
         _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busIOExpanders, _deviceIdentMgr, _busReqSyncFn),
         _devicePollingMgr(_busStatusMgr, _busMultiplexers, _busReqSyncFn),
         _busAccessor(*this, _busReqAsyncFn)

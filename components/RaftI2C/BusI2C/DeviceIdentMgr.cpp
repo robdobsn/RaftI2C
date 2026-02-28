@@ -9,6 +9,7 @@
 #include "DeviceIdentMgr.h"
 #include "DeviceTypeRecords.h"
 #include "BusRequestInfo.h"
+#include "BusRequestResult.h"
 #include "RaftDevice.h"
 #include "BusI2CAddrAndSlot.h"
 #include "PollDataAggregator.h"
@@ -19,18 +20,22 @@
 #define INFO_NEW_DEVICE_IDENTIFIED
 
 // Debug
-#define DEBUG_DEVICE_IDENT_MGR
+// #define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
-#define DEBUG_HANDLE_BUS_DEVICE_INFO
+// #define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_GET_DECODED_POLL_RESPONSES
+// #define DEBUG_MAKE_BUS_REQUEST
+// #define DEBUG_MAKE_BUS_REQUEST_VERBOSE
+// #define DEBUG_CMD_RESULT_CALLBACK
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Consructor
+// Constructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busReqSyncFn) :
+DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn) :
     _busStatusMgr(BusStatusMgr),
-    _busReqSyncFn(busReqSyncFn)
+    _busReqSyncFn(busReqSyncFn),
+    _busReqAsyncFn(busReqAsyncFn)
 {
 }
 
@@ -502,4 +507,80 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
 
     // Decode the poll response
     return devTypeRec.pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Send command to device on bus
+/// @param cmdJSON Command JSON string
+/// @param respMsg (out) response message from the device
+/// @return Result code
+/// @note The JSON string should include:
+///       - "hexWr": hex string of data to write to the device
+///       - "numToRd": number of bytes to read from the device (optional)
+RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg)
+{
+    // Get command and parameters from JSON
+    RaftJson cmdJsonObj(cmdJSON);
+    String hexWriteData = cmdJsonObj.getString("hexWr", "");
+    int numBytesToRead = cmdJsonObj.getLong("numToRd", 0);
+
+    // Convert hex write data to binary
+    uint32_t numBytesToWrite = hexWriteData.length() / 2;
+    std::vector<uint8_t> writeVec;
+    writeVec.resize(numBytesToWrite);
+    uint32_t writeBytesLen = Raft::getBytesFromHexStr(hexWriteData.c_str(), writeVec.data(), numBytesToWrite);
+    writeVec.resize(writeBytesLen);
+
+    // Create element request
+    static const uint32_t CMDID_CMDRAW = 100;
+    HWElemReq hwElemReq = {writeVec, numBytesToRead, CMDID_CMDRAW, "cmdraw", 0};
+
+    // Form bus request
+    BusRequestInfo busReqInfo("", deviceID.getAddress());
+    busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
+            [](void* pCallbackData, BusRequestResult& reqResult)
+                {
+                    if (pCallbackData)
+                        ((DeviceIdentMgr*)pCallbackData)->cmdResultReportCallback(reqResult);
+                },
+            this);
+
+    // Make the request
+    RaftRetCode rslt = RAFT_INVALID_DATA;
+    if (_busReqAsyncFn != nullptr)
+    {
+        rslt = _busReqAsyncFn(&busReqInfo, 0) ? RAFT_OK : RAFT_BUS_NOT_INIT;
+        if (respMsg)
+            *respMsg = rslt ? "Command sent" : "Failed to send command";
+    }
+    else
+    {
+        if (respMsg)
+            *respMsg = "Bus not initialised";
+    }
+
+#ifdef DEBUG_MAKE_BUS_REQUEST_VERBOSE
+    String outStr;
+    Raft::getHexStrFromBytes(hwElemReq._writeData.data(),
+                hwElemReq._writeData.size() > 16 ? 16 : hwElemReq._writeData.size(),
+                outStr);
+    LOG_I(MODULE_PREFIX, "sendCmdToDevice resp %s deviceId %s len %d data %s ...",
+                    respMsg ? respMsg->c_str() : String(Raft::getRetCodeStr(rslt)).c_str(),
+                    deviceID.toString().c_str(),
+                    hwElemReq._writeData.size(),
+                    outStr.c_str());
+#endif
+
+    return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Callback for command result reports
+/// @param reqResult Result of the bus request
+void DeviceIdentMgr::cmdResultReportCallback(BusRequestResult &reqResult)
+{
+#ifdef DEBUG_CMD_RESULT_CALLBACK
+    LOG_I(MODULE_PREFIX, "cmdResultReportCallback len %d", reqResult.getReadDataLen());
+    Raft::logHexBuf(reqResult.getReadData(), reqResult.getReadDataLen(), MODULE_PREFIX, "cmdResultReportCallback");
+#endif
 }

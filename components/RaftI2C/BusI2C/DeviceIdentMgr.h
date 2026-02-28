@@ -23,7 +23,8 @@ public:
     /// @brief Constructor
     /// @param busStatusMgr bus status manager
     /// @param busReqSyncFn bus synchronous access request function
-    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn);
+    /// @param busReqAsyncFn bus asynchronous access request function
+    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Setup
@@ -115,8 +116,18 @@ public:
     virtual String getDebugJSON(bool includeBraces) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Send command to device on bus
+    /// @param cmdJSON Command JSON string
+    /// @param respMsg (out) response message from the device
+    /// @return Result code
+    /// @note The JSON string should include:
+    ///       - "hexWr": hex string of data to write to the device
+    ///       - "numToRd": number of bytes to read from the device (optional)
+    virtual RaftRetCode sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg) override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
-    /// @param 
+    /// @param address address
     /// @param deviceStatus (out) device status
     void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
 
@@ -141,8 +152,9 @@ private:
     // Bus status
     BusStatusMgr& _busStatusMgr;
 
-    // Bus request function
+    // Bus request functions
     BusReqSyncFn _busReqSyncFn = nullptr;
+    BusReqAsyncFn _busReqAsyncFn = nullptr;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON
@@ -168,6 +180,10 @@ private:
                     const uint8_t* pPollBuf, uint32_t pollBufLen, 
                     void* pStructOut, uint32_t structOutSize, 
                     uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const;
+
+    /// @brief Callback for command result reports
+    /// @param reqResult Result of the bus request
+    void cmdResultReportCallback(BusRequestResult &reqResult);                    
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "I2CDevIdentMgr";
