@@ -85,6 +85,9 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
 
     // Check if this address is in the range of any known device
+#ifdef DEBUG_DEVICE_IDENT_MGR
+    bool anyDeviceIdentified = false;
+#endif
     std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
@@ -133,6 +136,9 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 #endif
             // Break out of the loop
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            anyDeviceIdentified = true;
+#endif
             break;
         }
         else
@@ -142,6 +148,13 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
 #endif
         }
     }
+#ifdef DEBUG_DEVICE_IDENT_MGR
+    if (!anyDeviceIdentified)
+    {
+        LOG_I(MODULE_PREFIX, "identifyDevice NO MATCH for address %s numDeviceTypesForAddr %d", 
+                    BusI2CAddrAndSlot::toString(address).c_str(), deviceTypesForAddr.size());
+    }
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
