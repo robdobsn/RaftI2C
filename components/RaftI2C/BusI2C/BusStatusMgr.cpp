@@ -24,6 +24,8 @@
 // #define DEBUG_ACCESS_BARRING_FOR_MS
 // #define DEBUG_HANDLE_POLL_RESULT
 // #define DEBUG_GET_POLL_RESULT
+// #define DEBUG_POLL_RESULT_DETAIL
+// #define DEBUG_LSM6DS_FIFO_DECODE
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -617,6 +619,87 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
         // Add result to aggregator
         putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs);
 
+#ifdef DEBUG_LSM6DS_FIFO_DECODE
+        // TEMPORARY DEBUG: Decode LSM6DS FIFO poll data to diagnose framing issues
+        // Buffer layout: [0:2]=BE timestamp, [2:6]=FIFO_STATUS1-4, [6:198]=FIFO data (single read 0x3a=r196, IF_INC wraps 0x3F->0x3E)
+        // FIFO_STATUS1/2 (bytes[2:4]): word count in bits[11:0], overrun=bit14, full=bit13, empty=bit12
+        // FIFO_STATUS3/4 (bytes[4:6]): pattern counter in bits[9:0]
+        // FIFO word order per pattern cycle: gx(0), gy(1), gz(2), ax(3), ay(4), az(5)
+        if ((pollResultData.size() >= 8) && (nextReqIdx == 0) && ((address & 0xFF) == 0x6a))
+        {
+            uint16_t ts = (pollResultData[0] << 8) | pollResultData[1];
+            // FIFO_STATUS1/2
+            uint16_t wordCount = ((pollResultData[3] & 0x0F) << 8) | pollResultData[2];
+            bool overrun = (pollResultData[3] & 0x40) != 0;
+            bool fifoFull = (pollResultData[3] & 0x20) != 0;
+            bool fifoEmpty = (pollResultData[3] & 0x10) != 0;
+            // FIFO_STATUS3/4 - pattern counter
+            uint16_t pattern = ((pollResultData[5] & 0x03) << 8) | pollResultData[4];
+
+            // Hex dump of status bytes [2:6]
+            LOG_I(MODULE_PREFIX, "LSM6DS addr=0x%03x len=%zu ts=%u STATUS=[%02x %02x %02x %02x] wc=%d pat=%d ovr=%d full=%d empty=%d",
+                  address, pollResultData.size(), ts,
+                  pollResultData[2], pollResultData[3], pollResultData[4], pollResultData[5],
+                  wordCount, pattern, overrun, fifoFull, fifoEmpty);
+
+            // Decode first few complete 6-axis samples from FIFO data
+            // FIFO data starts at offset 6 in pollResultData
+            // Each sample = 12 bytes (6 words x 2 bytes): gx, gy, gz, ax, ay, az (all LE int16)
+            const size_t fifoDataOffset = 6;
+            const size_t fifoDataLen = pollResultData.size() - fifoDataOffset;
+            const size_t bytesPerSample = 12;
+
+            // Show raw hex of first 24 bytes of FIFO data (2 full samples worth)
+            char hexBuf[128] = {};
+            size_t hexLen = std::min(fifoDataLen, (size_t)24);
+            for (size_t i = 0; i < hexLen; i++)
+                snprintf(hexBuf + i*3, sizeof(hexBuf) - i*3, "%02x ", pollResultData[fifoDataOffset + i]);
+            LOG_I(MODULE_PREFIX, "LSM6DS FIFO raw first %zu bytes: [%s]", hexLen, hexBuf);
+
+            // Decode and display up to 3 samples starting from the beginning (no alignment skip)
+            // This will show if the data is misaligned - gravity (~8192 for ax or ~16384 for gyro) in wrong fields
+            size_t maxSamples = std::min((size_t)3, fifoDataLen / bytesPerSample);
+            for (size_t s = 0; s < maxSamples; s++)
+            {
+                size_t k = fifoDataOffset + s * bytesPerSample;
+                if (k + bytesPerSample > pollResultData.size())
+                    break;
+                int16_t gx = (int16_t)((pollResultData[k+1] << 8) | pollResultData[k]);
+                int16_t gy = (int16_t)((pollResultData[k+3] << 8) | pollResultData[k+2]);
+                int16_t gz = (int16_t)((pollResultData[k+5] << 8) | pollResultData[k+4]);
+                int16_t ax = (int16_t)((pollResultData[k+7] << 8) | pollResultData[k+6]);
+                int16_t ay = (int16_t)((pollResultData[k+9] << 8) | pollResultData[k+8]);
+                int16_t az = (int16_t)((pollResultData[k+11] << 8) | pollResultData[k+10]);
+                LOG_I(MODULE_PREFIX, "LSM6DS sample[%zu] raw: gx=%d gy=%d gz=%d ax=%d ay=%d az=%d  (%.2f %.2f %.2f g, %.1f %.1f %.1f dps)",
+                      s, gx, gy, gz, ax, ay, az,
+                      ax/8192.0, ay/8192.0, az/8192.0,
+                      gx/16.384, gy/16.384, gz/16.384);
+            }
+
+            // Also decode with pattern-based alignment skip to compare
+            uint32_t skip = (6 - pattern % 6) % 6;
+            size_t alignedOffset = fifoDataOffset + skip * 2;
+            if (skip > 0 && alignedOffset + bytesPerSample <= pollResultData.size())
+            {
+                size_t k = alignedOffset;
+                int16_t gx = (int16_t)((pollResultData[k+1] << 8) | pollResultData[k]);
+                int16_t gy = (int16_t)((pollResultData[k+3] << 8) | pollResultData[k+2]);
+                int16_t gz = (int16_t)((pollResultData[k+5] << 8) | pollResultData[k+4]);
+                int16_t ax = (int16_t)((pollResultData[k+7] << 8) | pollResultData[k+6]);
+                int16_t ay = (int16_t)((pollResultData[k+9] << 8) | pollResultData[k+8]);
+                int16_t az = (int16_t)((pollResultData[k+11] << 8) | pollResultData[k+10]);
+                LOG_I(MODULE_PREFIX, "LSM6DS aligned(skip=%u) raw: gx=%d gy=%d gz=%d ax=%d ay=%d az=%d  (%.2f %.2f %.2f g, %.1f %.1f %.1f dps)",
+                      skip, gx, gy, gz, ax, ay, az,
+                      ax/8192.0, ay/8192.0, az/8192.0,
+                      gx/16.384, gy/16.384, gz/16.384);
+            }
+            else if (skip == 0)
+            {
+                LOG_I(MODULE_PREFIX, "LSM6DS pattern=%d => skip=0 (already aligned at gx)", pattern);
+            }
+        }
+#endif // DEBUG_LSM6DS_FIFO_DECODE
+
         // Check if this is a completed poll
         if (nextReqIdx == 0)
         {            
@@ -735,6 +818,45 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, DeviceOn
 
         // Get results from aggregator
         numResponses = pAddrStatus->deviceStatus.getPollResponses(devicePollResponseData, responseSize, maxResponsesToReturn);
+        
+#ifdef DEBUG_POLL_RESULT_DETAIL
+        // Log retrieved poll data for debugging
+        if ((numResponses > 0) && (devicePollResponseData.size() >= 4))
+        {
+            // Bytes [0:2] = BE timestamp, bytes [2:4] = FIFO status from reg 0x3A
+            // uint16_t ts = (devicePollResponseData[0] << 8) | devicePollResponseData[1];
+            uint16_t wordCount = ((devicePollResponseData[3] & 0x0F) << 8) | devicePollResponseData[2];
+
+            // Check FIFO overflow/full flags across all responses
+            uint32_t overrunCount = 0;
+            uint32_t fifoFullCount = 0;
+            uint16_t maxWordCount = wordCount;
+            for (uint32_t respIdx = 0; respIdx < numResponses && responseSize > 0; respIdx++)
+            {
+                uint32_t respOffset = respIdx * responseSize;
+                if (respOffset + 3 < devicePollResponseData.size())
+                {
+                    uint8_t fifoStatus2 = devicePollResponseData[respOffset + 3];
+                    if (fifoStatus2 & 0x40) overrunCount++;
+                    if (fifoStatus2 & 0x20) fifoFullCount++;
+                    uint16_t wc = ((fifoStatus2 & 0x0F) << 8) | devicePollResponseData[respOffset + 2];
+                    if (wc > maxWordCount) maxWordCount = wc;
+                }
+            }
+
+            // Get ring buffer overflow count if available
+            uint32_t ringBufOverflows = 0;
+            if (pAddrStatus->deviceStatus.pDataAggregator)
+                ringBufOverflows = pAddrStatus->deviceStatus.pDataAggregator->debugGetAndClearOverflowCount();
+
+            char hexBuf[64] = {};
+            size_t hexLen = std::min(devicePollResponseData.size(), (size_t)20);
+            for (size_t i = 0; i < hexLen; i++)
+                snprintf(hexBuf + i*3, sizeof(hexBuf) - i*3, "%02x ", devicePollResponseData[i]);
+            LOG_I(MODULE_PREFIX, "getPoll addr=0x%03x n=%d wc=%d maxWc=%d fifoOvr=%d fifoFull=%d ringOvr=%d hex=[%s]", 
+                  address, numResponses, wordCount, maxWordCount, overrunCount, fifoFullCount, ringBufOverflows, hexBuf);
+        }
+#endif
     }
 
     // Return semaphore

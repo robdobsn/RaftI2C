@@ -65,6 +65,10 @@ public:
             _ringBufHeadOffset = 0;
         if (_ringBufCount < _maxElems)
             _ringBufCount++;
+#ifdef DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW
+        else
+            _overflowCount++;
+#endif
 
         // Store the latest values
         _latestValue = data;
@@ -203,6 +207,21 @@ public:
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    /// @brief Get and clear overflow count
+    /// @return number of overwrites since last call
+#ifdef DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW
+    uint32_t debugGetAndClearOverflowCount() override
+    {
+        if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
+            return 0;
+        uint32_t count = _overflowCount;
+        _overflowCount = 0;
+        RaftMutex_unlock(_accessMutex);
+        return count;
+    }
+#endif
+
+    ////////////////////////////////////////////////////////////////////////////
     /// @brief Resize the aggregator to store a different number of results
     /// @param numResultsToStore New number of results to store
     /// @return true if resized successfully
@@ -231,6 +250,11 @@ private:
     uint16_t _ringBufCount = 0;
     uint16_t _resultSize = 0;
     uint16_t _maxElems = 0;
+
+    // Overflow counter
+#ifdef DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW
+    uint32_t _overflowCount = 0;
+#endif
 
     // Latest value
     std::vector<uint8_t> _latestValue;

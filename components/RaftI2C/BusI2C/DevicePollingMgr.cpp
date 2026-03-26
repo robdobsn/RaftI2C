@@ -6,12 +6,18 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "DevicePollingMgr.h"
-#include "BusI2CAddrAndSlot.h"
-
 // #define DEBUG_POLL_REQUEST
 // #define DEBUG_POLL_RESULT
 // #define DEBUG_POLL_RESULT_SPECIFIC_ADDRESS 0x15
+// #define DEBUG_POLL_TIMING
+
+#include "DevicePollingMgr.h"
+#include "BusI2CAddrAndSlot.h"
+#include "RaftUtils.h"
+
+#ifdef DEBUG_POLL_TIMING
+static const uint32_t POLL_TIMING_REPORT_INTERVAL_US = 5000000; // 5 seconds
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -59,6 +65,12 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.getSlotNum());
         if (rslt != RAFT_OK)
             return;
+
+#ifdef DEBUG_POLL_TIMING
+        // Get timing stats for this address
+        PollTimingStats& timing = getTimingStats(address);
+        uint64_t txnStartUs = micros();
+#endif
 
         // Prep poll result data
         std::vector<uint8_t> pollDataResult;
@@ -130,7 +142,65 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         if (allResultsOkAndComplete)
             _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, &pollInfo, 0);
 
+#ifdef DEBUG_POLL_TIMING
+        // Record poll timing
+        uint64_t txnEndUs = micros();
+        uint64_t txnDurationUs = txnEndUs - txnStartUs;
+        if (timing.lastPollStartUs != 0)
+            timing.cumulIntervalUs += (txnStartUs - timing.lastPollStartUs);
+        timing.lastPollStartUs = txnStartUs;
+        timing.cumulTransactionUs += txnDurationUs;
+        timing.pollCount++;
+
+        // Extract FIFO word count from poll result (bytes 2-3 after 2-byte timestamp)
+        if (pollDataResult.size() >= 4 + DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE)
+        {
+            uint32_t statusOffset = DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
+            uint16_t wc = ((pollDataResult[statusOffset + 1] & 0x0F) << 8) | pollDataResult[statusOffset];
+            timing.cumulFifoWords += wc;
+        }
+
+        // Periodic timing report
+        if (timing.pollCount > 0 && Raft::isTimeout(txnEndUs, timing.lastReportTimeUs, POLL_TIMING_REPORT_INTERVAL_US))
+        {
+            uint32_t avgIntervalUs = timing.pollCount > 1 ? timing.cumulIntervalUs / (timing.pollCount - 1) : 0;
+            uint32_t avgTxnUs = timing.cumulTransactionUs / timing.pollCount;
+            float fifoSamplesPerSec = timing.cumulIntervalUs > 0 ? 
+                (timing.cumulFifoWords / 6.0f) * 1000000.0f / timing.cumulIntervalUs : 0;
+            LOG_I(MODULE_PREFIX, "pollTiming addr=0x%03x polls=%d avgInterval=%duS avgTxn=%duS fifoRate=%.1fHz totalFifoWords=%d",
+                  address, timing.pollCount, avgIntervalUs, avgTxnUs, fifoSamplesPerSec, timing.cumulFifoWords);
+            timing.cumulTransactionUs = 0;
+            timing.cumulIntervalUs = 0;
+            timing.cumulFifoWords = 0;
+            timing.pollCount = 0;
+            timing.lastReportTimeUs = txnEndUs;
+        }
+#endif
+
         // Restore the bus multiplexers if necessary
         _busMultiplexers.disableAllSlots(false);
     }
 }
+
+#ifdef DEBUG_POLL_TIMING
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get or create timing stats entry for an address
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+DevicePollingMgr::PollTimingStats& DevicePollingMgr::getTimingStats(BusElemAddrType address)
+{
+    for (uint32_t i = 0; i < _timingEntryCount; i++)
+    {
+        if (_timingAddresses[i] == address)
+            return _timingStats[i];
+    }
+    if (_timingEntryCount < MAX_TIMING_ENTRIES)
+    {
+        _timingAddresses[_timingEntryCount] = address;
+        _timingStats[_timingEntryCount] = PollTimingStats();
+        return _timingStats[_timingEntryCount++];
+    }
+    // Fallback: reuse last slot
+    return _timingStats[MAX_TIMING_ENTRIES - 1];
+}
+#endif

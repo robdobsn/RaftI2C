@@ -6,16 +6,6 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "DeviceIdentMgr.h"
-#include "DeviceTypeRecords.h"
-#include "BusRequestInfo.h"
-#include "BusRequestResult.h"
-#include "RaftDevice.h"
-#include "BusI2CAddrAndSlot.h"
-#include "PollDataAggregator.h"
-#include "Logger.h"
-#include <memory>
-
 // Info
 #define INFO_NEW_DEVICE_IDENTIFIED
 
@@ -27,6 +17,17 @@
 // #define DEBUG_MAKE_BUS_REQUEST
 // #define DEBUG_MAKE_BUS_REQUEST_VERBOSE
 // #define DEBUG_CMD_RESULT_CALLBACK
+// #define DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW
+
+#include "DeviceIdentMgr.h"
+#include "DeviceTypeRecords.h"
+#include "BusRequestInfo.h"
+#include "BusRequestResult.h"
+#include "RaftDevice.h"
+#include "BusI2CAddrAndSlot.h"
+#include "PollDataAggregator.h"
+#include "Logger.h"
+#include <memory>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
