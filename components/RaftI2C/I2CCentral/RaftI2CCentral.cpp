@@ -371,9 +371,9 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     uint32_t totalBitsTxAndRx = totalBytesTxAndRx * 10;
     uint32_t minTotalUs = (totalBitsTxAndRx * 1000) / (_busFrequency / 1000);
 
-    // Add overhead for starting/restarting/ending transmission and any clock stretching, etc
-    static const uint32_t CLOCK_STRETCH_MAX_PER_BYTE_US = 250;
-    uint32_t I2C_START_RESTART_END_OVERHEAD_US = 500 + totalBytesTxAndRx * CLOCK_STRETCH_MAX_PER_BYTE_US;
+    // Add overhead for starting/restarting/ending transmission, clock stretching and RTOS scheduling jitter
+    static const uint32_t CLOCK_STRETCH_AND_SCHED_OVERHEAD_PER_BYTE_US = 500;
+    uint32_t I2C_START_RESTART_END_OVERHEAD_US = 500 + totalBytesTxAndRx * CLOCK_STRETCH_AND_SCHED_OVERHEAD_PER_BYTE_US;
     uint64_t maxExpectedUs = minTotalUs + I2C_START_RESTART_END_OVERHEAD_US;
 
 #ifdef DEBUG_TIMEOUT_CALCS
@@ -417,8 +417,33 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     // Check for software time-out
     if (_accessResultCode == RAFT_BUS_PENDING)
     {
-        _accessResultCode = RAFT_BUS_SW_TIME_OUT;
-        _i2cStats.recordSoftwareTimeout();
+        // The polling loop timed out, but RTOS scheduling jitter may have caused the task
+        // to miss the ISR completion. Check the hardware command registers directly to see
+        // if the I2C transaction actually completed at the hardware level.
+        bool allCmdsDone = true;
+        I2C_COMMAND_REG_TYPE *pCmd = (I2C_COMMAND_REG_TYPE*) &(I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME);
+        for (uint32_t i = 0; i < cmdIdx; i++)
+        {
+            if (pCmd[i].done == 0)
+            {
+                allCmdsDone = false;
+                break;
+            }
+        }
+
+        if (allCmdsDone)
+        {
+            // Hardware completed the transaction - disable/clear interrupts and treat as success
+            I2C_DEVICE.int_ena.val = 0;
+            I2C_DEVICE.int_clr.val = _interruptClearFlags;
+            _accessResultCode = _accessNackDetected ? RAFT_BUS_ACK_ERROR : RAFT_OK;
+            _i2cStats.recordSoftwareTimeout(); // Still record that polling timed out for diagnostics
+        }
+        else
+        {
+            _accessResultCode = RAFT_BUS_SW_TIME_OUT;
+            _i2cStats.recordSoftwareTimeout();
+        }
     }
 
     // Check all of the I2C commands to ensure everything was marked done

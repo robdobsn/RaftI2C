@@ -8,8 +8,9 @@
 
 // #define DEBUG_POLL_REQUEST
 // #define DEBUG_POLL_RESULT
-// #define DEBUG_POLL_RESULT_SPECIFIC_ADDRESS 0x15
+// #define DEBUG_POLL_RESULT_SPECIFIC_ADDRESS 0x6a
 // #define DEBUG_POLL_TIMING
+// #define DEBUG_DYNAMIC_READ_LEN
 
 #include "DevicePollingMgr.h"
 #include "BusI2CAddrAndSlot.h"
@@ -102,6 +103,15 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             {
                 uint16_t computedLen = busReqRec.getReadReqLen(perOpResults);
                 busReqRec.setReadReqLen(computedLen);
+#ifdef DEBUG_DYNAMIC_READ_LEN
+                LOG_I(MODULE_PREFIX, "dynReadLen addr %04x op %d computedLen %d", address, i, computedLen);
+#endif
+                // Skip the I2C transaction if computed read length is 0 (e.g. FIFO empty)
+                if (computedLen == 0)
+                {
+                    perOpResults.push_back(std::vector<uint8_t>());
+                    continue;
+                }
             }
 
             // Perform the request
@@ -110,7 +120,7 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
 
 #ifdef DEBUG_POLL_RESULT
 #ifdef DEBUG_POLL_RESULT_SPECIFIC_ADDRESS
-            if (addrAndSlot.i2cAddr == DEBUG_POLL_RESULT_SPECIFIC_ADDRESS)
+            if (addrAndSlot.getI2CAddr() == DEBUG_POLL_RESULT_SPECIFIC_ADDRESS)
 #endif
             {
                 String writeDataHexStr;
