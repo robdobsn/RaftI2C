@@ -19,7 +19,7 @@ To build the demonstration application, it is easiest to install the Raft CLI pr
 Then use the following command line to build, flash and monitor the demonstration onto either:
 
 - an ESP32 dev-board like the [TinyPICO](https://www.tinypico.com/) (the default is to use pins 21 and 22 for SDA and SCL respectively - see below how to change this)
-- an ESP32-S3 dev-board like the [Adafruit QTPy S3](https://www.adafruit.com/product/5426) (the default is to use oins 41 and 40 for SDA and SCL respectively - see below how to change this)
+- an ESP32-S3 dev-board like the [Adafruit QTPy S3](https://www.adafruit.com/product/5426) (the default is to use pins 41 and 40 for SDA and SCL respectively - see below how to change this)
 
 ```
 cd ./TestWebUI
