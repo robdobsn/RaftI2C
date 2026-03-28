@@ -200,6 +200,15 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device type index for an address
+    /// @param address Composite address
+    /// @return Device type index (DEVICE_TYPE_INDEX_INVALID if not supported)
+    virtual DeviceTypeIndexType getDeviceTypeIndex(BusElemAddrType address) const override final
+    {
+        return _busStatusMgr.getDeviceTypeIndexByAddr(address);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set number of poll result samples to store for an address
     /// @param address Composite address
     /// @param numSamples Number of samples to store
