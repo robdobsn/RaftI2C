@@ -871,6 +871,47 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, DeviceOn
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get bus element poll responses with per-sample actual lengths
+uint32_t BusStatusMgr::getBusElemPollResponsesWithLengths(BusElemAddrType address,
+            DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex,
+            std::vector<uint8_t>& devicePollResponseData,
+            std::vector<uint16_t>& sampleLengths,
+            uint32_t maxResponsesToReturn)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint32_t numResponses = 0;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        onlineState = pAddrStatus->onlineState;
+        deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+        numResponses = pAddrStatus->deviceStatus.getPollResponsesWithLengths(
+            devicePollResponseData, sampleLengths, maxResponsesToReturn);
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get and increment per-device publish sequence counter
+uint8_t BusStatusMgr::getAndIncrementDeviceSeqCounter(BusElemAddrType address)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint8_t seqNum = 0;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+        seqNum = pAddrStatus->deviceStatus.getAndIncrementSeqCounter();
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return seqNum;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get pending deletions and clear the queue
 /// @param deletions (out) vector to receive pending deletions
 void BusStatusMgr::getPendingDeletions(std::vector<DeletionNotice>& deletions)

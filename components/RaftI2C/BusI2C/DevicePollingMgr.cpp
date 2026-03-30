@@ -164,9 +164,6 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         // Store the poll result if all requests succeeded
         if (allResultsOkAndComplete)
         {
-            // Pad result to fixed size if variable-length reads produced a shorter result
-            if (pollDataResult.size() < pollInfo.pollResultSizeIncTimestamp)
-                pollDataResult.resize(pollInfo.pollResultSizeIncTimestamp, 0);
             _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, &pollInfo, 0);
         }
 

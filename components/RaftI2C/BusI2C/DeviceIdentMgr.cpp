@@ -421,23 +421,37 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
     _busStatusMgr.getBusElemAddresses(addresses, false);
     for (auto address : addresses)
     {
-        // Get bus status for each address
+        // Get bus status for each address with per-sample lengths
         DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
         uint16_t deviceTypeIndex = 0;
-        std::vector<uint8_t> devicePollResponseData;
-        uint32_t responseSize = 0;
-        _busStatusMgr.getBusElemPollResponses(address, onlineState, deviceTypeIndex, devicePollResponseData, responseSize, 0);
+        std::vector<uint8_t> sampleData;
+        std::vector<uint16_t> sampleLengths;
+        uint32_t numSamples = _busStatusMgr.getBusElemPollResponsesWithLengths(
+            address, onlineState, deviceTypeIndex,
+            sampleData, sampleLengths, 0);
 
-        // Skip unidentified devices
-        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
+        // Skip unidentified devices or devices with no data
+        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID || numSamples == 0)
             continue;
 
-        // Skip unidentified devices
-        if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID)
-            continue;
+        // Get per-device sequence counter
+        uint8_t seqNum = _busStatusMgr.getAndIncrementDeviceSeqCounter(address);
 
-        // Generate binary device message
-        RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, onlineState, devicePollResponseData);
+        // Build length-prefixed sample payload
+        std::vector<uint8_t> payload;
+        uint32_t offset = 0;
+        for (uint32_t i = 0; i < numSamples; i++) {
+            uint16_t len = sampleLengths[i];
+            if (len > 255) len = 255;  // cap for 1-byte prefix
+            payload.push_back(static_cast<uint8_t>(len));
+            payload.insert(payload.end(),
+                           sampleData.data() + offset,
+                           sampleData.data() + offset + len);
+            offset += sampleLengths[i];
+        }
+
+        // Generate binary device message with seqNum
+        RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
     }
 
     // Add pending deletion notices (devices that have been removed)
@@ -448,7 +462,7 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
         // Generate deletion notice with empty data and PENDING_DELETION state
         std::vector<uint8_t> emptyData;
         RaftDevice::genBinaryDataMsg(binData, connMode, deletion.address, deletion.deviceTypeIndex, 
-                        DeviceOnlineState::PENDING_DELETION, emptyData);
+                        DeviceOnlineState::PENDING_DELETION, 0, emptyData);
     }
 
     // Return binary data

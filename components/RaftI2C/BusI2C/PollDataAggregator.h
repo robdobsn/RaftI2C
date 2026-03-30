@@ -25,6 +25,7 @@ public:
 
         // Ring buffer
         _ringBuffer.resize(numResultsToStore*resultSize);
+        _actualLengths.resize(numResultsToStore, 0);
         _ringBufHeadOffset = 0;
         _ringBufCount = 0;
         _maxElems = numResultsToStore;
@@ -48,16 +49,22 @@ public:
     /// @param data Data to add
     bool put(uint64_t timeNowUs, const std::vector<uint8_t>& data) override
     {
-        // Check buffer size > size of a single result
-        if (data.size() != _resultSize)
+        // Check buffer size fits in a single slot
+        if (data.size() > _resultSize || data.size() == 0)
             return false;
 
         // Obtain access
         if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
             return false;
 
-        // Add data
-        memcpy(_ringBuffer.data() + _ringBufHeadOffset, data.data(), _resultSize);
+        // Record actual length
+        uint16_t slotIndex = _ringBufHeadOffset / _resultSize;
+        _actualLengths[slotIndex] = data.size();
+
+        // Copy actual data and zero-fill remainder
+        memcpy(_ringBuffer.data() + _ringBufHeadOffset, data.data(), data.size());
+        if (data.size() < _resultSize)
+            memset(_ringBuffer.data() + _ringBufHeadOffset + data.size(), 0, _resultSize - data.size());
 
         // Update ring buffer
         _ringBufHeadOffset += _resultSize;
@@ -234,6 +241,7 @@ public:
 
         // Resize ring buffer (clears existing data)
         _ringBuffer.resize(numResultsToStore * _resultSize);
+        _actualLengths.resize(numResultsToStore, 0);
         _ringBufHeadOffset = 0;
         _ringBufCount = 0;
         _maxElems = numResultsToStore;
@@ -243,9 +251,60 @@ public:
         return true;
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    /// @brief Get poll results with per-sample actual lengths
+    /// @param data (output) Concatenated sample data (trimmed to actual lengths)
+    /// @param lengths (output) Actual length of each sample
+    /// @param maxResponsesToReturn Maximum number (0 = all available)
+    /// @return number of samples returned
+    uint32_t getWithLengths(std::vector<uint8_t>& data,
+                            std::vector<uint16_t>& lengths,
+                            uint32_t maxResponsesToReturn) override
+    {
+        data.clear();
+        lengths.clear();
+
+        if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
+            return 0;
+
+        uint32_t numToReturn = (maxResponsesToReturn == 0 || _ringBufCount < maxResponsesToReturn)
+                               ? _ringBufCount : maxResponsesToReturn;
+        if (numToReturn == 0)
+        {
+            RaftMutex_unlock(_accessMutex);
+            return 0;
+        }
+
+        // Get tail position
+        uint32_t pos = (_ringBufHeadOffset + _ringBuffer.size() - _ringBufCount * _resultSize)
+                       % _ringBuffer.size();
+
+        for (uint32_t i = 0; i < numToReturn; i++)
+        {
+            uint16_t slotIndex = pos / _resultSize;
+            uint16_t actualLen = _actualLengths[slotIndex];
+            if (actualLen == 0)
+                actualLen = _resultSize; // backwards compat: 0 means legacy full-size
+
+            data.insert(data.end(),
+                        _ringBuffer.data() + pos,
+                        _ringBuffer.data() + pos + actualLen);
+            lengths.push_back(actualLen);
+
+            pos += _resultSize;
+            if (pos >= _ringBuffer.size())
+                pos = 0;
+        }
+
+        _ringBufCount -= numToReturn;
+        RaftMutex_unlock(_accessMutex);
+        return numToReturn;
+    }
+
 private:
     // Circular buffer
     std::vector<uint8_t> _ringBuffer;
+    std::vector<uint16_t> _actualLengths; // actual data length per slot
     uint16_t _ringBufHeadOffset = 0;
     uint16_t _ringBufCount = 0;
     uint16_t _resultSize = 0;

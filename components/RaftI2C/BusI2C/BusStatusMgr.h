@@ -126,6 +126,25 @@ public:
                 std::vector<uint8_t>& devicePollResponseData, 
                 uint32_t& responseSize, uint32_t maxResponsesToReturn);
 
+    /// @brief Get bus element poll responses with per-sample actual lengths
+    /// @param address - address of device to get responses for
+    /// @param onlineState - (out) device online state
+    /// @param deviceTypeIndex - (out) device type index
+    /// @param devicePollResponseData - (out) concatenated sample data (trimmed to actual lengths)
+    /// @param sampleLengths - (out) actual length of each sample
+    /// @param maxResponsesToReturn - maximum number of responses to return (0 for no limit)
+    /// @return number of responses returned
+    uint32_t getBusElemPollResponsesWithLengths(BusElemAddrType address,
+                DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex,
+                std::vector<uint8_t>& devicePollResponseData,
+                std::vector<uint16_t>& sampleLengths,
+                uint32_t maxResponsesToReturn);
+
+    /// @brief Get and increment per-device publish sequence counter
+    /// @param address address of the bus element
+    /// @return current sequence counter (pre-increment)
+    uint8_t getAndIncrementDeviceSeqCounter(BusElemAddrType address);
+
     /// @brief Register for device data notifications
     /// @param addrAndSlot address
     /// @param dataChangeCB Callback for data change
