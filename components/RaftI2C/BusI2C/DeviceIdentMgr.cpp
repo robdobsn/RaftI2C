@@ -450,8 +450,8 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
             offset += sampleLengths[i];
         }
 
-        // Generate binary device message with seqNum
-        RaftDevice::genBinaryDataMsg(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
+        // Generate binary device record with pre-formatted length-prefixed payload
+        RaftDevice::genBinaryDeviceRecord(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
     }
 
     // Add pending deletion notices (devices that have been removed)
@@ -461,7 +461,7 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
     {
         // Generate deletion notice with empty data and PENDING_DELETION state
         std::vector<uint8_t> emptyData;
-        RaftDevice::genBinaryDataMsg(binData, connMode, deletion.address, deletion.deviceTypeIndex, 
+        RaftDevice::genBinaryDeviceRecord(binData, connMode, deletion.address, deletion.deviceTypeIndex, 
                         DeviceOnlineState::PENDING_DELETION, 0, emptyData);
     }
 
