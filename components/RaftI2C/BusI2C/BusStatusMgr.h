@@ -251,6 +251,10 @@ private:
     std::vector<DeletionNotice> _pendingDeletionQueue;
     static const uint32_t PENDING_DELETION_QUEUE_MAX = 20;
 
+    // Debug overflow monitor
+    static const uint32_t DEBUG_OVERFLOW_LOG_INTERVAL_MS = 1000;
+    uint32_t _debugOverflowLastLogMs = 0;
+
     // Debug
     static constexpr const char* MODULE_PREFIX = "I2CBusStMgr";    
 };

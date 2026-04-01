@@ -26,6 +26,7 @@
 // #define DEBUG_GET_POLL_RESULT
 // #define DEBUG_POLL_RESULT_DETAIL
 // #define DEBUG_LSM6DS_FIFO_DECODE
+// #define DEBUG_OVERFLOW_MONITOR
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Constructor
@@ -73,6 +74,29 @@ void BusStatusMgr::setup(const RaftJsonIF& config)
 /// @param hwIsOperatingOk hardware is operating ok
 void BusStatusMgr::loop(bool hwIsOperatingOk)
 {
+#ifdef DEBUG_OVERFLOW_MONITOR
+    // Periodic overflow logging (runs regardless of status changes)
+    if (Raft::isTimeout(millis(), _debugOverflowLastLogMs, DEBUG_OVERFLOW_LOG_INTERVAL_MS))
+    {
+        _debugOverflowLastLogMs = millis();
+        if (RaftMutex_lock(_busElemStatusMutex, 0))
+        {
+            for (auto& addrStatus : _addrStatus)
+            {
+                if (addrStatus.deviceStatus.pDataAggregator)
+                {
+                    uint32_t ringOvr = addrStatus.deviceStatus.pDataAggregator->debugGetAndClearOverflowCount();
+                    uint32_t fifoOvr = addrStatus.deviceStatus.debugGetAndClearFifoOverrunCount();
+                    uint32_t fifoFull = addrStatus.deviceStatus.debugGetAndClearFifoFullCount();
+                    LOG_I(MODULE_PREFIX, "overflowMon addr=0x%03x fifoOvr=%d fifoFull=%d ringOvr=%d",
+                          addrStatus.address, fifoOvr, fifoFull, ringOvr);
+                }
+            }
+            RaftMutex_unlock(_busElemStatusMutex);
+        }
+    }
+#endif
+
     // Check for any changes detected
     if (!_busElemStatusChangeDetected)
         return;
@@ -618,6 +642,16 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     {
         // Add result to aggregator
         putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs);
+
+        // Track FIFO overrun flag from status bytes if present (LSM6DS-style FIFO_STATUS1/2)
+        if ((nextReqIdx == 0) && (pollResultData.size() >= 4))
+        {
+            uint8_t fifoStatus2 = pollResultData[3];
+            if (fifoStatus2 & 0x40)
+                pAddrStatus->deviceStatus.debugIncFifoOverrunCount();
+            if (fifoStatus2 & 0x20)
+                pAddrStatus->deviceStatus.debugIncFifoFullCount();
+        }
 
 #ifdef DEBUG_LSM6DS_FIFO_DECODE
         // TEMPORARY DEBUG: Decode LSM6DS FIFO poll data to diagnose framing issues
