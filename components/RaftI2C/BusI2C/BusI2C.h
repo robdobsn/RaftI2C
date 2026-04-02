@@ -228,6 +228,44 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set device poll bus frequency for an address
+    /// @param address Composite address
+    /// @param busHz Bus frequency in Hz (0 = use bus default)
+    /// @return true if applied
+    virtual bool setDevicePollBusHz(BusElemAddrType address, uint32_t busHz) override final
+    {
+        return _busStatusMgr.setDevicePollBusHz(address, busHz);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device poll bus frequency for an address
+    /// @param address Composite address
+    /// @return Bus frequency in Hz (0 = use bus default / not supported)
+    virtual uint32_t getDevicePollBusHz(BusElemAddrType address) const override final
+    {
+        return _busStatusMgr.getDevicePollBusHz(address);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set device poll bus frequency slot mask for an address
+    /// @param address Composite address
+    /// @param slotMask Bitmask of slots where busHz applies (0 = all slots)
+    /// @return true if applied
+    virtual bool setDevicePollBusHzSlotMask(BusElemAddrType address, uint64_t slotMask) override final
+    {
+        return _busStatusMgr.setDevicePollBusHzSlotMask(address, slotMask);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get device poll bus frequency slot mask for an address
+    /// @param address Composite address
+    /// @return Bitmask of slots where busHz applies (0 = all slots / not supported)
+    virtual uint64_t getDevicePollBusHzSlotMask(BusElemAddrType address) const override final
+    {
+        return _busStatusMgr.getDevicePollBusHzSlotMask(address);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set virtual pin levels on IO expander (pins must be on the same expander or on GPIO)
     /// @param numPins - number of pins to set
     /// @param pPinNums - array of pin numbers

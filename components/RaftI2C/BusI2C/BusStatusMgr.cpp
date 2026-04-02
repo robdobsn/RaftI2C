@@ -1077,6 +1077,94 @@ uint32_t BusStatusMgr::getDeviceNumSamples(BusElemAddrType address) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set bus frequency override for polling a specific address
+/// @param address address
+/// @param busHz bus frequency in Hz (0 = use bus default)
+/// @return true if address found and updated
+bool BusStatusMgr::setDevicePollBusHz(BusElemAddrType address, uint32_t busHz)
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+
+    bool updated = false;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        pAddrStatus->deviceStatus.deviceIdentPolling.pollBusHz = busHz;
+        updated = true;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return updated;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get bus frequency override for polling a specific address
+/// @param address address
+/// @return bus frequency in Hz (0 = use bus default)
+uint32_t BusStatusMgr::getDevicePollBusHz(BusElemAddrType address) const
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint32_t busHz = 0;
+    const BusAddrRecord* pAddrRecord = findAddrStatusRecord(address);
+    if (pAddrRecord)
+    {
+        busHz = pAddrRecord->deviceStatus.deviceIdentPolling.pollBusHz;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return busHz;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set bus frequency slot mask for polling a specific address
+/// @param address address
+/// @param slotMask bitmask of slots where busHz applies (0 = all slots)
+/// @return true if address found and updated
+bool BusStatusMgr::setDevicePollBusHzSlotMask(BusElemAddrType address, uint64_t slotMask)
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+
+    bool updated = false;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        pAddrStatus->deviceStatus.deviceIdentPolling.pollBusHzSlotMask = slotMask;
+        updated = true;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return updated;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get bus frequency slot mask for polling a specific address
+/// @param address address
+/// @return bitmask of slots where busHz applies (0 = all slots)
+uint64_t BusStatusMgr::getDevicePollBusHzSlotMask(BusElemAddrType address) const
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    uint64_t slotMask = 0;
+    const BusAddrRecord* pAddrRecord = findAddrStatusRecord(address);
+    if (pAddrRecord)
+    {
+        slotMask = pAddrRecord->deviceStatus.deviceIdentPolling.pollBusHzSlotMask;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return slotMask;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Register for device data notifications
 /// @param addrAndSlot address
 /// @param dataChangeCB Callback for data change

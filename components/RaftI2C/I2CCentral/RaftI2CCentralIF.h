@@ -39,6 +39,12 @@ public:
     // Check if bus operating ok
     virtual bool isOperatingOk() const = 0;
 
+    // Set bus frequency (Hz) - returns true if successful
+    virtual bool setBusFrequency(uint32_t busFreqHz) { return false; }
+
+    // Get current bus frequency (Hz)
+    virtual uint32_t getBusFrequency() const { return 0; }
+
     // Debugging
     class I2CStats
     {

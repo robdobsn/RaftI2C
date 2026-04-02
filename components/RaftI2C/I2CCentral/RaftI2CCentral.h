@@ -39,6 +39,15 @@ public:
 
     // Check if bus operating ok
     virtual bool isOperatingOk() const override final;
+
+    // Set bus frequency (Hz)
+    virtual bool setBusFrequency(uint32_t busFreqHz) override final;
+
+    // Get current applied bus frequency (Hz)
+    virtual uint32_t getBusFrequency() const override final
+    {
+        return _appliedBusFrequency;
+    }
      
 private:
     // Settings
@@ -46,6 +55,7 @@ private:
     int16_t _pinSDA = -1;
     int16_t _pinSCL = -1;
     uint32_t _busFrequency = 100000;
+    uint32_t _appliedBusFrequency = 0;
     uint32_t _busFilteringLevel = DEFAULT_BUS_FILTER_LEVEL;
 
     // Init flag
@@ -253,7 +263,6 @@ private:
     bool ensureI2CReady();
     void prepareI2CAccess();
     void reinitI2CModule();
-    bool setBusFrequency(uint32_t busFreq);
     uint32_t getApbFrequency();
     void setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byte_num, bool ack_val, bool ack_exp, bool ack_en);
     bool initInterrupts();

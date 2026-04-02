@@ -15,6 +15,7 @@
 #include "DevicePollingMgr.h"
 #include "BusI2CAddrAndSlot.h"
 #include "RaftUtils.h"
+#include "RaftI2CCentralIF.h"
 
 #ifdef DEBUG_POLL_TIMING
 static const uint32_t POLL_TIMING_REPORT_INTERVAL_US = 5000000; // 5 seconds
@@ -24,10 +25,12 @@ static const uint32_t POLL_TIMING_REPORT_INTERVAL_US = 5000000; // 5 seconds
 // Constructor
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn) :
+DevicePollingMgr::DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn,
+                                   RaftI2CCentralIF* pI2CCentral) :
     _busStatusMgr(busStatusMgr),
     _busMultiplexers(BusMultiplexers),
-    _busReqSyncFn(busI2CReqSyncFn)
+    _busReqSyncFn(busI2CReqSyncFn),
+    _pI2CCentral(pI2CCentral)
 {
 }
 
@@ -66,6 +69,18 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.getSlotNum());
         if (rslt != RAFT_OK)
             return;
+
+        // Switch bus frequency if device specifies a custom poll speed
+        // and (no slot mask set OR this device's slot is in the mask)
+        bool speedChanged = false;
+        uint32_t savedBusFreqHz = 0;
+        if (pollInfo.pollBusHz != 0 && _pI2CCentral &&
+            (pollInfo.pollBusHzSlotMask == 0 || (pollInfo.pollBusHzSlotMask & (1ULL << addrAndSlot.getSlotNum()))))
+        {
+            savedBusFreqHz = _pI2CCentral->getBusFrequency();
+            if (pollInfo.pollBusHz != savedBusFreqHz)
+                speedChanged = _pI2CCentral->setBusFrequency(pollInfo.pollBusHz);
+        }
 
 #ifdef DEBUG_POLL_TIMING
         // Get timing stats for this address
@@ -201,6 +216,10 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
             timing.lastReportTimeUs = txnEndUs;
         }
 #endif
+
+        // Restore bus frequency if it was changed
+        if (speedChanged && _pI2CCentral)
+            _pI2CCentral->setBusFrequency(savedBusFreqHz);
 
         // Restore the bus multiplexers if necessary
         _busMultiplexers.disableAllSlots(false);

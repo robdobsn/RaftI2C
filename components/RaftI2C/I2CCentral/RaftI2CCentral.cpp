@@ -101,6 +101,7 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     _pinSDA = pinSDA;
     _pinSCL = pinSCL;
     _busFrequency = busFrequency;
+    _appliedBusFrequency = 0;
     _busFilteringLevel = busFilteringLevel;
 
     // Attach SDA and SCL
@@ -369,7 +370,8 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     // Calculate minimum time for entire transaction based on number of bits written/read
     uint32_t totalBytesTxAndRx = (numToRead + 1 + numToWrite + 1);
     uint32_t totalBitsTxAndRx = totalBytesTxAndRx * 10;
-    uint32_t minTotalUs = (totalBitsTxAndRx * 1000) / (_busFrequency / 1000);
+    uint32_t appliedBusFrequency = _appliedBusFrequency != 0 ? _appliedBusFrequency : _busFrequency;
+    uint32_t minTotalUs = (totalBitsTxAndRx * 1000) / (appliedBusFrequency / 1000);
 
     // Add overhead for starting/restarting/ending transmission, clock stretching and RTOS scheduling jitter
     static const uint32_t CLOCK_STRETCH_AND_SCHED_OVERHEAD_PER_BYTE_US = 500;
@@ -679,6 +681,9 @@ void RaftI2CCentral::reinitI2CModule()
 
 bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
 {
+    if (busFreq == _appliedBusFrequency)
+        return true;
+
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
 
     i2c_hal_clk_config_t clk_cal;
@@ -791,6 +796,8 @@ bool RaftI2CCentral::setBusFrequency(uint32_t busFreq)
     I2C_DEVICE.sda_sample.time = quarterPeriod;
 
 #endif
+
+    _appliedBusFrequency = busFreq;
 
     return true;
 }

@@ -186,6 +186,28 @@ public:
     /// @return Number of samples (0 if not supported)
     uint32_t getDeviceNumSamples(BusElemAddrType address) const;
 
+    /// @brief Set bus frequency override for polling a specific address
+    /// @param address Composite address
+    /// @param busHz Bus frequency in Hz (0 = use bus default)
+    /// @return true if updated
+    bool setDevicePollBusHz(BusElemAddrType address, uint32_t busHz);
+
+    /// @brief Get bus frequency override for polling a specific address
+    /// @param address Composite address
+    /// @return Bus frequency in Hz (0 = use bus default)
+    uint32_t getDevicePollBusHz(BusElemAddrType address) const;
+
+    /// @brief Set bus frequency slot mask for polling a specific address
+    /// @param address Composite address
+    /// @param slotMask Bitmask of slots where busHz applies (0 = all slots)
+    /// @return true if updated
+    bool setDevicePollBusHzSlotMask(BusElemAddrType address, uint64_t slotMask);
+
+    /// @brief Get bus frequency slot mask for polling a specific address
+    /// @param address Composite address
+    /// @return Bitmask of slots where busHz applies (0 = all slots)
+    uint64_t getDevicePollBusHzSlotMask(BusElemAddrType address) const;
+
     /// @brief Deletion notice - used to queue deletion messages for publishing
     struct DeletionNotice
     {

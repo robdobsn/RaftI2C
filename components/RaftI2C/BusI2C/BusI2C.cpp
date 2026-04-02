@@ -59,7 +59,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker, _busReqSyncFn),
         _deviceIdentMgr(_busStatusMgr, _busReqSyncFn, _busReqAsyncFn),
         _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busIOExpanders, _deviceIdentMgr, _busReqSyncFn),
-        _devicePollingMgr(_busStatusMgr, _busMultiplexers, _busReqSyncFn),
+        _devicePollingMgr(_busStatusMgr, _busMultiplexers, _busReqSyncFn, nullptr),
         _busAccessor(*this, _busReqAsyncFn)
 {
     // Init
@@ -80,6 +80,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
 #endif
         _i2cCentralNeedsToBeDeleted = true;
     }
+
+    // Provide the I2C central to the polling manager for bus-frequency switching
+    _devicePollingMgr.setI2CCentral(_pI2CCentral);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

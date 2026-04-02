@@ -12,11 +12,17 @@
 #include "BusStatusMgr.h"
 #include "BusMultiplexers.h"
 
+class RaftI2CCentralIF;
+
 class DevicePollingMgr
 {
 public:
     // Constructor
-    DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn);
+    DevicePollingMgr(BusStatusMgr& busStatusMgr, BusMultiplexers& BusMultiplexers, BusReqSyncFn busI2CReqSyncFn,
+                     RaftI2CCentralIF* pI2CCentral);
+
+    // Set I2C central interface (call after central is created if not available at construction time)
+    void setI2CCentral(RaftI2CCentralIF* pI2CCentral) { _pI2CCentral = pI2CCentral; }
 
     // Setup
     void setup(const RaftJsonIF& config);
@@ -34,6 +40,9 @@ private:
 
     // I2C request sync function
     BusReqSyncFn _busReqSyncFn;
+
+    // I2C central interface (for bus frequency control)
+    RaftI2CCentralIF* _pI2CCentral = nullptr;
 
 #ifdef DEBUG_POLL_TIMING
     // Poll timing diagnostics per address
