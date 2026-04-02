@@ -273,6 +273,13 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     else if (numToWrite > 0)
         i2cOpType = ACCESS_WRITE_ONLY;
 
+    // Clamp read size to avoid exceeding a single 255-byte READ command in the ESP32
+    // I2C engine command queue. 240 is used instead of 255 because it is divisible by
+    // common sensor record sizes (1,2,3,4,6,8,12,etc) to avoid mid-record splits
+    static const uint32_t MAX_I2C_READ_BYTES = 240;
+    if (numToRead > MAX_I2C_READ_BYTES)
+        numToRead = MAX_I2C_READ_BYTES;
+
     // The ESP32 I2C engine can accommodate up to 14 write/read commands
     // each of which can request up to 255 bytes of writing/reading
     // If writing and reading reading is involved then an RSTART command and second address is needed
@@ -1008,9 +1015,11 @@ void RaftI2CCentral::i2cISR()
         interruptsToDisable |= emptyRxFifo();
     }
 
-    // Disable and clear interrupts
+    // Only clear the interrupts we observed at ISR entry - not all enabled interrupts.
+    // A TRANS_COMPLETE may have arrived during the RXFIFO drain and must not be cleared
+    // before it is processed (this occurs when numToRead is a multiple of the FIFO threshold)
     I2C_DEVICE.int_ena.val = 0;
-    I2C_DEVICE.int_clr.val = _interruptClearFlags;
+    I2C_DEVICE.int_clr.val = intStatus;
 
     // Remove enables on interrupts no longer wanted
     _interruptEnFlags &= ~interruptsToDisable;
