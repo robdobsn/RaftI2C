@@ -191,6 +191,10 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     // Setup interrupts on the required port
     initInterrupts();
 
+    // Create binary semaphore for blocking wait on I2C transaction completion
+    if (_accessSemaphore == nullptr)
+        _accessSemaphore = xSemaphoreCreateBinary();
+
     // Use re-init sequence as we have to do this on a lockup too
     reinitI2CModule();
 
@@ -408,12 +412,23 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
 #endif
     I2C_DEVICE.ctr.trans_start = 1;
 
-    // Wait for a result
+    // Wait for a result using semaphore (blocks the task, freeing the CPU)
     uint64_t startUs = micros();
-    while ((_accessResultCode == RAFT_BUS_PENDING) &&
-           !Raft::isTimeout((uint64_t)micros(), startUs, maxExpectedUs))
+    uint32_t maxExpectedMs = (maxExpectedUs + 999) / 1000;
+    if (maxExpectedMs < 1)
+        maxExpectedMs = 1;
+    if (_accessSemaphore != nullptr)
     {
-        vTaskDelay(0);
+        xSemaphoreTake(_accessSemaphore, pdMS_TO_TICKS(maxExpectedMs));
+    }
+    else
+    {
+        // Fallback spin-wait if semaphore not created
+        while ((_accessResultCode == RAFT_BUS_PENDING) &&
+               !Raft::isTimeout((uint64_t)micros(), startUs, maxExpectedUs))
+        {
+            vTaskDelay(0);
+        }
     }
 
     // Check for software time-out
@@ -968,6 +983,14 @@ void RaftI2CCentral::i2cISR()
         // Set flag indicating successful completion
         if (_accessResultCode == RAFT_BUS_PENDING)
             _accessResultCode = rsltCode;
+
+        // Unblock the waiting task
+        if (_accessSemaphore != nullptr)
+        {
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xSemaphoreGiveFromISR(_accessSemaphore, &xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        }
         return;
     }
 
@@ -1126,6 +1149,13 @@ void RaftI2CCentral::deinit()
     if (_i2cISRHandle)
         esp_intr_free(_i2cISRHandle);
     _i2cISRHandle = nullptr;
+
+    // Delete access semaphore
+    if (_accessSemaphore != nullptr)
+    {
+        vSemaphoreDelete(_accessSemaphore);
+        _accessSemaphore = nullptr;
+    }
 
     // Check initialised and release pins if so
     if (_isInitialised)

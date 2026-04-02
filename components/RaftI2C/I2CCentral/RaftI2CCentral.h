@@ -15,6 +15,8 @@
 #include "soc/i2c_reg.h"
 #include "esp_intr_alloc.h"
 #include "sdkconfig.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ALL_SOURCES
 // #define DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL
@@ -85,6 +87,9 @@ private:
     intr_handle_t _i2cISRHandle = nullptr;
     uint32_t _interruptClearFlags = 0;
     uint32_t _interruptEnFlags = 0;
+
+    // Binary semaphore for blocking wait on I2C transaction completion
+    SemaphoreHandle_t _accessSemaphore = nullptr;
 
     // FIFO size
     static const uint32_t I2C_ENGINE_FIFO_SIZE = 32;
