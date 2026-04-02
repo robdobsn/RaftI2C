@@ -345,7 +345,7 @@ BusOperationStatus BusStatusMgr::isElemOnline(BusElemAddrType address) const
     {
         // Find address record
         const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
-        if (!pAddrStatus || (pAddrStatus->onlineState != DeviceOnlineState::OFFLINE))
+        if (!pAddrStatus)
             onlineStatus = BUS_OPERATION_UNKNOWN;
         else
             onlineStatus = (pAddrStatus->onlineState == DeviceOnlineState::ONLINE) ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
