@@ -15,6 +15,8 @@
 #include "RaftJsonPrefixed.h"
 
 #include "BusI2C.h"
+#include "BusI2CAddrAndSlot.h"
+#include "BusIOExpanders.h"
 
 static const char* MODULE_PREFIX = "test_bus_i2c";
 
@@ -33,7 +35,8 @@ BusOperationStatus busStatus = BUS_OPERATION_UNKNOWN;
 
 // Test configuration
 std::vector<BusI2CAddrAndSlot> testConfigOnlineAddrList;
-uint32_t busExtenderStatusChanMask[I2C_BUS_MUX_MAX_DEFAULT] = {0};
+static const uint32_t I2C_BUS_MUX_SLOT_COUNT = 8;
+uint32_t busExtenderStatusChanMask[I2C_BUS_MUX_MAX] = {0};
 
 // Bus multiplexer repeated online for detection
 static const uint32_t NUM_ONLINE_REPEATS_FOR_BUS_MUX = 3;
@@ -68,14 +71,14 @@ BusElemStatusCB busElemStatusCB = [](RaftBus& bus, const std::vector<BusAddrStat
 BusReqSyncFn busReqSyncFn = [](const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) {
     
     BusI2CAddrAndSlot addrAndSlot(pReqRec->getAddress());
-    uint32_t addr = addrAndSlot.i2cAddr;
+    uint32_t addr = addrAndSlot.getI2CAddr();
     RaftRetCode reslt = RAFT_BUS_ACK_ERROR;
 
     // Check if this address is in the online list
     bool inOnlineList = false;
     for (auto& testConfigAddrAndSlot : testConfigOnlineAddrList)
     {
-        if (testConfigAddrAndSlot.i2cAddr == addr)
+        if (testConfigAddrAndSlot.getI2CAddr() == addr)
         {
             inOnlineList = true;
             break;
@@ -84,7 +87,7 @@ BusReqSyncFn busReqSyncFn = [](const BusRequestInfo* pReqRec, std::vector<uint8_
     if(inOnlineList)
     {
         // Check if this is an extender
-        if ((addr >= I2C_BUS_MUX_BASE_DEFAULT) && (addr < I2C_BUS_MUX_BASE_DEFAULT + I2C_BUS_MUX_MAX_DEFAULT))
+        if ((addr >= I2C_BUS_MUX_BASE_DEFAULT) && (addr < I2C_BUS_MUX_BASE_DEFAULT + I2C_BUS_MUX_MAX))
         {
             uint32_t extenderIdx = addr - I2C_BUS_MUX_BASE_DEFAULT;
             // Check if data being written to extender
@@ -99,18 +102,18 @@ BusReqSyncFn busReqSyncFn = [](const BusRequestInfo* pReqRec, std::vector<uint8_
             // Check through matching online addresses and see if the slot is enabled
             for (auto& testConfigAddrAndSlot : testConfigOnlineAddrList)
             {
-                if (testConfigAddrAndSlot.i2cAddr == addr)
+                if (testConfigAddrAndSlot.getI2CAddr() == addr)
                 {
                     // If device test record says slot 0 then the test device is connected to the main bus
                     // so always connected
-                    if (testConfigAddrAndSlot.slotNum == 0)
+                    if (testConfigAddrAndSlot.getSlotNum() == 0)
                     {
                         reslt = RAFT_OK;
                         break;
                     }
                     // Calculate the extender idx and mask required
-                    uint32_t extenderIdx = (testConfigAddrAndSlot.slotNum - 1) / BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT;
-                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.slotNum - 1) % BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT);
+                    uint32_t extenderIdx = (testConfigAddrAndSlot.getSlotNum() - 1) / I2C_BUS_MUX_SLOT_COUNT;
+                    uint32_t chanMask = 1 << ((testConfigAddrAndSlot.getSlotNum() - 1) % I2C_BUS_MUX_SLOT_COUNT);
                     if (busExtenderStatusChanMask[extenderIdx] & chanMask)
                     {
 #ifdef DEBUG_SLOT_ENABLE_RESPONSES
@@ -162,12 +165,14 @@ RaftBus raftBus(busElemStatusCB, busOperationStatusCB);
 
 // BusStatusMgr
 BusStatusMgr busStatusMgr(raftBus);
-BusPowerController busPowerController(busReqSyncFn);
+BusIOExpanders busIOExpanders;
+BusPowerController busPowerController(busIOExpanders);
 BusStuckHandler busStuckHandler(busReqSyncFn);
 BusI2CElemTracker busElemTracker;
-BusMultiplexers busMultiplexers(busPowerController, busStuckHandler, busStatusMgr, busElemTracker, busReqSyncFn);
-DeviceIdentMgr deviceIdentMgr(busStatusMgr, busReqSyncFn);
-BusScanner busScanner(busStatusMgr, busElemTracker, busMultiplexers, deviceIdentMgr, busReqSyncFn);
+BusMultiplexers busMultiplexers(busStuckHandler, busStatusMgr, busElemTracker, busReqSyncFn);
+BusReqAsyncFn busReqAsyncFn = nullptr;
+DeviceIdentMgr deviceIdentMgr(busStatusMgr, busReqSyncFn, busReqAsyncFn);
+BusScanner busScanner(busStatusMgr, busElemTracker, busMultiplexers, busIOExpanders, deviceIdentMgr, busReqSyncFn);
 
 void helper_reset_status_changes_list()
 {
@@ -205,7 +210,7 @@ void helper_service_some(uint32_t serviceLoops, bool serviceScanner)
         busStatusMgr.loop(true);
         if (serviceScanner)
             busScanner.taskService(micros(), 10000, 2000);
-        if ((i % 1000) == 0)
+        if ((i % 100) == 0)
         {
             vTaskDelay(1);
         }
@@ -219,7 +224,7 @@ void helper_elem_states_handle(const std::vector<BusI2CAddrAndSlot>& addrs, bool
         for (auto addr : addrs)
         {
             bool isOnline = false;
-            busStatusMgr.updateBusElemState(addr.toBusElemAddrType(), elemResponding, isOnline);
+            busStatusMgr.updateBusElemState(static_cast<BusElemAddrType>(addr), elemResponding, isOnline);
         }
     }
 }
@@ -228,7 +233,7 @@ void helper_show_status_change_list(const char* linePrefix)
 {
     for (auto& statusChange : statusChangesList)
     {
-        LOG_I(MODULE_PREFIX, "%s statusChangesList addr %02x online %s", linePrefix, statusChange.address, statusChange.isChangeToOnline ? "Y" : "N");
+        LOG_I(MODULE_PREFIX, "%s statusChangesList addr %02x online %s", linePrefix, statusChange.address, statusChange.onlineState == DeviceOnlineState::ONLINE ? "Y" : "N");
     }
 }
 
@@ -265,15 +270,15 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
     // Go through addresses that should be online
     for (auto addr : onlineElems)
     {
-        if (!busStatusMgr.isElemOnline(addr.toBusElemAddrType()))
+        if (!busStatusMgr.isElemOnline(static_cast<BusElemAddrType>(addr)))
         {
-            LOG_E(MODULE_PREFIX, "Address 0x%02x slotNum %d should be online", addr.i2cAddr, addr.slotNum);
+            LOG_E(MODULE_PREFIX, "Address 0x%02x slotNum %d should be online", addr.getI2CAddr(), addr.getSlotNum());
             return false;
         }
         // Remove from list
         for (int i = 0; i < offlineAddrs.size(); i++)
         {
-            if (offlineAddrs[i].i2cAddr == addr.i2cAddr)
+            if (offlineAddrs[i].getI2CAddr() == addr.getI2CAddr())
             {
                 offlineAddrs.erase(offlineAddrs.begin() + i);
                 break;
@@ -284,9 +289,9 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
     // Go through addresses that should be offline
     for (auto addr : offlineAddrs)
     {
-        if (busStatusMgr.isElemOnline(addr.toBusElemAddrType()))
+        if (busStatusMgr.isElemOnline(static_cast<BusElemAddrType>(addr)))
         {
-            LOG_E(MODULE_PREFIX, "Address 0x%02x should be offline", addr.i2cAddr);
+            LOG_E(MODULE_PREFIX, "Address 0x%02x should be offline", addr.getI2CAddr());
             return false;
         }
     }
@@ -296,7 +301,7 @@ bool helper_check_online_offline_elems(std::vector<BusI2CAddrAndSlot> onlineElem
 TEST_CASE("raft_i2c_bus_extender_next_slot", "[rafti2c_busi2c_tests]")
 {
     // Setup bus multiplexers
-    BusMultiplexers busMultiplexers(busPowerController, busStuckHandler, busStatusMgr, busElemTracker, busReqSyncFn);
+    BusMultiplexers busMultiplexers(busStuckHandler, busStatusMgr, busElemTracker, busReqSyncFn);
     busMultiplexers.setup(configJson);
 
     // Check next slot
@@ -347,7 +352,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     if (statusChangesList.size() == 1)
     {
         TEST_ASSERT_MESSAGE(statusChangesList[0].address == testAddr, "statusChangesList addr not lockupDetectAddr");
-        TEST_ASSERT_MESSAGE(statusChangesList[0].isChangeToOnline, "statusChangesList status not online");
+        TEST_ASSERT_MESSAGE(statusChangesList[0].onlineState == DeviceOnlineState::ONLINE, "statusChangesList status not online");
     }
 
     // Test bus is operational
@@ -367,7 +372,7 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     if (statusChangesList.size() == 1)
     {
         TEST_ASSERT_MESSAGE(statusChangesList[0].address == lockupDetectAddr, "statusChangesList addr not lockupDetectAddr");
-        TEST_ASSERT_MESSAGE(!statusChangesList[0].isChangeToOnline, "statusChangesList status not offline");
+        TEST_ASSERT_MESSAGE(statusChangesList[0].onlineState == DeviceOnlineState::OFFLINE, "statusChangesList status not offline");
     }
     TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "getAddrStatusCount not 1");
 
@@ -416,9 +421,9 @@ TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
 TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
 {
     // Setup test
-    BusI2CAddrAndSlot testAddr1 = {lockupDetectAddr, 0};
-    BusI2CAddrAndSlot extenderAddr1 = {0x73, 0};
-    BusI2CAddrAndSlot testSlottedAddr1 = {0x47, (extenderAddr1.i2cAddr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 1};
+    BusI2CAddrAndSlot testAddr1(lockupDetectAddr, 0);
+    BusI2CAddrAndSlot extenderAddr1(0x73, 0);
+    BusI2CAddrAndSlot testSlottedAddr1(0x47, (extenderAddr1.getI2CAddr() - I2C_BUS_MUX_BASE_DEFAULT) * I2C_BUS_MUX_SLOT_COUNT + 1);
     helper_setup_i2c_tests({testAddr1, testSlottedAddr1, extenderAddr1});
 
     // Service the status for some time
@@ -428,14 +433,14 @@ TEST_CASE("test_rafti2c_bus_scanner_slotted", "[rafti2c_busi2c_tests]")
     TEST_ASSERT_MESSAGE(busStatusMgr.isOperatingOk() == BUS_OPERATION_OK, "busStatus not BUS_OPERATION_OK");
 
     // Check that the scanner has detected one bus extender
-    TEST_ASSERT_MESSAGE(helper_check_bus_extender_list({extenderAddr1.i2cAddr}), "busExtenderList not correct");
+    TEST_ASSERT_MESSAGE(helper_check_bus_extender_list({extenderAddr1.getI2CAddr()}), "busExtenderList not correct");
 
     // Check elems that should be online are online, etc
     TEST_ASSERT_MESSAGE(helper_check_online_offline_elems({testAddr1, testSlottedAddr1, extenderAddr1}), "online/offline elems not correct");
 
     // Add two further slotted addresses
-    BusI2CAddrAndSlot testSlottedAddr2 = {0x47, (extenderAddr1.i2cAddr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 2};
-    BusI2CAddrAndSlot testSlottedAddr3 = {0x47, (extenderAddr1.i2cAddr - I2C_BUS_MUX_BASE_DEFAULT) * BusMultiplexers::I2C_BUS_MUX_SLOT_COUNT + 5};
+    BusI2CAddrAndSlot testSlottedAddr2(0x47, (extenderAddr1.getI2CAddr() - I2C_BUS_MUX_BASE_DEFAULT) * I2C_BUS_MUX_SLOT_COUNT + 2);
+    BusI2CAddrAndSlot testSlottedAddr3(0x47, (extenderAddr1.getI2CAddr() - I2C_BUS_MUX_BASE_DEFAULT) * I2C_BUS_MUX_SLOT_COUNT + 5);
     helper_set_online_addrs({testAddr1, testSlottedAddr1, testSlottedAddr2, testSlottedAddr3, extenderAddr1});
 
     // Service the status for some time

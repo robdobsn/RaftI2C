@@ -140,6 +140,17 @@ public:
                 std::vector<uint16_t>& sampleLengths,
                 uint32_t maxResponsesToReturn);
 
+    /// @brief Get latest poll response for a bus element (non-destructive peek)
+    /// @param address - address of device to get response for
+    /// @param onlineState - (out) device online state
+    /// @param deviceTypeIndex - (out) device type index
+    /// @param dataTimeUs - (out) timestamp of latest data in microseconds
+    /// @param data - (out) latest poll response data
+    /// @return true if data was available
+    bool getBusElemLatestPollResponse(BusElemAddrType address,
+                DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex,
+                uint64_t& dataTimeUs, std::vector<uint8_t>& data);
+
     /// @brief Get and increment per-device publish sequence counter
     /// @param address address of the bus element
     /// @return current sequence counter (pre-increment)

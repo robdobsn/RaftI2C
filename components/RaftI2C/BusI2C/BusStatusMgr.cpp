@@ -148,8 +148,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 
                 // Check if this is the addrForLockupDetect
                 if (_addrForLockupDetectValid && 
-                            (addrStatus.address == _addrForLockupDetect) && 
-                            (addrStatus.onlineState == DeviceOnlineState::OFFLINE))
+                            (addrStatus.address == _addrForLockupDetect))
                 {
                     newBusOperationStatus = (addrStatus.onlineState == DeviceOnlineState::ONLINE) ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
                 }
@@ -927,6 +926,28 @@ uint32_t BusStatusMgr::getBusElemPollResponsesWithLengths(BusElemAddrType addres
 
     RaftMutex_unlock(_busElemStatusMutex);
     return numResponses;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get latest poll response for a bus element (non-destructive peek)
+bool BusStatusMgr::getBusElemLatestPollResponse(BusElemAddrType address,
+            DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex,
+            uint64_t& dataTimeUs, std::vector<uint8_t>& data)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+
+    bool result = false;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        onlineState = pAddrStatus->onlineState;
+        deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+        result = pAddrStatus->deviceStatus.getLatestPollResponse(dataTimeUs, data);
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return result;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

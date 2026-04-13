@@ -503,6 +503,34 @@ uint32_t DeviceIdentMgr::getDecodedPollResponses(BusElemAddrType address,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get latest decoded poll response (non-destructive peek at most recent value)
+/// @param address address of device to get data from
+/// @param pStructOut pointer to structure to receive decoded data
+/// @param structOutSize size of structure (in bytes) to receive decoded data
+/// @param decodeState decode state for this device
+/// @return true if a value was successfully decoded
+bool DeviceIdentMgr::getLatestDecodedPollResponse(BusElemAddrType address,
+                void* pStructOut, uint32_t structOutSize,
+                RaftBusDeviceDecodeState& decodeState) const
+{
+    // Get latest poll result (non-destructive)
+    DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
+    uint16_t deviceTypeIndex = 0;
+    uint64_t dataTimeUs = 0;
+    std::vector<uint8_t> latestData;
+    if (!_busStatusMgr.getBusElemLatestPollResponse(address, onlineState, deviceTypeIndex, dataTimeUs, latestData))
+        return false;
+
+    if (latestData.empty())
+        return false;
+
+    // Decode single response
+    uint32_t numDecoded = decodePollResponses(deviceTypeIndex, latestData.data(), latestData.size(),
+                pStructOut, structOutSize, 1, decodeState);
+    return numDecoded > 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get debug JSON
 /// @return JSON string
 String DeviceIdentMgr::getDebugJSON(bool includeBraces) const

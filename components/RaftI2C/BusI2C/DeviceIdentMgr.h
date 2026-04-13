@@ -86,6 +86,17 @@ public:
                     uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get latest decoded poll response (non-destructive peek at most recent value)
+    /// @param address address of device to get data from
+    /// @param pStructOut pointer to structure to receive decoded data
+    /// @param structOutSize size of structure (in bytes) to receive decoded data
+    /// @param decodeState decode state for this device
+    /// @return true if a value was successfully decoded
+    virtual bool getLatestDecodedPollResponse(BusElemAddrType address,
+                    void* pStructOut, uint32_t structOutSize,
+                    RaftBusDeviceDecodeState& decodeState) const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Handle poll results
     /// @param timeNowUs time in us (passed in to aid testing)
     /// @param address address
