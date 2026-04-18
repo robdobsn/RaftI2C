@@ -12,19 +12,23 @@
 #include "RaftUtils.h"
 #include "RaftArduino.h"
 #include "sdkconfig.h"
+#include "esp_idf_version.h"
 #include "driver/gpio.h"
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
 #include "soc/dport_reg.h"
 #endif
 #include "soc/rtc.h"
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+#include "hal/i2c_periph.h"
+#else
 #include "soc/i2c_periph.h"
+#endif
 #include "hal/i2c_types.h"
 #include "esp_rom_gpio.h"
 #include "soc/io_mux_reg.h"
 #include "hal/gpio_hal.h"
 #include "esp_private/esp_clk.h"
 #include "esp_private/periph_ctrl.h"
-#include "esp_idf_version.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consts
@@ -171,6 +175,7 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     }
 #endif
 
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6, 0, 0)
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Enable peripheral on ESP32 S3
     periph_module_enable((i2cPort == 0) ? PERIPH_I2C0_MODULE : PERIPH_I2C1_MODULE);
@@ -187,6 +192,7 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     periph_module_enable(PERIPH_I2C0_MODULE);
     I2C_DEVICE.clk_conf.sclk_active = 1;
 #endif
+#endif // ESP_IDF_VERSION < 6.0.0
 
     // Setup interrupts on the required port
     initInterrupts();
