@@ -20,6 +20,7 @@
 #include "soc/rtc.h"
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
 #include "hal/i2c_periph.h"
+#include "hal/i2c_ll.h"
 #else
 #include "soc/i2c_periph.h"
 #endif
@@ -193,6 +194,22 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
     I2C_DEVICE.clk_conf.sclk_active = 1;
 #endif
 #endif // ESP_IDF_VERSION < 6.0.0
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+    // IDF 6.0 removed periph_module_enable for I2C; use low-level HAL wrapped
+    // in PERIPH_RCC_ATOMIC() as required by the macros.
+    PERIPH_RCC_ATOMIC() {
+        i2c_ll_enable_bus_clock(i2cPort, true);
+        i2c_ll_reset_register(i2cPort);
+    }
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
+    // Enable clock to I2C peripheral
+    I2C_DEVICE.clk_conf.sclk_active = 1;
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    SET_PERI_REG_MASK(RTC_CNTL_CLK_CONF_REG, RTC_CNTL_DIG_CLK8M_EN_M);
+#endif
+#endif // ESP_IDF_VERSION >= 6.0.0
 
     // Setup interrupts on the required port
     initInterrupts();
