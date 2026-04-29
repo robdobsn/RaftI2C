@@ -165,7 +165,7 @@ private:
     #define I2C_FILTER_CFG_SDA_THRESH filter_cfg.sda_thres
     #define I2C_FILTER_CFG_SCL_ENABLE filter_cfg.scl_en
     #define I2C_FILTER_CFG_SDA_ENABLE filter_cfg.sda_en
-#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#elif defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32C5)
     // ESP32 S3
     static const uint32_t I2C_ENGINE_CMD_QUEUE_SIZE = 8;
     #define I2C_ACK_ERR_INT_ENA I2C_NACK_INT_ENA
