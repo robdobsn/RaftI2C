@@ -173,6 +173,10 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
     // Setup bus accessor
     _busAccessor.setup(config);
 
+    // Slot controller (per-slot mode: I2C / SerialFull / SerialHalf)
+    RaftJsonPrefixed slotControlConfig(config, "slotControl");
+    _slotController.setup(slotControlConfig, this);
+
     // Check valid
     if ((_sdaPin < 0) || (_sclPin < 0))
     {
@@ -197,7 +201,11 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
     // Run post-setup on the bus power controller
     if (_pBusPowerController)
         _pBusPowerController->postSetup();
-    
+
+    // Apply slot controller defaults (defaultMode for each slot). Done after the bus is
+    // initialised so that any virtual-pin writes are queued onto a working bus.
+    _slotController.applyDefaults();
+
     // Ok
     _initOk = true;
 

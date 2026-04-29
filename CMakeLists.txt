@@ -13,6 +13,7 @@ idf_component_register(
       "components/RaftI2C/BusI2C/BusStuckHandler.cpp"
       "components/RaftI2C/BusI2C/DeviceIdentMgr.cpp"
       "components/RaftI2C/BusI2C/DevicePollingMgr.cpp"
+      "components/RaftI2C/BusI2C/SlotController.cpp"
       "components/RaftI2C/BusIOExpanders/BusIOExpanders.cpp"
       "components/RaftI2C/BusIOExpanders/BusIOExpander.cpp"
       "components/RaftI2C/BusPowerController/BusPowerController.cpp"

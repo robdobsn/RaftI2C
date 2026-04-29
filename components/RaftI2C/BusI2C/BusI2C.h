@@ -19,6 +19,7 @@
 #include "DevicePollingMgr.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
+#include "SlotController.h"
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -303,6 +304,34 @@ public:
         return retc == RAFT_OK ? retc2 : retc;
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get the slot controller (mode control for slots: I2C / SerialFull / SerialHalf)
+    /// @return Pointer to the slot controller (always non-null; size 0 if no slots configured)
+    SlotController* getSlotController()
+    {
+        return &_slotController;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set the mode of a slot
+    /// @param slotNum 1-based slot number
+    /// @param pModeStr "i2c" | "serial-full"|"full" | "serial-half"|"half" | "serial" (legacy = full)
+    /// @return RAFT_OK on success
+    virtual RaftRetCode setSlotMode(uint32_t slotNum, const char* pModeStr) override final
+    {
+        SlotController::SlotMode mode = SlotController::SlotMode::I2C;
+        if (!SlotController::parseModeStr(pModeStr, mode))
+            return RAFT_INVALID_DATA;
+        return _slotController.setMode(slotNum, mode);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get a JSON description of all slots and their modes
+    virtual String getSlotModesJson() const override final
+    {
+        return _slotController.getStatusJson();
+    }
+
 private:
 
     // Yield value on each bus processing loop
@@ -394,6 +423,9 @@ private:
 
     // Bus power controller
     BusPowerController* _pBusPowerController = nullptr;
+
+    // Slot controller (per-slot mode: I2C / SerialFull / SerialHalf)
+    SlotController _slotController;
 
     // Access barring time
     static const uint32_t ELEM_BAR_I2C_ADDRESS_MAX = 127;
