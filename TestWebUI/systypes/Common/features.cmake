@@ -1,11 +1,12 @@
-# System version
-add_compile_definitions(SYSTEM_VERSION="1.0.0")
-
 # Raft components
 set(RAFT_COMPONENTS
+    RaftCore@main
     RaftSysMods@main
     RaftWebServer@main
 )
+
+# Device types
+set(DEV_TYPE_JSON_FILES "/devtypes/DeviceTypeRecords.json")
 
 # File system
 set(FS_TYPE "littlefs")

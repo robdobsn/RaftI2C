@@ -25,7 +25,6 @@ idf_component_register(
       "components/RaftI2C/BusPowerController"
       "components/RaftI2C/I2CCentral"
       "components/RaftI2C/I2CCentral_ESPIDF"
-      "${CMAKE_BINARY_DIR}"
     REQUIRES
       RaftCore
       driver

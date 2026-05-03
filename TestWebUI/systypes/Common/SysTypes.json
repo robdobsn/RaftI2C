@@ -1,0 +1,91 @@
+{
+    "SystemName": "BusI2CTest",
+    "DevMan": {
+        "Buses": {
+            "buslist": [
+                {
+                    "i2cFreq": 100000,
+                    "name": "I2CA",
+                    "sclPin": 6,
+                    "sdaPin": 7,
+                    "type": "I2C"
+                }
+            ]
+        },
+        "Devices": []
+    },
+    "CmdsAtStart": "",
+    "WebUI": "",
+    "SysManager": {
+        "monitorPeriodMs": 10000,
+        "pauseWiFiforBLE": 1,
+        "reportList": [
+            "NetMan",
+            "SysMan"
+        ],
+        "slowSysModMs": 50
+    },
+    "ESPOTAUpdate": {
+        "OTADirect": 1,
+        "enable": 1
+    },
+    "FileManager": {
+        "enable": 1
+    },
+    "LogManager": {
+        "enable": 0,
+        "logDests": [
+            {
+                "enable": false,
+                "port": 8080,
+                "type": "RaftRemote"
+            }
+        ]
+    },
+    "MQTTMan": {
+        "brokerHostname": "mqttbroker",
+        "brokerPort": 1883,
+        "clientID": "",
+        "enable": 0,
+        "topics": [
+            {
+                "inbound": 1,
+                "name": "examplein",
+                "path": "example/in",
+                "qos": 1
+            },
+            {
+                "inbound": 0,
+                "name": "exampleout",
+                "path": "example/out",
+                "qos": 1
+            }
+        ]
+    },
+    "NetMan": {
+        "wifiAPEn": 1,
+        "wifiAPPW": "raftpassword",
+        "wifiAPSSID": "RaftAP",
+        "wifiSTAEn": 1
+    },
+    "Publish": {
+        "enable": 1
+    },
+    "SerialConsole": {
+        "enable": 1
+    },
+    "WebServer": {
+        "enable": 1,
+        "websockets": [
+            {
+                "pcol": "RICSerial",
+                "pfix": "ws"
+            },
+            {
+                "pcol": "RICJSON",
+                "pfix": "devjson",
+                "content": "text"
+            }
+        ]
+    }
+}

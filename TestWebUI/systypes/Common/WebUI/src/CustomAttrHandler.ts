@@ -1,4 +1,4 @@
-import { DeviceTypePollRespMetadata } from "./DeviceInfo";
+import { DeviceTypeAttribute, DeviceTypePollRespMetadata } from "./DeviceInfo";
 
 export default class CustomAttrHandler {
     
@@ -8,7 +8,7 @@ export default class CustomAttrHandler {
         const numMsgBytes = pollRespMetadata.b;
 
         // Create a vector for each attribute in the metadata
-        let attrValueVecs: [][] = [];
+        let attrValueVecs: number[][] = [];
 
         // Reference to each vector by attribute name
         let attrValues: { [key: string]: number[] } = {};
@@ -39,7 +39,50 @@ export default class CustomAttrHandler {
                 i++;
                 ;
             }            
+        } else if (pollRespMetadata.c!.n === "lsm6ds_fifo") {
+            const buf = msgBuffer.slice(msgBufIdx);
+            if (buf.length < 4) {
+                return attrValueVecs;
+            }
+
+            const fifoWords = ((buf[1] & 0x0f) << 8) | buf[0];
+            const fifoPattern = ((buf[3] & 0x03) << 8) | buf[2];
+            const skipWords = (6 - (fifoPattern % 6)) % 6;
+            const alignedWords = fifoWords - skipWords;
+            const availableSampleCount = Math.floor(Math.max(0, buf.length - 4 - skipWords * 2) / 12);
+            let sampleCount = Math.floor(alignedWords / 6);
+            sampleCount = Math.min(sampleCount, availableSampleCount);
+            sampleCount = Math.max(0, sampleCount);
+
+            let bufIdx = 4 + skipWords * 2;
+            for (let sampleIdx = 0; sampleIdx < sampleCount; sampleIdx++) {
+                attrValues['gx'].push(this.decodeLsm6dsValue(buf, bufIdx, this.getAttrDef(pollRespMetadata, 'gx')));
+                attrValues['gy'].push(this.decodeLsm6dsValue(buf, bufIdx + 2, this.getAttrDef(pollRespMetadata, 'gy')));
+                attrValues['gz'].push(this.decodeLsm6dsValue(buf, bufIdx + 4, this.getAttrDef(pollRespMetadata, 'gz')));
+                attrValues['ax'].push(this.decodeLsm6dsValue(buf, bufIdx + 6, this.getAttrDef(pollRespMetadata, 'ax')));
+                attrValues['ay'].push(this.decodeLsm6dsValue(buf, bufIdx + 8, this.getAttrDef(pollRespMetadata, 'ay')));
+                attrValues['az'].push(this.decodeLsm6dsValue(buf, bufIdx + 10, this.getAttrDef(pollRespMetadata, 'az')));
+                bufIdx += 12;
+            }
         }
         return attrValueVecs;
+    }
+
+    private getAttrDef(pollRespMetadata: DeviceTypePollRespMetadata, attrName: string): DeviceTypeAttribute | undefined {
+        return pollRespMetadata.a.find((attrDef) => attrDef.n === attrName);
+    }
+
+    private decodeLsm6dsValue(buf: Buffer, bufIdx: number, attrDef?: DeviceTypeAttribute): number {
+        let value = buf[bufIdx] | (buf[bufIdx + 1] << 8);
+        if (value & 0x8000) {
+            value -= 0x10000;
+        }
+        if (attrDef?.d) {
+            value /= attrDef.d;
+        }
+        if (attrDef?.a) {
+            value += attrDef.a;
+        }
+        return value;
     }
 }

@@ -1,0 +1,107 @@
+{
+    "DevMan": {
+        "Buses": {
+            "buslist": [
+                {
+                    "name": "I2CA",
+                    "type": "I2C",
+                    "sdaPin": 8,
+                    "sclPin": 9,
+                    "i2cFreq": 100000,
+                    "lockupDetect": "0x6a",
+                    "mux": {
+                        "minAddr": "0x75",
+                        "maxAddr": "0x76",
+                        "rstPins": [
+                            16
+                        ]
+                    },
+                    "ioExps": {
+                        "exps": [
+                            {
+                                "dev": "PCA9535",
+                                "addr": "0x25",
+                                "muxAddr": "0x75",
+                                "muxChanIdx": 7,
+                                "muxRstPin": 16,
+                                "vPinBase": 100,
+                                "numPins": 16
+                            }
+                        ]
+                    },
+                    "pwr": {
+                        "voltageLevels": [
+                            "off",
+                            "5V"
+                        ],
+                        "slotGroups": [
+                            {
+                                "name": "Slots1..8",
+                                "startSlotNum": 1,
+                                "numSlots": 5,
+                                "defaultLevelIdx": 1,
+                                "levelsExclOff": [
+                                    {
+                                        "vPins": [
+                                            100,
+                                            101,
+                                            102,
+                                            103,
+                                            104
+                                        ],
+                                        "on": [
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "slotControl": {
+                        "slots": [
+                            {
+                                "serEnPin": 108,
+                                "serEnLevel": 0,
+                                "rxPin": 12,
+                                "txPin": 13,
+                                "defaultMode": "i2c"
+                            },
+                            {
+                                "serEnPin": 109,
+                                "serEnLevel": 0,
+                                "rxPin": 14,
+                                "txPin": 15,
+                                "defaultMode": "i2c"
+                            },
+                            {
+                                "serEnPin": 110,
+                                "serEnLevel": 0,
+                                "rxPin": 42,
+                                "txPin": 41,
+                                "defaultMode": "i2c"
+                            },
+                            {
+                                "serEnPin": 111,
+                                "serEnLevel": 0,
+                                "rxPin": 39,
+                                "txPin": 40,
+                                "defaultMode": "i2c"
+                            },
+                            {
+                                "serEnPin": 112,
+                                "serEnLevel": 0,
+                                "rxPin": 17,
+                                "txPin": 38,
+                                "defaultMode": "i2c"
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+}

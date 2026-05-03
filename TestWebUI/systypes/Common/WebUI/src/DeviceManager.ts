@@ -39,9 +39,15 @@ export class DeviceManager {
     // Last time we got a state update
     private _lastStateUpdate: number = 0;
     private MAX_TIME_BETWEEN_STATE_UPDATES_MS: number = 60000;
+    private MAX_TIME_CONNECTING_MS: number = 10000;
+
+    // Device lifecycle
+    private _deviceLastUpdateTime: { [deviceKey: string]: number } = {};
+    private _removeDevicesTimeMs: number = 60000;
 
     // Websocket
     private _websocket: WebSocket | null = null;
+    private _websocketOpenStartedMs: number = 0;
 
     // Get instance
     public static getInstance(): DeviceManager {
@@ -127,6 +133,13 @@ export class DeviceManager {
                     console.log(`DeviceManager init - reconnecting websocket`);
                     await this.connectWebSocket();
                 }
+                else if (this._websocket.readyState === WebSocket.CONNECTING &&
+                        (Date.now() - this._websocketOpenStartedMs) > this.MAX_TIME_CONNECTING_MS) {
+                    const inactiveTimeSecs = ((Date.now() - this._websocketOpenStartedMs) / 1000).toFixed(1);
+                    console.log(`DeviceManager init - closing websocket due to ${inactiveTimeSecs}s connecting`);
+                    this._websocket.close();
+                    this._websocket = null;
+                }
                 else if ((Date.now() - this._lastStateUpdate) > this.MAX_TIME_BETWEEN_STATE_UPDATES_MS) {
                     const inactiveTimeSecs = ((Date.now() - this._lastStateUpdate) / 1000).toFixed(1);
                     if (this._websocket) {
@@ -166,33 +179,36 @@ export class DeviceManager {
                 return false;
             }
             this._websocket.binaryType = "arraybuffer";
+            this._websocketOpenStartedMs = Date.now();
             this._lastStateUpdate = Date.now();
             this._websocket.onopen = () => {
                 // Debug
                 console.log(`DeviceManager init websocket opened to ${webSocketURL}`);
+                this._lastStateUpdate = Date.now();
 
                 // Send subscription request messages after a short delay
                 setTimeout(() => {
 
                     // Subscribe to device messages
-                    const subscribeName = "devices";
+                    const subscribeName = "devjson";
                     console.log(`DeviceManager init subscribing to ${subscribeName}`);
                     if (this._websocket) {
                         this._websocket.send(JSON.stringify({
                             cmdName: "subscription",
                             action: "update",
                             pubRecs: [
-                                {name: subscribeName, msgID: subscribeName, rateHz: 0.1},
+                                {topic: subscribeName, rateHz: 0.1},
                             ]
                         }));
                     }
                 }, 1000);
             }
             this._websocket.onmessage = (event) => {
+                this._lastStateUpdate = Date.now();
                 this.handleClientMsgJson(event.data);
             }
-            this._websocket.onclose = () => {
-                console.log(`DeviceManager websocket closed`);
+            this._websocket.onclose = (event) => {
+                console.log(`DeviceManager websocket closed code ${event.code} reason ${event.reason} clean ${event.wasClean}`);
                 this._websocket = null;
             }
             this._websocket.onerror = (error) => {
@@ -240,41 +256,49 @@ export class DeviceManager {
     // Handle device message JSON
     ////////////////////////////////////////////////////////////////////////////
 
-    private handleClientMsgJson(jsonMsg: string) {
+    private async handleClientMsgJson(jsonMsg: string) {
 
-        const removeDevicesNoLongerPresent = true;
-
-        let data = JSON.parse(jsonMsg) as DeviceMsgJson;
+        let data = JSON.parse(jsonMsg) as Record<string, unknown>;
         // console.log(`DeviceManager websocket message ${JSON.stringify(data)}`);
 
-        // Iterate over the buses
-        Object.entries(data).forEach(([busName, devices]) => {
+        // Ignore command responses such as subscription acknowledgements.
+        if ("rslt" in data) {
+            return;
+        }
 
-            // Check for bus status info
-            if (devices && typeof devices === "object" && "_s" in devices) {
-                // console.log(`DeviceManager bus status ${JSON.stringify(devices._s)}`);
-                return;
+        // Iterate over the buses
+        for (const [busName, devices] of Object.entries(data)) {
+
+            // Ignore publish envelope metadata such as _t topic index and _v version.
+            if (busName.startsWith("_")) {
+                continue;
             }
 
-            // Get a list of keys for the current devicesState
-            const deviceKeysToRemove = Object.keys(this._devicesState);
+            if (!devices || typeof devices !== "object") {
+                continue;
+            }
+
+            const busDevices = devices as DeviceMsgJson[string];
+
+            // Check for bus status info
+            if ("_s" in busDevices) {
+                // console.log(`DeviceManager bus status ${JSON.stringify(busDevices._s)}`);
+                continue;
+            }
             
             // Iterate over the devices
-            Object.entries(devices).forEach(async ([devAddr, attrGroups]) => {
+            for (const [devAddr, attrGroups] of Object.entries(busDevices)) {
 
                 // Check for non-device info (starts with _)
                 if (devAddr.startsWith("_")) {
-                    return;
+                    continue;
                 }
                 
                 // Device key
                 const deviceKey = getDeviceKey(busName, devAddr);
 
-                // Remove from the list of keys for the current devicesState
-                const idx = deviceKeysToRemove.indexOf(deviceKey);
-                if (idx >= 0) {
-                    deviceKeysToRemove.splice(idx, 1);
-                }
+                // Update the last update time
+                this._deviceLastUpdateTime[deviceKey] = Date.now();
 
                 // Check if a device state already exists
                 if (!(deviceKey in this._devicesState)) {
@@ -282,9 +306,12 @@ export class DeviceManager {
                     let deviceTypeName = "";
                     if (attrGroups && typeof attrGroups === 'object' && "_t" in attrGroups && typeof attrGroups._t === "string") {
                         deviceTypeName = attrGroups._t || "";
+                    } else if (attrGroups && typeof attrGroups === 'object' && "_i" in attrGroups &&
+                            (typeof attrGroups._i === "number" || typeof attrGroups._i === "string")) {
+                        deviceTypeName = String(attrGroups._i);
                     } else {
                         console.warn(`DeviceManager missing device type attrGroups ${JSON.stringify(attrGroups)}`);
-                        return;
+                        continue;
                     }
 
                     // Create device record
@@ -307,6 +334,11 @@ export class DeviceManager {
                 
                 // Check for online/offline state information
                 if (attrGroups && typeof attrGroups === "object" && "_o" in attrGroups) {
+                    const onlineStateVal = typeof attrGroups._o === 'number' ? attrGroups._o : parseInt(String(attrGroups._o), 10);
+                    if (onlineStateVal === 2) {
+                        this.removeDevice(deviceKey);
+                        continue;
+                    }
                     deviceState.isOnline = ((attrGroups._o === true) || (attrGroups._o === "1") || (attrGroups._o === 1));
                 }
 
@@ -350,16 +382,10 @@ export class DeviceManager {
                         }
                     }
                 });
-            });
-
-            // Remove devices no longer present
-            if (removeDevicesNoLongerPresent) {
-                deviceKeysToRemove.forEach((deviceKey) => {
-                    delete this._devicesState[deviceKey];
-                });
             }
+        }
 
-        });
+        this.removeStaleDevices();
 
         // Update the last state update time
         this._lastStateUpdate = Date.now();
@@ -367,6 +393,24 @@ export class DeviceManager {
         // Process the callback
         this.processStateCallback();
 
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Remove stale or deleted devices
+    ////////////////////////////////////////////////////////////////////////////
+
+    private removeDevice(deviceKey: string): void {
+        delete this._devicesState[deviceKey];
+        delete this._deviceLastUpdateTime[deviceKey];
+    }
+
+    private removeStaleDevices(): void {
+        const nowTime = Date.now();
+        Object.entries(this._deviceLastUpdateTime).forEach(([deviceKey, lastUpdateTime]) => {
+            if ((nowTime - lastUpdateTime) > this._removeDevicesTimeMs) {
+                this.removeDevice(deviceKey);
+            }
+        });
     }
 
     ////////////////////////////////////////////////////////////////////////////

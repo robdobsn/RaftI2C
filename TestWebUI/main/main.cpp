@@ -10,11 +10,11 @@
 #include "BusI2CTest.h"
 #include "BusI2C.h"
 
+RaftCoreApp raftCoreApp;
+
 // Entry point
 extern "C" void app_main(void)
 {
-    RaftCoreApp raftCoreApp;
-
     // Register SysMods from RaftSysMods library
     RegisterSysMods::registerSysMods(raftCoreApp.getSysManager());
 

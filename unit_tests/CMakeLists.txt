@@ -6,8 +6,8 @@ set(BOOTSTRAP_URL "https://github.com/robdobsn/RaftCore/releases/download/v1.37.
 file(DOWNLOAD ${BOOTSTRAP_URL} "${CMAKE_BINARY_DIR}/RaftBootstrap.cmake")
 include("${CMAKE_BINARY_DIR}/RaftBootstrap.cmake")
 
-# Add parent directory to find components
-list(APPEND EXTRA_COMPONENT_DIRS "..")
+# Add RaftI2C component directory
+list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components/RaftI2C")
 
 # Define the project dependencies
 project(${_systype_name} DEPENDS ${ADDED_PROJECT_DEPENDENCIES})

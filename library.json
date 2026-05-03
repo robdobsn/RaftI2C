@@ -1,6 +1,6 @@
 {
     "name": "RaftI2C",
-    "version": "1.14.1",
+    "version": "1.14.2",
     "description": "I2C for the Raft ESP32 framework",
     "keywords": "esp32, esp32s3, framework, I2C",
     "repository": {
@@ -23,7 +23,7 @@
         "libLDFMode": "deep+",
         "libArchive": false,
         "flags": [
-            "-Icomponents/RafdI2C/I2CCentral"
+            "-Icomponents/RaftI2C/I2CCentral"
         ]
     }
 }
