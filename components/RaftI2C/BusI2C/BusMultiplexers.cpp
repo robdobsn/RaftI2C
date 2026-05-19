@@ -382,27 +382,9 @@ RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx,
 ///         bus stuck codes if the bus is now stuck or power unstable if a device is powering up
 RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
 {
-    // If the bus is stuck at this point it implies that a main bus issue has occurred or there is an issue with the last slot
-    // that was enabled (if it was definitely a single-slot issue it would have been detected after the slot was first enabled).
-    // In this case we need to try to clear the bus-stuck problem in any way possible including clocking the bus,
-    // potentially power cycling individual slots and/or power cycling the entire bus (if hardware exists to do this)
-    bool busIsStuck = _busStuckHandler.isStuck();
-    if (busIsStuck)
-    {
-        // Repeat here seveal times to try to clear the bus-stuck problem
-        for (uint32_t busClearAttemptIdx = 0; busClearAttemptIdx < BUS_CLEAR_ATTEMPT_REPEAT_COUNT; busClearAttemptIdx++)
-        {
-            // Attempt to clear bus-stuck (returns true if it resolved the issue)
-            if (attemptToClearBusStuck(false, slotNum))
-                break;
-        }
-
-        // Check if still stuck
-        if (_busStuckHandler.isStuck())
-            return RAFT_BUS_STUCK;
-    }
-
-    // Check if main bus is specified
+    // Check if main bus is specified - no slot is being enabled so no stuck check is needed
+    // (any pre-existing stuck condition will be detected/handled by the post-enable check on the
+    // next actual slot enable, or by a transaction returning RAFT_BUS_STUCK from the I2C driver)
     if (slotNum == 0)
     {
         disableAllSlots(false);
@@ -432,10 +414,8 @@ RaftRetCode BusMultiplexers::enableOneSlot(uint32_t slotNum)
     uint32_t mask = 1 << slotIdx;
     bool slotSetOk = setSlotEnables(muxIdx, mask, false) == RAFT_OK;
 
-    // Check if bus is now stuck - if we have an issue at this point it is probably due to a single slot because
-    // the earlier bus stuck check would have been true if it was a wider issue. So initially try to clear the
-    // single-slot issue if possible
-    busIsStuck = _busStuckHandler.isStuck();
+    // Check if bus is now stuck - if we have an issue at this point it is probably due to a single slot
+    bool busIsStuck = _busStuckHandler.isStuck();
     if (busIsStuck)
     {
         // Repeat here seveal times to try to clear the bus-stuck problem

@@ -14,11 +14,11 @@
 
 #define WARN_ON_FAILED_TO_GET_SEMAPHORE
 
-// #define DEBUG_UPDATE_BUS_ELEM_STATE
+// #define DEBUG_BUS_ELEM_STATE_CHANGE
+// #define DEBUG_BUS_ELEM_STATE_CHANGE_ADDR 0x76a
+// #define DEBUG_UPDATE_BUS_ELEM_STATE_VERBOSE
 // #define DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS 0x76a
 // #define DEBUG_LOOP_PROCESS_BUS_ELEM_STATUS_CHANGES
-// #define DEBUG_CONSECUTIVE_ERROR_HANDLING
-// #define DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR 0x76a
 // #define DEBUG_BUS_OPERATION_STATUS
 // #define DEBUG_NO_SCANNING
 // #define DEBUG_ACCESS_BARRING_FOR_MS
@@ -221,7 +221,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
 /// @return true if state has changed
 bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemResponding, bool& isOnline)
 {
-#ifdef DEBUG_UPDATE_BUS_ELEM_STATE
+#if defined(DEBUG_UPDATE_BUS_ELEM_STATE_VERBOSE) || defined(DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS)
 #if defined(DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS)
     if (address == DEBUG_UPDATE_BUS_ELEM_STATE_ON_ADDRESS)
 #endif
@@ -235,7 +235,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
     bool isNewStatusChange = false;
     bool flagSpuriousRecord = false;
 
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
+#ifdef DEBUG_BUS_ELEM_STATE_CHANGE
     // Debug
     BusAddrRecord prevStatus;
     BusAddrRecord newStatus;
@@ -260,7 +260,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         // Check if we found a record
         if (pAddrStatus)
         {
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
+#ifdef DEBUG_BUS_ELEM_STATE_CHANGE
             // Debug
             prevStatus = *pAddrStatus;
 #endif
@@ -269,7 +269,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
             isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
             isOnline = pAddrStatus->onlineState == DeviceOnlineState::ONLINE;
 
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
+#ifdef DEBUG_BUS_ELEM_STATE_CHANGE
             // Debug
             newStatus = *pAddrStatus;
 #endif
@@ -301,9 +301,9 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         // Return semaphore
         RaftMutex_unlock(_busElemStatusMutex);
 
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING
-#ifdef DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR
-        if (address == DEBUG_CONSECUTIVE_ERROR_HANDLING_ADDR)
+#if defined(DEBUG_BUS_ELEM_STATE_CHANGE)
+#ifdef DEBUG_BUS_ELEM_STATE_CHANGE_ADDR
+        if (address == DEBUG_BUS_ELEM_STATE_CHANGE_ADDR)
 #endif
         if (isNewStatusChange)
         {
