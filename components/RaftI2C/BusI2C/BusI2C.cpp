@@ -57,7 +57,8 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
         _busStatusMgr(*this),
         _busStuckHandler(_busReqSyncFn),
         _busMultiplexers(_busStuckHandler, _busStatusMgr, _busElemTracker, _busReqSyncFn),
-        _deviceIdentMgr(_busStatusMgr, _busReqSyncFn, _busReqAsyncFn),
+        _deviceIdentMgr(_busStatusMgr, _busReqSyncFn, _busReqAsyncFn,
+                        [this](BusRequestInfo& busReqInfo) { return _busAccessor.addRequest(busReqInfo); }),
         _busScanner(_busStatusMgr, _busElemTracker, _busMultiplexers, _busIOExpanders, _deviceIdentMgr, _busReqSyncFn),
         _devicePollingMgr(_busStatusMgr, _busMultiplexers, _busReqSyncFn, nullptr),
         _busAccessor(*this, _busReqAsyncFn)

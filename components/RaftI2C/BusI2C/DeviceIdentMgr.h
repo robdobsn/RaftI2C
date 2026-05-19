@@ -24,7 +24,9 @@ public:
     /// @param busStatusMgr bus status manager
     /// @param busReqSyncFn bus synchronous access request function
     /// @param busReqAsyncFn bus asynchronous access request function
-    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn);
+    /// @param busReqEnqueueFn bus enqueue function (routes cross-task requests through the bus worker queue)
+    DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn,
+                BusReqEnqueueFn busReqEnqueueFn = nullptr);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Setup
@@ -166,6 +168,7 @@ private:
     // Bus request functions
     BusReqSyncFn _busReqSyncFn = nullptr;
     BusReqAsyncFn _busReqAsyncFn = nullptr;
+    BusReqEnqueueFn _busReqEnqueueFn = nullptr;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON

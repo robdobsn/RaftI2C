@@ -28,15 +28,19 @@
 #include "PollDataAggregator.h"
 #include "Logger.h"
 #include <memory>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn) :
+DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn,
+            BusReqEnqueueFn busReqEnqueueFn) :
     _busStatusMgr(BusStatusMgr),
     _busReqSyncFn(busReqSyncFn),
-    _busReqAsyncFn(busReqAsyncFn)
+    _busReqAsyncFn(busReqAsyncFn),
+    _busReqEnqueueFn(busReqEnqueueFn)
 {
 }
 
@@ -593,26 +597,70 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
 
     // Form bus request
     BusRequestInfo busReqInfo("", deviceID.getAddress());
-    busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
-            [](void* pCallbackData, BusRequestResult& reqResult)
-                {
-                    if (pCallbackData)
-                        ((DeviceIdentMgr*)pCallbackData)->cmdResultReportCallback(reqResult);
-                },
-            this);
 
-    // Make the request
+    // Use a shared completion block so the request callback can safely outlive
+    // this stack frame even if we time out waiting for the bus worker.
+    struct CmdCompletion
+    {
+        SemaphoreHandle_t sem = nullptr;
+        RaftRetCode rslt = RAFT_BUS_PENDING;
+        CmdCompletion() { sem = xSemaphoreCreateBinary(); }
+        ~CmdCompletion() { if (sem) vSemaphoreDelete(sem); }
+    };
+    auto completion = std::make_shared<CmdCompletion>();
+
+    busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
+            [completion](void* /*pCallbackData*/, BusRequestResult& reqResult)
+                {
+                    if (completion)
+                    {
+                        completion->rslt = reqResult.getResult();
+                        if (completion->sem)
+                            xSemaphoreGive(completion->sem);
+                    }
+                },
+            nullptr);
+
+    // Make the request - prefer routing via the bus worker queue so that all
+    // bus access (including mux switching) happens on the worker task and is
+    // serialized with polling/scanning. Only fall back to the direct async
+    // path if no enqueue function has been provided (e.g. legacy/unit tests).
     RaftRetCode rslt = RAFT_INVALID_DATA;
-    if (_busReqAsyncFn != nullptr)
+    bool routedViaQueue = false;
+    if (_busReqEnqueueFn != nullptr)
     {
-        rslt = _busReqAsyncFn(&busReqInfo, 0) ? RAFT_OK : RAFT_BUS_NOT_INIT;
-        if (respMsg)
-            *respMsg = rslt ? "Command sent" : "Failed to send command";
+        if (_busReqEnqueueFn(busReqInfo))
+        {
+            routedViaQueue = true;
+            // Wait for the worker to process the request and fire our callback
+            const TickType_t waitTicks = pdMS_TO_TICKS(500);
+            if (completion->sem && xSemaphoreTake(completion->sem, waitTicks) == pdTRUE)
+            {
+                rslt = completion->rslt;
+            }
+            else
+            {
+                rslt = RAFT_BUS_SW_TIME_OUT;
+            }
+        }
     }
-    else
+    if (!routedViaQueue)
     {
-        if (respMsg)
-            *respMsg = "Bus not initialised";
+        if (_busReqAsyncFn != nullptr)
+        {
+            rslt = _busReqAsyncFn(&busReqInfo, 0);
+        }
+        else
+        {
+            rslt = RAFT_BUS_NOT_INIT;
+        }
+    }
+
+    if (respMsg)
+    {
+        *respMsg = (rslt == RAFT_OK) ? "Command sent"
+                                     : (_busReqEnqueueFn || _busReqAsyncFn ? "Failed to send command"
+                                                                            : "Bus not initialised");
     }
 
 #ifdef DEBUG_MAKE_BUS_REQUEST_VERBOSE
