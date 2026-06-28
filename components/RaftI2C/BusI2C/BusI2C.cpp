@@ -539,6 +539,33 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Perform a synchronous (blocking) I2C transaction: write then optional read
+/// @param pReqRec - bus request information (address+slot, write data, read length)
+/// @param pReadData - pointer to buffer for read data (may be nullptr)
+/// @return result code
+/// @note Generic, device-agnostic blocking transaction. Routes to the address's mux slot,
+///       performs the access, then clears all slots. The caller MUST coordinate with the bus
+///       worker (pause()/isPaused()) so this does not race the worker task.
+RaftRetCode BusI2C::busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
+{
+    if (!_pI2CCentral)
+        return RAFT_BUS_NOT_INIT;
+
+    // Route to the slot for this address (slot 0 = main bus, a no-op enable)
+    const uint16_t slotNum = BusI2CAddrAndSlot::getSlotNum(pReqRec->getAddress());
+    RaftRetCode rslt = _busMultiplexers.enableOneSlot(slotNum);
+    if (rslt != RAFT_OK)
+        return rslt;
+
+    // Perform the synchronous transaction
+    rslt = i2cSendSync(pReqRec, pReadData);
+
+    // Clear all slots so the bus is left in a known state
+    _busMultiplexers.disableAllSlots(false);
+    return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Send I2C message asynchronously and store result in the response queue
 /// @param pReqRec - contains the request details including address, write data, read data length, etc
 /// @param pollListIdx - index into the polling list - used to reference back to the response queue

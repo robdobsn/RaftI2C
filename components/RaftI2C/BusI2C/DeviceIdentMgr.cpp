@@ -86,6 +86,50 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         return;
     }
 
+    // Give a registered new-device identification handler the first opportunity to claim the
+    // device (device-agnostic delegation hook). This runs before the address-based identification
+    // below so handlers can identify devices whose address is not indicative of their type.
+    if (_newDeviceIdentFn)
+    {
+        RaftDeviceIdentVerdict verdict = _newDeviceIdentFn(address, deviceStatus, _newDeviceIdentCtx);
+        if (verdict == RaftDeviceIdentVerdict::Handled)
+        {
+            // The handler has identified the device and set deviceStatus.deviceTypeIndex. Complete
+            // the device status here (init + polling + data aggregator) from that index using the
+            // standard device-type records, so the handler stays device-agnostic and the existing
+            // polling/decode pipeline is reused unchanged. Skip default identification.
+            DeviceTypeRecord devTypeRec;
+            if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
+            {
+                processDeviceInit(address, &devTypeRec);
+                deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
+                auto pDataAggregator = std::make_shared<PollDataAggregator>(
+                        deviceStatus.deviceIdentPolling.numPollResultsToStore,
+                        deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+                deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+#ifdef INFO_NEW_DEVICE_IDENTIFIED
+                LOG_I(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s (typeIdx %d)",
+                        BusI2CAddrAndSlot::toString(address).c_str(),
+                        devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME",
+                        deviceStatus.deviceTypeIndex);
+#endif
+                return;
+            }
+            // Handler returned Handled but the device-type index is not valid: treat as unidentified.
+            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s but device-type index %d invalid",
+                    BusI2CAddrAndSlot::toString(address).c_str(), deviceStatus.deviceTypeIndex);
+            deviceStatus.clear();
+            return;
+        }
+        if (verdict == RaftDeviceIdentVerdict::Deferred)
+        {
+            // Not ready to identify yet; leave unidentified and unpolled, retry on a later scan
+            deviceStatus.clear();
+            return;
+        }
+        // NotMine -> fall through to default address-based identification
+    }
+
     // Get the raw I2C address (excluding slot number)
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
 

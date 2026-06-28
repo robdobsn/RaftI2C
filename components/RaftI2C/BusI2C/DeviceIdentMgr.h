@@ -139,6 +139,16 @@ public:
     virtual RaftRetCode sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Register a handler invoked before default identification for newly-detected devices
+    /// @param newDeviceIdentFn handler function (nullptr to clear)
+    /// @param pCtx opaque context passed to the handler
+    virtual void registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDeviceIdentFn, void* pCtx) override final
+    {
+        _newDeviceIdentFn = newDeviceIdentFn;
+        _newDeviceIdentCtx = pCtx;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
     /// @param address address
     /// @param deviceStatus (out) device status
@@ -169,6 +179,10 @@ private:
     BusReqSyncFn _busReqSyncFn = nullptr;
     BusReqAsyncFn _busReqAsyncFn = nullptr;
     BusReqEnqueueFn _busReqEnqueueFn = nullptr;
+
+    // Optional new-device identification handler (device-agnostic delegation hook)
+    RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
+    void* _newDeviceIdentCtx = nullptr;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON

@@ -135,6 +135,16 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Perform a synchronous (blocking) I2C transaction: write then optional read.
+    /// @param pReqRec - bus request information (address+slot, write data, read length)
+    /// @param pReadData - (out) buffer to receive read data (may be nullptr if no read required)
+    /// @return result code
+    /// @note Routes to the address's mux slot, performs the transaction, then clears all slots.
+    ///       The caller MUST coordinate with the bus worker (pause()/isPaused()) before using this
+    ///       so the synchronous access does not race the worker task's scanning/polling.
+    virtual RaftRetCode busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check if an element is responding
     /// @param address - address of element
     /// @param pIsValid - (out) true if the address is valid
