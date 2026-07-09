@@ -86,66 +86,19 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         return;
     }
 
-    // Give a registered new-device identification handler the first opportunity to claim the
-    // device (device-agnostic delegation hook). This runs before the address-based identification
-    // below so handlers can identify devices whose address is not indicative of their type.
-    if (_newDeviceIdentFn)
-    {
-        RaftDeviceIdentVerdict verdict = _newDeviceIdentFn(address, deviceStatus, _newDeviceIdentCtx);
-
-        // The handler may have performed bus transactions (e.g. a synchronous probe) that reset
-        // the multiplexer slot selection. The scanner selected this device's slot before calling
-        // identifyDevice and both the default identification path and device init rely on it
-        // remaining selected, so re-select it here before continuing.
-        if (_reselectSlotFn)
-            _reselectSlotFn(BusI2CAddrAndSlot::getSlotNum(address));
-
-        if (verdict == RaftDeviceIdentVerdict::Handled)
-        {
-            // The handler has identified the device and set deviceStatus.deviceTypeIndex. Complete
-            // the device status here (init + polling + data aggregator) from that index using the
-            // standard device-type records, so the handler stays device-agnostic and the existing
-            // polling/decode pipeline is reused unchanged. Skip default identification.
-            DeviceTypeRecord devTypeRec;
-            if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
-            {
-                processDeviceInit(address, &devTypeRec);
-                deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
-                auto pDataAggregator = std::make_shared<PollDataAggregator>(
-                        deviceStatus.deviceIdentPolling.numPollResultsToStore,
-                        deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
-                deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
-#ifdef INFO_NEW_DEVICE_IDENTIFIED
-                LOG_I(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s (typeIdx %d)",
-                        BusI2CAddrAndSlot::toString(address).c_str(),
-                        devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME",
-                        deviceStatus.deviceTypeIndex);
-#endif
-                return;
-            }
-            // Handler returned Handled but the device-type index is not valid: treat as unidentified.
-            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s but device-type index %d invalid",
-                    BusI2CAddrAndSlot::toString(address).c_str(), deviceStatus.deviceTypeIndex);
-            deviceStatus.clear();
-            return;
-        }
-        if (verdict == RaftDeviceIdentVerdict::Deferred)
-        {
-            // Not ready to identify yet; leave unidentified and unpolled, retry on a later scan
-            deviceStatus.clear();
-            return;
-        }
-        // NotMine -> fall through to default address-based identification
-    }
-
-    // Get the raw I2C address (excluding slot number)
+    // Get the raw I2C address (excluding slot number) and the list of standard device-type
+    // records registered for it.
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
 
-    // Check if this address is in the range of any known device
+    // Address-based identification runs FIRST. Detection is a non-destructive read/compare, so a
+    // device with a matching device-type record is identified without disturbing it. Only if
+    // nothing here matches do we fall back to the delegated new-device hook below (which probes
+    // with a framed vendor command that can be destructive to third-party sensors).
 #ifdef DEBUG_DEVICE_IDENT_MGR
     bool anyDeviceIdentified = false;
 #endif
-    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
+    bool identified = false;
     for (const auto& deviceTypeIdx : deviceTypesForAddr)
     {
         // Get JSON definition for device
@@ -192,7 +145,8 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
                     deviceStatus.deviceIdentPolling.numPollResultsToStore,
                     deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
 #endif
-            // Break out of the loop
+            // Identified - stop searching
+            identified = true;
 #ifdef DEBUG_DEVICE_IDENT_MGR
             anyDeviceIdentified = true;
 #endif
@@ -212,6 +166,62 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
                     BusI2CAddrAndSlot::toString(address).c_str(), deviceTypesForAddr.size());
     }
 #endif
+
+    // Fallback: give a registered new-device identification handler (device-agnostic delegation
+    // hook, e.g. the RSAO WHOAMI probe) a chance to claim the device, but ONLY when no standard
+    // device-type record matched above. The handler probes with a framed vendor command that can
+    // be destructive to third-party sensors (e.g. Sensirion devices interpret the probe bytes as
+    // commands and stop measuring), so it must run last - after all non-destructive address-based
+    // identification. Dynamically-addressed RSAO devices are excludeFromAddrMap so they never match
+    // above and are correctly handled here.
+    if (!identified && _newDeviceIdentFn)
+    {
+        RaftDeviceIdentVerdict verdict = _newDeviceIdentFn(address, deviceStatus, _newDeviceIdentCtx);
+
+        // The handler may have performed bus transactions (e.g. a synchronous probe) that reset
+        // the multiplexer slot selection. The scanner selected this device's slot before calling
+        // identifyDevice and device init relies on it remaining selected, so re-select it here
+        // before continuing.
+        if (_reselectSlotFn)
+            _reselectSlotFn(BusI2CAddrAndSlot::getSlotNum(address));
+
+        if (verdict == RaftDeviceIdentVerdict::Handled)
+        {
+            // The handler has identified the device and set deviceStatus.deviceTypeIndex. Complete
+            // the device status here (init + polling + data aggregator) from that index using the
+            // standard device-type records, so the handler stays device-agnostic and the existing
+            // polling/decode pipeline is reused unchanged.
+            DeviceTypeRecord devTypeRec;
+            if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
+            {
+                processDeviceInit(address, &devTypeRec);
+                deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
+                auto pDataAggregator = std::make_shared<PollDataAggregator>(
+                        deviceStatus.deviceIdentPolling.numPollResultsToStore,
+                        deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+                deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+#ifdef INFO_NEW_DEVICE_IDENTIFIED
+                LOG_I(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s (typeIdx %d)",
+                        BusI2CAddrAndSlot::toString(address).c_str(),
+                        devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME",
+                        deviceStatus.deviceTypeIndex);
+#endif
+                return;
+            }
+            // Handler returned Handled but the device-type index is not valid: treat as unidentified.
+            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s but device-type index %d invalid",
+                    BusI2CAddrAndSlot::toString(address).c_str(), deviceStatus.deviceTypeIndex);
+            deviceStatus.clear();
+            return;
+        }
+        if (verdict == RaftDeviceIdentVerdict::Deferred)
+        {
+            // Not ready to identify yet; leave unidentified and unpolled, retry on a later scan
+            deviceStatus.clear();
+            return;
+        }
+        // NotMine -> device remains unidentified
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
