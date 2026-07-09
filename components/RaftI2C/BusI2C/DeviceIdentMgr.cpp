@@ -92,6 +92,14 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     if (_newDeviceIdentFn)
     {
         RaftDeviceIdentVerdict verdict = _newDeviceIdentFn(address, deviceStatus, _newDeviceIdentCtx);
+
+        // The handler may have performed bus transactions (e.g. a synchronous probe) that reset
+        // the multiplexer slot selection. The scanner selected this device's slot before calling
+        // identifyDevice and both the default identification path and device init rely on it
+        // remaining selected, so re-select it here before continuing.
+        if (_reselectSlotFn)
+            _reselectSlotFn(BusI2CAddrAndSlot::getSlotNum(address));
+
         if (verdict == RaftDeviceIdentVerdict::Handled)
         {
             // The handler has identified the device and set deviceStatus.deviceTypeIndex. Complete

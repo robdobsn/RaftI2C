@@ -15,6 +15,7 @@
 #include "RaftJson.h"
 #include <vector>
 #include <list>
+#include <functional>
 
 class DeviceIdentMgr : public RaftBusDevicesIF
 {
@@ -149,6 +150,17 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set a function used to (re)select a device's multiplexer slot
+    /// @param reselectSlotFn function taking a slot number and enabling only that slot
+    /// @note Used to restore the scanner's pre-selected slot after a new-device identification
+    ///       handler runs, since a handler may perform bus transactions (e.g. a synchronous probe)
+    ///       that reset the multiplexer slot selection which the default identification relies on.
+    void setReselectSlotFn(std::function<RaftRetCode(uint32_t slotNum)> reselectSlotFn)
+    {
+        _reselectSlotFn = reselectSlotFn;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Identify device
     /// @param address address
     /// @param deviceStatus (out) device status
@@ -183,6 +195,9 @@ private:
     // Optional new-device identification handler (device-agnostic delegation hook)
     RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
     void* _newDeviceIdentCtx = nullptr;
+
+    // Optional function to (re)select a device's multiplexer slot after the handler runs
+    std::function<RaftRetCode(uint32_t slotNum)> _reselectSlotFn = nullptr;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Format device status to JSON
