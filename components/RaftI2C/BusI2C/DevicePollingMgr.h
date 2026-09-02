@@ -56,16 +56,43 @@ private:
     CrcStats _crcStats;
     uint64_t _crcStatsLastReportUs = 0;
 
-    // Consecutive dropped responses per address, for the recovery backstop. Small
-    // fixed table - only devices that declare pollInfo.crc ever appear here.
+    // Whether a device actually emits the response trailer its device-type record
+    // declares. Firmware that predates the trailer returns zeros in its place, so a
+    // record that gains a "crc" block would otherwise fail 100% of polls against every
+    // already-deployed unit of that type - the CRC would not be backward compatible.
+    //
+    // Resolved per device by observation rather than configuration, because the record
+    // describes a device TYPE while trailer support is a property of the individual
+    // unit's firmware version.
+    enum class TrailerCapability : uint8_t
+    {
+        Unknown,    // not yet decided - still accepting all-zero trailers
+        Present,    // proved it emits a trailer; CRC failures from here are real
+        Absent,     // pre-trailer firmware; CRC checking disabled for this device
+    };
+
+    // Consecutive all-zero trailers needed before concluding a device has none. A
+    // trailer-capable device settles this on its first response (its seq byte alone is
+    // non-zero for 255 of every 256 responses, and the CRC almost always is), so this
+    // only has to outlast a burst of corruption that happens to zero the trailer.
+    static const uint32_t NO_TRAILER_CONFIRM_COUNT = 8;
+
+    // Consecutive dropped responses per address, for the recovery backstop, plus the
+    // trailer classification above. Small fixed table - only devices that declare
+    // pollInfo.crc ever appear here.
     static const uint32_t MAX_RECOVERY_ENTRIES = 8;
     struct RecoveryState
     {
         BusElemAddrType address = 0;
         uint32_t consecutiveDrops = 0;
+        TrailerCapability trailerCap = TrailerCapability::Unknown;
+        uint32_t noTrailerCount = 0;
         bool inUse = false;
     };
     RecoveryState _recoveryStates[MAX_RECOVERY_ENTRIES];
+
+    // Get (or claim) the whole per-address state; nullptr if the table is full.
+    RecoveryState* getRecoveryState(BusElemAddrType address);
 
     // Get (or claim) the consecutive-drop counter for an address; nullptr if the table
     // is full.

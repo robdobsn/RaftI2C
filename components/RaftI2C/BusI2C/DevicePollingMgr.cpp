@@ -277,6 +277,50 @@ bool DevicePollingMgr::validatePollResponse(const DevicePollingInfo& pollInfo, B
     }
     const uint32_t declaredLen = readData.size() - trailerLen;
 
+    // ---- Backward compatibility with firmware that predates the response trailer ----
+    //
+    // Such a device returns ZEROS where the trailer should be (it simply has no more
+    // data to clock out), not corrupted data. That is a recognisable signature, so the
+    // capability can be settled by observation instead of forcing every deployed unit to
+    // be reflashed the moment its device-type record gains a "crc" block.
+    //
+    // Sticky in both directions: once a device has produced a non-zero trailer it is
+    // trusted to keep doing so, and every later CRC failure counts as real corruption -
+    // including one that happens to zero the trailer, which a bare "all zeros means no
+    // trailer" rule would have silently accepted.
+    RecoveryState* pState = getRecoveryState(address);
+    const bool trailerAllZero = (readData[declaredLen] == 0) &&
+                                (readData[declaredLen + 1] == 0) &&
+                                (readData[declaredLen + 2] == 0);
+
+    if (pState && (pState->trailerCap == TrailerCapability::Absent))
+    {
+        // Known pre-trailer device: accept the payload unchecked, exactly as the master
+        // behaved before the CRC existed. Not counted in the stats - "checked" must keep
+        // meaning "responses actually validated".
+        readData.resize(declaredLen);
+        return true;
+    }
+
+    if (pState && (pState->trailerCap == TrailerCapability::Unknown))
+    {
+        if (trailerAllZero)
+        {
+            pState->noTrailerCount++;
+            if (pState->noTrailerCount >= NO_TRAILER_CONFIRM_COUNT)
+            {
+                pState->trailerCap = TrailerCapability::Absent;
+                LOG_W(MODULE_PREFIX, "crcCheck addr %04x emits no response trailer after %d polls "
+                        "- pre-trailer firmware, CRC checking disabled for this device",
+                        address, (int)NO_TRAILER_CONFIRM_COUNT);
+            }
+            readData.resize(declaredLen);
+            return true;
+        }
+        // A non-zero trailer proves the device emits one.
+        pState->trailerCap = TrailerCapability::Present;
+    }
+
     _crcStats.checked++;
 
     // Try the response we have, then up to pollCrcRetries re-reads
@@ -367,12 +411,12 @@ bool DevicePollingMgr::validatePollResponse(const DevicePollingInfo& pollInfo, B
 // Get or claim the consecutive-drop counter for an address (recovery backstop)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-uint32_t* DevicePollingMgr::getConsecutiveDropCount(BusElemAddrType address)
+DevicePollingMgr::RecoveryState* DevicePollingMgr::getRecoveryState(BusElemAddrType address)
 {
     for (uint32_t i = 0; i < MAX_RECOVERY_ENTRIES; i++)
     {
         if (_recoveryStates[i].inUse && (_recoveryStates[i].address == address))
-            return &_recoveryStates[i].consecutiveDrops;
+            return &_recoveryStates[i];
     }
     for (uint32_t i = 0; i < MAX_RECOVERY_ENTRIES; i++)
     {
@@ -381,10 +425,18 @@ uint32_t* DevicePollingMgr::getConsecutiveDropCount(BusElemAddrType address)
             _recoveryStates[i].inUse = true;
             _recoveryStates[i].address = address;
             _recoveryStates[i].consecutiveDrops = 0;
-            return &_recoveryStates[i].consecutiveDrops;
+            _recoveryStates[i].trailerCap = TrailerCapability::Unknown;
+            _recoveryStates[i].noTrailerCount = 0;
+            return &_recoveryStates[i];
         }
     }
     return nullptr;
+}
+
+uint32_t* DevicePollingMgr::getConsecutiveDropCount(BusElemAddrType address)
+{
+    RecoveryState* pState = getRecoveryState(address);
+    return pState ? &pState->consecutiveDrops : nullptr;
 }
 
 #ifdef DEBUG_POLL_TIMING

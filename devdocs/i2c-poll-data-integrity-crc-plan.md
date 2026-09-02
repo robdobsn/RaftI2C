@@ -804,3 +804,110 @@ This needs resolving before the bootloader change ships: either harden
 `_reset_into_bootloader` / `_ensure_pinned_bootloader` against a DUT that has auto-started
 (re-reset and re-pin rather than skip), or revisit the fix. It is test debt exposed by a
 behaviourally correct change, not evidence the change is wrong — but it is not yet closed.
+
+---
+
+## 10. Backward compatibility with pre-trailer firmware (2026-09-02)
+
+### The problem, found on the bench
+
+Two VCP boards on one Axiom slot: one running current firmware, one running firmware that
+predates the trailer. The counters:
+
+```
+checked 29597, failed 3597, recovered 1, dropped 3596, recoveries 89
+```
+
+A 12 % failure rate, and `recovered: 1` out of 3597 — a re-read essentially never helped,
+which is the signature of a *systematic* fault rather than noise. Reading each device's
+serial (`0x01`, 8 bytes + 3-byte trailer) through the RSAO bridge identified it immediately:
+
+| Addr | Serial | Trailer |
+|---|---|---|
+| 0x20 | `4437043530535871` | `0d 08 68` |
+| 0x12 | `24c126312553311b` | `00 00 00` |
+
+The device at 0x12 emits **no trailer**. Its every poll failed CRC, its every re-read failed
+for the same reason, and after `recoverAfter` drops the backstop fired `START_APP` at an
+application that was already running — 89 times.
+
+> **This is the asymmetry that had not been noticed.** The *arbitration* serial read degrades
+> gracefully with old firmware: `trailerVerified` is simply false and the check byte carries
+> the decision (§11 of the RSAO address-assignment plan makes this explicit). The *poll* path
+> did not degrade at all — a record that gained a `crc` block would fail 100 % of polls against
+> every already-deployed unit of that type, forever. That made "add a CRC to every RSAO type"
+> effectively a fleet-wide reflash, which was not the intent.
+
+### The fix: classify by observation, per device
+
+A pre-trailer device does not return corrupt data where the trailer should be. It returns
+**zeros**, because it has no more data to clock out and the peripheral pads. That is a
+recognisable signature, so the capability can be settled by watching the device rather than by
+configuring it.
+
+`DevicePollingMgr::RecoveryState` — the existing per-address table used by the recovery
+backstop — gained a three-state classification:
+
+| State | Meaning | Behaviour |
+|---|---|---|
+| `Unknown` | not yet decided | all-zero trailers accepted unchecked; counts toward a decision |
+| `Absent` | `NO_TRAILER_CONFIRM_COUNT` (8) consecutive all-zero trailers | CRC checking **disabled** for this device; polls accepted exactly as before the CRC existed, and not counted in `checked` |
+| `Present` | any non-zero trailer, or a passing CRC | **sticky**; every later CRC failure is real corruption |
+
+**Per device, not per device type.** The record describes a device *type*; trailer support is a
+property of an individual unit's firmware version. Nothing in the record needs to change.
+
+**Sticky in both directions is the load-bearing part.** A naive "all zeros means no trailer"
+rule would silently accept a response corrupted to all zeros — entirely plausible on I²C with
+SDA stuck low. Once a device has proved it emits a trailer that escape hatch is closed for it,
+so a genuine all-zero corruption is still caught.
+
+`Absent` devices also never accumulate consecutive drops, so the recovery backstop stops
+firing at them — which removes the mis-diagnosis in §9 for this case without needing the
+`READ_VERSION` probe.
+
+### Why 8
+
+A trailer-capable device settles this on its **first** response: the `seq` byte alone is
+non-zero for 255 of every 256 responses, and the CRC is non-zero almost always. So the count
+only has to outlast a burst of corruption that happens to zero the trailer at exactly the
+moment a device is first seen. Eight consecutive all-zero trailers at a 25 ms poll interval is
+200 ms of a completely stuck bus, in which case nothing else is working either.
+
+**Residual risk, accepted:** a trailer-capable device whose first 8 polls are *all* corrupted to
+all-zeros is classified `Absent` for the rest of the session, losing CRC protection until the
+next reboot. Requires a stuck bus during exactly the first 200 ms after detection.
+
+**Known limitation:** entries are keyed by address and never released, so if a different device
+later occupies a freed address it inherits the previous occupant's classification. With
+`MAX_RECOVERY_ENTRIES` = 8 and a bench-scale bus this has not mattered; if address reuse becomes
+common, clear the entry when a device goes offline.
+
+### Measured effect
+
+Same two boards, same bus, before and after:
+
+| | Before | After |
+|---|---|---|
+| Poll failures | 3597 / 29597 (12 %) | **0 / 623** |
+| Spurious `START_APP` recoveries | 89 | **0** |
+| `RSAOTester` hardware suite | 63 passed, 4 failed | **67 passed** |
+
+The old-firmware board keeps working, unchecked, with no reflash.
+
+### A test-harness trap this exposed
+
+Two of the four originally-failing tests — `test_persistent_corruption_is_dropped` and
+`test_counters_are_consistent` — were *passing* in earlier runs for the wrong reason. Both
+assert only "did `failed` increase?", and the old board's constant background failures satisfied
+that without any injection reaching a device at all. Cleaning the bus turned them red and
+exposed the real cause: `test_vcp_crc_faultinject.py` resolves its target from its own
+`RSAO_VCP_DEVICEID` (default `1_10f`), *not* from `RSAO_DUT_ADDR`, so it was injecting into
+address 0x0F where nothing was listening.
+
+> **Set `RSAO_VCP_DEVICEID` explicitly** in whatever runs this suite. With a dirty bus these
+> tests can go green without exercising anything.
+
+With `RSAO_VCP_DEVICEID=1_120`, `RSAO_DUT_ADDR=20`, `RSAO_DUT2_ADDR=12`: **67 passed**,
+nothing skipped — the first full-green run including the two-DUT `DELAY_I2C` decorrelation
+tests, which need two real units.
