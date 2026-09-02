@@ -10,7 +10,7 @@
 #define INFO_NEW_DEVICE_IDENTIFIED
 
 // Debug
-// #define DEBUG_DEVICE_IDENT_MGR
+#define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_GET_DECODED_POLL_RESPONSES
@@ -216,11 +216,22 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         }
         if (verdict == RaftDeviceIdentVerdict::Deferred)
         {
-            // Not ready to identify yet; leave unidentified and unpolled, retry on a later scan
+            // Not ready to identify yet; leave unidentified and unpolled. Note that
+            // identifyDevice is only called on an offline->online transition, so "later scan"
+            // means the next time this device drops off the bus and comes back - not the next
+            // scan sweep.
+#ifdef DEBUG_DEVICE_IDENT_MGR
+            LOG_I(MODULE_PREFIX, "identifyDevice handler DEFERRED address %s - left unidentified and unpolled",
+                    BusI2CAddrAndSlot::toString(address).c_str());
+#endif
             deviceStatus.clear();
             return;
         }
         // NotMine -> device remains unidentified
+#ifdef DEBUG_DEVICE_IDENT_MGR
+        LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s - remains unidentified",
+                BusI2CAddrAndSlot::toString(address).c_str());
+#endif
     }
 }
 

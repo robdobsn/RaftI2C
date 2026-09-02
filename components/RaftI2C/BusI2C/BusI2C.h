@@ -342,6 +342,23 @@ public:
         return _slotController.getStatusJson();
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get bus status JSON - currently the poll-response integrity counters.
+    /// All zero unless a device type record declares pollInfo.crc. "failed" counts
+    /// first-read CRC failures, "recovered" those fixed by a re-read, and "dropped"
+    /// those discarded (no correct data reached the decode). See
+    /// devdocs/i2c-poll-data-integrity-crc-plan.md
+    virtual String getBusStatusJson() const override final
+    {
+        const DevicePollingMgr::CrcStats& s = _devicePollingMgr.getCrcStats();
+        char buf[160];
+        snprintf(buf, sizeof(buf),
+                 R"({"pollIntegrity":{"checked":%u,"failed":%u,"recovered":%u,"dropped":%u,"recoveries":%u}})",
+                 (unsigned)s.checked, (unsigned)s.failed, (unsigned)s.recovered, (unsigned)s.dropped,
+                 (unsigned)s.recoveries);
+        return String(buf);
+    }
+
 private:
 
     // Yield value on each bus processing loop

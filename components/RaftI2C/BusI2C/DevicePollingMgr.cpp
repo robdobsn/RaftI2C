@@ -16,6 +16,10 @@
 #include "BusI2CAddrAndSlot.h"
 #include "RaftUtils.h"
 #include "RaftI2CCentralIF.h"
+#include "MiniHDLC.h"   // CRC-16/CCITT-FALSE for poll response integrity
+
+// Interval between poll-integrity summary reports (only logged when non-zero)
+static const uint64_t CRC_STATS_REPORT_INTERVAL_US = 30000000;   // 30 seconds
 
 #ifdef DEBUG_POLL_TIMING
 static const uint32_t POLL_TIMING_REPORT_INTERVAL_US = 5000000; // 5 seconds
@@ -159,6 +163,16 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
                 break;
             }
 
+            // Check the response integrity trailer if this device carries one. A
+            // response that cannot be validated is discarded rather than decoded -
+            // dropping a sample is always better than reporting a wrong measurement.
+            // The device stays online: this is data corruption, not absence.
+            if (!validatePollResponse(pollInfo, busReqRec, address, readData))
+            {
+                allResultsOkAndComplete = false;
+                break;
+            }
+
             // Store this operation's result for use by later dynamic read expressions
             perOpResults.push_back(readData);
 
@@ -224,6 +238,153 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
         // Restore the bus multiplexers if necessary
         _busMultiplexers.disableAllSlots(false);
     }
+
+    // Periodically report poll-response integrity. Silent unless something has
+    // actually failed a CRC - a healthy bus produces no output at all.
+    if (_crcStats.failed || _crcStats.dropped)
+    {
+        if (Raft::isTimeout(timeNowUs, _crcStatsLastReportUs, CRC_STATS_REPORT_INTERVAL_US))
+        {
+            _crcStatsLastReportUs = timeNowUs;
+            LOG_W(MODULE_PREFIX, "pollIntegrity checked %d failed %d recovered %d dropped %d (%.3f%% of checks failed)",
+                        _crcStats.checked, _crcStats.failed, _crcStats.recovered, _crcStats.dropped,
+                        _crcStats.checked ? (100.0 * _crcStats.failed / _crcStats.checked) : 0.0);
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Validate a poll response carrying a CRC trailer, re-reading if the device supports it
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool DevicePollingMgr::validatePollResponse(const DevicePollingInfo& pollInfo, BusRequestInfo& busReqRec,
+                                            BusElemAddrType address, std::vector<uint8_t>& readData)
+{
+    // Nothing to do unless this device declares a CRC
+    if (pollInfo.pollCrcType != DevicePollingInfo::POLL_CRC_16_CCITT)
+        return true;
+
+    // The trailer occupies the last pollCrcTrailerLen bytes; everything before it is
+    // the declared length L. The CRC covers bytes 0..L inclusive - the response, the
+    // device's zero padding, and the seq byte at offset L.
+    const uint32_t trailerLen = pollInfo.pollCrcTrailerLen;
+    if ((trailerLen < 3) || (readData.size() < trailerLen + 1))
+    {
+        _crcStats.dropped++;
+        LOG_W(MODULE_PREFIX, "crcCheck addr %04x response too short (%d bytes, trailer %d)",
+                    address, (int)readData.size(), (int)trailerLen);
+        return false;
+    }
+    const uint32_t declaredLen = readData.size() - trailerLen;
+
+    _crcStats.checked++;
+
+    // Try the response we have, then up to pollCrcRetries re-reads
+    for (uint32_t attempt = 0; ; attempt++)
+    {
+        const uint16_t expected = (uint16_t)MiniHDLC::computeCRC16(readData.data(), declaredLen + 1);
+        const uint16_t actual = ((uint16_t)readData[declaredLen + 1] << 8) | readData[declaredLen + 2];
+        if (expected == actual)
+        {
+            if (attempt > 0)
+                _crcStats.recovered++;
+            // Back to producing good data - clear the recovery backstop counter
+            if (uint32_t* pDrops = getConsecutiveDropCount(address))
+                *pDrops = 0;
+            // Strip the trailer so the decode sees exactly what it saw before
+            readData.resize(declaredLen);
+            return true;
+        }
+
+        if (attempt == 0)
+            _crcStats.failed++;
+
+        if (attempt >= pollInfo.pollCrcRetries)
+            break;
+
+        // Ask the device to re-send the response it just sent. This matters when the
+        // original read was destructive (a FIFO pop happens at address match, before
+        // any byte is clocked) so a plain re-read would return the *next* response.
+        BusRequestInfo rereadReq(BUS_REQ_TYPE_POLL,
+                address,
+                DevicePollingInfo::DEV_IDENT_POLL_CMD_ID,
+                pollInfo.pollCrcRereadCmd.size(),
+                pollInfo.pollCrcRereadCmd.data(),
+                busReqRec.getReadReqLen(),
+                0,
+                NULL,
+                NULL);
+        std::vector<uint8_t> rereadData;
+        if (_busReqSyncFn(&rereadReq, &rereadData) != RAFT_OK)
+            break;
+        if (rereadData.size() != readData.size())
+            break;
+        readData = rereadData;
+    }
+
+    _crcStats.dropped++;
+#ifdef DEBUG_POLL_CRC
+    String hexStr;
+    Raft::getHexStrFromBytes(readData.data(), readData.size(), hexStr);
+    LOG_W(MODULE_PREFIX, "crcCheck addr %04x FAILED after %d retries data %s",
+                address, (int)pollInfo.pollCrcRetries, hexStr.c_str());
+#endif
+
+    // Recovery backstop: a device producing nothing valid for a sustained run is not
+    // suffering noise, it has stopped working - most often an RSAO that reset into its
+    // bootloader, which the master would otherwise never restart because START_APP is
+    // only sent during detection. Write the record's recovery command and start again.
+    if (pollInfo.pollCrcRecoverAfter > 0)
+    {
+        uint32_t* pDrops = getConsecutiveDropCount(address);
+        if (pDrops)
+        {
+            (*pDrops)++;
+            if (*pDrops >= pollInfo.pollCrcRecoverAfter)
+            {
+                *pDrops = 0;
+                BusRequestInfo recoverReq(BUS_REQ_TYPE_POLL,
+                        address,
+                        DevicePollingInfo::DEV_IDENT_POLL_CMD_ID,
+                        pollInfo.pollCrcRecoverCmd.size(),
+                        pollInfo.pollCrcRecoverCmd.data(),
+                        0,
+                        0,
+                        NULL,
+                        NULL);
+                std::vector<uint8_t> noData;
+                _busReqSyncFn(&recoverReq, &noData);
+                _crcStats.recoveries++;
+                LOG_W(MODULE_PREFIX, "pollIntegrity addr %04x no valid response for %d polls - sent recovery command",
+                            address, (int)pollInfo.pollCrcRecoverAfter);
+            }
+        }
+    }
+    return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get or claim the consecutive-drop counter for an address (recovery backstop)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+uint32_t* DevicePollingMgr::getConsecutiveDropCount(BusElemAddrType address)
+{
+    for (uint32_t i = 0; i < MAX_RECOVERY_ENTRIES; i++)
+    {
+        if (_recoveryStates[i].inUse && (_recoveryStates[i].address == address))
+            return &_recoveryStates[i].consecutiveDrops;
+    }
+    for (uint32_t i = 0; i < MAX_RECOVERY_ENTRIES; i++)
+    {
+        if (!_recoveryStates[i].inUse)
+        {
+            _recoveryStates[i].inUse = true;
+            _recoveryStates[i].address = address;
+            _recoveryStates[i].consecutiveDrops = 0;
+            return &_recoveryStates[i].consecutiveDrops;
+        }
+    }
+    return nullptr;
 }
 
 #ifdef DEBUG_POLL_TIMING

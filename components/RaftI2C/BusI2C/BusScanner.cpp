@@ -12,7 +12,7 @@
 #include "DeviceTypeRecords.h"
 #include "BusI2CAddrAndSlot.h"
 
-// #define DEBUG_ELEM_STATUS_DEVICE_IDENT
+#define DEBUG_ELEM_STATUS_DEVICE_IDENT
 // #define DEBUG_ELEM_STATUS_UPDATE_ALL
 // #define DEBUG_MOVE_TO_NORMAL_SCANNING
 // #define DEBUG_SCAN_PRIORITY_LISTS
