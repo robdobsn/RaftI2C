@@ -686,3 +686,25 @@ void BusI2C::hiatus(uint32_t forPeriodMs)
 #endif
 }
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether the I2C lines are physically stuck (SDA/SCL held low)
+/// @return true if stuck
+/// @note Reads the SDA/SCL GPIOs directly, so it is valid whenever the caller owns the bus -
+///       including while the worker is paused under a lease, which is exactly when a caller
+///       running its own transactions needs to tell "wedged bus" from "device answering
+///       badly". The two look identical on the wire: an ACK is the line pulled low, so a
+///       stuck bus ACKs every address and reads back zeros.
+bool BusI2C::isBusStuck() const
+{
+    return const_cast<BusStuckHandler&>(_busStuckHandler).isStuck();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Attempt to clear a stuck I2C bus by clocking it
+/// @return true if the bus is no longer stuck afterwards
+bool BusI2C::clearBusStuck()
+{
+    _busStuckHandler.clearStuckByClocking();
+    return !_busStuckHandler.isStuck();
+}
