@@ -381,6 +381,20 @@ void BusI2C::i2cWorkerTask()
         delayMicroseconds(1);
 #endif
 
+        // Service any application handler registered to run on the bus task. It may issue
+        // synchronous bus transactions safely because it IS the bus task - the same reason the
+        // new-device identification hook can.
+        //
+        // Returning true means the handler is mid-operation, which holds off DEVICE POLLING
+        // only - see below. Scanning is deliberately NOT held off, and that is load-bearing:
+        // BusMultiplexers::taskService() is empty, so a multiplexer wedged by a device reset is
+        // re-detected and recovered solely through the scanner calling elemStateChange().
+        // Suspending scanning during RSAO address assignment therefore blocked the very
+        // recovery the assignment depends on, and every transaction NACKed until it gave up.
+        bool busTaskHandlerBusy = false;
+        if (!_isPaused)
+            busTaskHandlerBusy = _deviceIdentMgr.serviceBusTaskHandler();
+
         // Handle bus scanning
 #ifndef DEBUG_NO_SCANNING
         if (!_isPaused)
@@ -435,8 +449,12 @@ void BusI2C::i2cWorkerTask()
         // Update IO expanders (if dirty)
         _busIOExpanders.syncI2CIOStateChanges(false, std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2));
 
-        // Device polling
-        _devicePollingMgr.taskService(micros());
+        // Device polling - held off while the bus-task handler is mid-operation (see above).
+        // Polling is pure bus load with no role in recovery, so unlike scanning it is safe to
+        // suspend: it is what makes the bus busy (a single VCP at the default rates occupies
+        // ~50% of a 100kHz bus), and a timed assignment sequence should not queue behind it.
+        if (!busTaskHandlerBusy)
+            _devicePollingMgr.taskService(micros());
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);

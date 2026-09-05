@@ -40,6 +40,7 @@ public:
         uint32_t recovered = 0;     // failures fixed by a re-read
         uint32_t dropped = 0;       // failures not fixed - response discarded
         uint32_t recoveries = 0;    // recovery commands sent (pollInfo.crc.recover)
+        uint32_t reidentRequests = 0; // identifications cleared so a device is re-identified
     };
     const CrcStats& getCrcStats() const { return _crcStats; }
 
@@ -76,6 +77,13 @@ private:
     // non-zero for 255 of every 256 responses, and the CRC almost always is), so this
     // only has to outlast a burst of corruption that happens to zero the trailer.
     static const uint32_t NO_TRAILER_CONFIRM_COUNT = 8;
+
+    // Consecutive CRC failures before the device's identification is cleared so it is
+    // re-identified. Deliberately far below pollCrcRecoverAfter (40): re-identification is
+    // cheap, specific and self-correcting, so it should be tried well before the blunter
+    // recovery command. Small enough to react in ~75ms on a 25ms poll, large enough that a
+    // brief burst of noise does not churn identification.
+    static const uint32_t REIDENT_AFTER_DROPS = 3;
 
     // Consecutive dropped responses per address, for the recovery backstop, plus the
     // trailer classification above. Small fixed table - only devices that declare

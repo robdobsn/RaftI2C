@@ -150,6 +150,26 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Register a handler serviced on the bus task, for application work that drives
+    ///        the bus itself
+    /// @param busTaskServiceFn handler function (nullptr to clear)
+    /// @param pCtx opaque context passed to the handler
+    virtual void registerBusTaskServiceHandler(RaftBusTaskServiceFn busTaskServiceFn, void* pCtx) override final
+    {
+        _busTaskServiceFn = busTaskServiceFn;
+        _busTaskServiceCtx = pCtx;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Service any registered bus-task handler (called from the bus worker loop only)
+    bool serviceBusTaskHandler()
+    {
+        if (!_busTaskServiceFn)
+            return false;
+        return _busTaskServiceFn(_busTaskServiceCtx);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set a function used to (re)select a device's multiplexer slot
     /// @param reselectSlotFn function taking a slot number and enabling only that slot
     /// @note Used to restore the scanner's pre-selected slot after a new-device identification
@@ -194,6 +214,8 @@ private:
 
     // Optional new-device identification handler (device-agnostic delegation hook)
     RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
+    RaftBusTaskServiceFn _busTaskServiceFn = nullptr;
+    void* _busTaskServiceCtx = nullptr;
     void* _newDeviceIdentCtx = nullptr;
 
     // Optional function to (re)select a device's multiplexer slot after the handler runs

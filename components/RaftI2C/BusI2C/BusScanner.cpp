@@ -581,6 +581,31 @@ void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode
     bool isOnline = false;
     bool isChange = _busStatusMgr.updateBusElemState(address, accessResult == RAFT_OK, isOnline);
 
+    // Retry identification for an element that is online but was never identified.
+    //
+    // identifyDevice() otherwise runs ONLY on an offline->online transition, so anything a
+    // handler defers stays unidentified for as long as it remains present - there is no
+    // second edge to trigger on. That is how a device sitting on the RSAO default address
+    // could be left there indefinitely, and how a device that joined an address already
+    // occupied was never noticed.
+    //
+    // This costs no extra bus traffic: an unidentified element is not being polled, so the
+    // scan loop above already probes it every sweep. All that is added is re-running the
+    // identification probe, throttled so a permanently unidentifiable device cannot spin.
+    if (isOnline && !isChange && !_busStatusMgr.isAddrBeingPolled(address) &&
+        (_busStatusMgr.getDeviceTypeIndexByAddr(address) == DEVICE_TYPE_INDEX_INVALID) &&
+        Raft::isTimeout(millis(), _lastUnidentRetryMs, UNIDENTIFIED_RETRY_INTERVAL_MS))
+    {
+        _lastUnidentRetryMs = millis();
+#ifdef DEBUG_ELEM_STATUS_DEVICE_IDENT
+        LOG_I(MODULE_PREFIX, "updateBusElemState retrying identification of unidentified online addr&slot %04x",
+                address);
+#endif
+        DeviceStatus deviceStatus;
+        _deviceIdentMgr.identifyDevice(address, deviceStatus);
+        _busStatusMgr.setBusElemDeviceStatus(address, deviceStatus);
+    }
+
     //If this is a change to online then update the bus element tracker
     if (isOnline && isChange)
     {

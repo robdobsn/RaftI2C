@@ -84,6 +84,17 @@ public:
     /// @return device type index (DEVICE_TYPE_INDEX_INVALID if not known)
     uint16_t getDeviceTypeIndexByAddr(BusElemAddrType address) const;
 
+    /// @brief Clear an element's identification so the scanner identifies it again
+    /// @param address address (including slot)
+    /// @note The element stays ONLINE - this says "what I concluded about this device is no
+    ///       longer trustworthy", not "it has gone". Polling stops (there is no device type
+    ///       to poll against) and BusScanner re-runs identification on its next sweep.
+    ///       Used when sustained poll-CRC failure suggests a second device has appeared on
+    ///       the address: identification is where that can actually be diagnosed, because
+    ///       the serial read it performs is the only response that differs between two
+    ///       devices of the same type.
+    void clearDeviceIdentification(BusElemAddrType address);
+
     /// @brief Get pending ident poll (this is the poll of the device based on its identified type)
     /// @param timeNowUs current time in us
     /// @param pollInfo (out) device polling info

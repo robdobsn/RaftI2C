@@ -1209,3 +1209,21 @@ void BusStatusMgr::registerForDeviceData(BusElemAddrType address, RaftDeviceData
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
 }
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Clear an element's identification so the scanner identifies it again
+/// @param address address (including slot)
+void BusStatusMgr::clearDeviceIdentification(BusElemAddrType address)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+    {
+        // Drop the device status (type index, polling info, data aggregator). The online
+        // state is deliberately untouched: the device is still there, we just no longer
+        // trust what we decided it was.
+        pAddrStatus->deviceStatus.clear();
+        pAddrStatus->isNewlyIdentified = false;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+}

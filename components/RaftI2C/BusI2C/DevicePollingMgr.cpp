@@ -374,16 +374,37 @@ bool DevicePollingMgr::validatePollResponse(const DevicePollingInfo& pollInfo, B
                 address, (int)pollInfo.pollCrcRetries, hexStr.c_str());
 #endif
 
-    // Recovery backstop: a device producing nothing valid for a sustained run is not
-    // suffering noise, it has stopped working - most often an RSAO that reset into its
-    // bootloader, which the master would otherwise never restart because START_APP is
-    // only sent during detection. Write the record's recovery command and start again.
+    // Two escalating responses to a device producing nothing valid, cheapest and most
+    // specific first.
+    //
+    // 1. RE-IDENTIFY (after REIDENT_AFTER_DROPS). Sustained CRC failure is the signature of
+    //    a SECOND device having appeared on this address: two devices wired-AND their
+    //    responses, and even identical measurements corrupt the trailer because its seq byte
+    //    is a free-running per-device counter. Identification is where that gets diagnosed -
+    //    its serial read is the only response that differs between two devices of one type -
+    //    so clearing the identification hands the question to the machinery built for it.
+    //    Costs one probe, is self-correcting if the cause was noise (the device simply
+    //    re-identifies as itself), and reacts in REIDENT_AFTER_DROPS x the poll interval:
+    //    75ms for a VCP at 25ms, against seconds for any polled sweep.
+    //
+    // 2. RECOVERY COMMAND (after pollCrcRecoverAfter, larger). The device stopped working -
+    //    most often an RSAO that reset into its bootloader, which the master would otherwise
+    //    never restart because START_APP is only sent during detection.
     if (pollInfo.pollCrcRecoverAfter > 0)
     {
         uint32_t* pDrops = getConsecutiveDropCount(address);
         if (pDrops)
         {
             (*pDrops)++;
+            if (*pDrops == REIDENT_AFTER_DROPS)
+            {
+                _busStatusMgr.clearDeviceIdentification(address);
+                _crcStats.reidentRequests++;
+                LOG_W(MODULE_PREFIX, "pollIntegrity addr %04x %d consecutive CRC failures - "
+                            "clearing identification so the device is re-identified (a second "
+                            "device on this address would be found by the serial check)",
+                            address, (int)REIDENT_AFTER_DROPS);
+            }
             if (*pDrops >= pollInfo.pollCrcRecoverAfter)
             {
                 *pDrops = 0;

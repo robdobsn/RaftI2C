@@ -159,6 +159,13 @@ private:
     /// @param addressesOnSlotDone addresses on slot done
     /// @return Slot number
     uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool addressesOnSlotDone);
+    // Retry interval for re-running identification on an element that is online but has
+    // never been identified (a handler deferred it). Throttled globally rather than per
+    // address: this is a recovery path, not a scan rate, and one retry every few seconds is
+    // ample against events that happen when a human plugs something in.
+    static const uint32_t UNIDENTIFIED_RETRY_INTERVAL_MS = 3000;
+    uint32_t _lastUnidentRetryMs = 0;
+
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "I2CBusScanner";    
