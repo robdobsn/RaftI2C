@@ -23,20 +23,8 @@ public:
         // Access semaphore
         RaftMutex_init(_accessMutex);
 
-        // Bound the ring buffer.
-        //
-        // Both multiplicands come from a device type record - the retained sample count and the
-        // poll response size - so their product is an allocation size taken from a record. That was
-        // tolerable while every record was compiled in and reviewed; it is not once records can be
-        // supplied as a file. Clamping rather than refusing keeps a device working with fewer
-        // retained samples instead of failing to appear at all, which is the better outcome for
-        // something a user is in the middle of getting working.
-        if (numResultsToStore > MAX_RESULTS_TO_STORE)
-            numResultsToStore = MAX_RESULTS_TO_STORE;
-        if ((resultSize > 0) && (numResultsToStore > MAX_RING_BUFFER_BYTES / resultSize))
-            numResultsToStore = MAX_RING_BUFFER_BYTES / resultSize;
-
-        // Ring buffer
+        // Ring buffer, bounded (see boundedResultCount)
+        numResultsToStore = boundedResultCount(numResultsToStore, resultSize);
         _ringBuffer.resize(numResultsToStore*resultSize);
         _actualLengths.resize(numResultsToStore, 0);
         _ringBufHeadOffset = 0;
@@ -64,6 +52,14 @@ public:
     {
         // Check buffer size fits in a single slot
         if (data.size() > _resultSize || data.size() == 0)
+            return false;
+
+        // Check there IS a slot. Without this, an aggregator sized to zero elements still computes
+        // slot 0 below and writes _actualLengths[0] and memcpy()s into two empty vectors. Zero is
+        // reachable from a device type record: getPollInfo defaults the retained-sample count "s"
+        // to 0, so a record that simply omits it lands here. Every compiled profile sets it, which
+        // is why this has never been hit - but records now come from a user-supplied file.
+        if (_maxElems == 0 || _resultSize == 0 || _ringBuffer.empty())
             return false;
 
         // Obtain access
@@ -248,6 +244,11 @@ public:
     /// @note This clears any existing buffered data
     bool resize(uint32_t numResultsToStore) override
     {
+        // Same ceilings as construction. This is reachable from the devman API via
+        // BusStatusMgr::setDeviceNumSamples, so bounding only the constructor left the whole limit
+        // one API call away from being bypassed.
+        numResultsToStore = boundedResultCount(numResultsToStore, _resultSize);
+
         // Obtain access
         if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
             return false;
@@ -315,11 +316,33 @@ public:
     }
 
 private:
-    // Ceilings on the ring buffer, applied in the constructor. Both of its dimensions come from a
-    // device type record, and records may now come from a file rather than only from the build.
-    // The offsets into the buffer are uint16_t, so the byte ceiling also keeps them in range.
+    // Ceilings on the ring buffer. Both of its dimensions come from a device type record, and
+    // records may now come from a file rather than only from the build. The offsets into the buffer
+    // are uint16_t, so the byte ceiling also keeps them in range.
     static constexpr uint32_t MAX_RESULTS_TO_STORE = 256;
     static constexpr uint32_t MAX_RING_BUFFER_BYTES = 32768;
+
+    ////////////////////////////////////////////////////////////////////////////
+    /// @brief Bound a requested element count against both ceilings
+    /// @param numResultsToStore requested count, from a device type record
+    /// @param resultSize size of one result, also from a record
+    /// @return a count that is at least 1 and whose product with resultSize fits the byte ceiling
+    /// @note Floors at 1 rather than allowing 0. An earlier version of this clamp divided the byte
+    ///       ceiling by resultSize, which yields ZERO for any resultSize above the ceiling - turning
+    ///       an over-large allocation into an empty one, and an empty one into an out-of-bounds
+    ///       write in put(). A single retained sample is the smallest thing that is still a buffer.
+    static uint32_t boundedResultCount(uint32_t numResultsToStore, uint32_t resultSize)
+    {
+        if (numResultsToStore > MAX_RESULTS_TO_STORE)
+            numResultsToStore = MAX_RESULTS_TO_STORE;
+        if (resultSize > 0)
+        {
+            const uint32_t fitsInBytes = MAX_RING_BUFFER_BYTES / resultSize;
+            if (numResultsToStore > fitsInBytes)
+                numResultsToStore = fitsInBytes;
+        }
+        return numResultsToStore < 1 ? 1 : numResultsToStore;
+    }
 
     // Circular buffer
     std::vector<uint8_t> _ringBuffer;
