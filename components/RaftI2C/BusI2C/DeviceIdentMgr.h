@@ -161,6 +161,22 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Discard what has been concluded about every device on the bus, so each is identified again
+    /// @return number of devices whose identification was discarded
+    /// @note Safe to call from any task: it only takes BusStatusMgr's own mutex and issues no bus
+    ///       transactions. The scanner picks the work up on its next sweep - BusScanner already
+    ///       retries identification for elements that are online but unidentified.
+    virtual uint32_t reIdentifyDevices() override final
+    {
+        std::vector<uint32_t> addresses;
+        if (!_busStatusMgr.getBusElemAddresses(addresses, false))
+            return 0;
+        for (uint32_t address : addresses)
+            _busStatusMgr.clearDeviceIdentification(address);
+        return addresses.size();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service any registered bus-task handler (called from the bus worker loop only)
     bool serviceBusTaskHandler()
     {
