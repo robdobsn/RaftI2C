@@ -23,6 +23,19 @@ public:
         // Access semaphore
         RaftMutex_init(_accessMutex);
 
+        // Bound the ring buffer.
+        //
+        // Both multiplicands come from a device type record - the retained sample count and the
+        // poll response size - so their product is an allocation size taken from a record. That was
+        // tolerable while every record was compiled in and reviewed; it is not once records can be
+        // supplied as a file. Clamping rather than refusing keeps a device working with fewer
+        // retained samples instead of failing to appear at all, which is the better outcome for
+        // something a user is in the middle of getting working.
+        if (numResultsToStore > MAX_RESULTS_TO_STORE)
+            numResultsToStore = MAX_RESULTS_TO_STORE;
+        if ((resultSize > 0) && (numResultsToStore > MAX_RING_BUFFER_BYTES / resultSize))
+            numResultsToStore = MAX_RING_BUFFER_BYTES / resultSize;
+
         // Ring buffer
         _ringBuffer.resize(numResultsToStore*resultSize);
         _actualLengths.resize(numResultsToStore, 0);
@@ -302,6 +315,12 @@ public:
     }
 
 private:
+    // Ceilings on the ring buffer, applied in the constructor. Both of its dimensions come from a
+    // device type record, and records may now come from a file rather than only from the build.
+    // The offsets into the buffer are uint16_t, so the byte ceiling also keeps them in range.
+    static constexpr uint32_t MAX_RESULTS_TO_STORE = 256;
+    static constexpr uint32_t MAX_RING_BUFFER_BYTES = 32768;
+
     // Circular buffer
     std::vector<uint8_t> _ringBuffer;
     std::vector<uint16_t> _actualLengths; // actual data length per slot
