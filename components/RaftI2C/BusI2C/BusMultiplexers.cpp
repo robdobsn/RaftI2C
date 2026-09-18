@@ -337,12 +337,12 @@ RaftRetCode BusMultiplexers::writeSlotMaskToMux(uint32_t muxIdx,
 
 #ifdef DEBUG_SLOT_DATA_ENABLE
     LOG_I(MODULE_PREFIX, "writeSlotMaskToMux muxIdx %d slotMask 0x%08x disableMask 0x%08x finalMask 0x%08x force %d recurseLevel %d isInit %d", 
-            muxIdx, slotMask, busMux.disabledSlotsMask, slotMask & ~busMux.disabledSlotsMask, 
+            muxIdx, slotMask, _disabledSlotsMasks[muxIdx].load(), slotMask & ~_disabledSlotsMasks[muxIdx].load(),
             force, recurseLevel, isInit);
 #endif
 
     // Mask off disabled slots
-    slotMask &= ~busMux.disabledSlotsMask;
+    slotMask &= ~_disabledSlotsMasks[muxIdx].load();
 
     // Check if status indicates that the mask is already correct
     bool writeNeeded = force || !isInit || (busMux.curBitMask != slotMask);
@@ -695,15 +695,21 @@ RaftRetCode BusMultiplexers::enableSlot(uint32_t slotNum, bool enableData)
         return RAFT_INVALID_DATA;
     }
     
-    // Get the mux
-    BusMux& busMux = _busMuxRecs[muxIdx];
+    // Check valid
+    if (muxIdx >= I2C_BUS_MUX_MAX)
+        return RAFT_INVALID_DATA;
 
     // Set or clear the bit in the disabled slots mask (1 to disable)
-    busMux.disabledSlotsMask = enableData ? (busMux.disabledSlotsMask & ~(1 << slotIdx)) : (busMux.disabledSlotsMask | (1 << slotIdx));
+    // This is called from a task other than the I2C task (which reads the mask) so the mask is atomic
+    // and an atomic read-modify-write is used
+    if (enableData)
+        _disabledSlotsMasks[muxIdx].fetch_and(~(1u << slotIdx));
+    else
+        _disabledSlotsMasks[muxIdx].fetch_or(1u << slotIdx);
 
 #ifdef DEBUG_SLOT_DATA_ENABLE
     LOG_I(MODULE_PREFIX, "enableSlot slotNum %d muxIdx %d slotIdx %d enableData %d disabledSlotsMask 0x%02x", 
-            slotNum, muxIdx, slotIdx, enableData, busMux.disabledSlotsMask);
+            slotNum, muxIdx, slotIdx, enableData, _disabledSlotsMasks[muxIdx].load());
 #endif
     return RAFT_OK;
 }

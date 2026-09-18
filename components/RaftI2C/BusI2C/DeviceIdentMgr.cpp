@@ -28,6 +28,8 @@
 #include "PollDataAggregator.h"
 #include "Logger.h"
 #include <memory>
+#include <atomic>
+#include "RaftThreading.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -42,6 +44,17 @@ DeviceIdentMgr::DeviceIdentMgr(BusStatusMgr& BusStatusMgr, BusReqSyncFn busReqSy
     _busReqAsyncFn(busReqAsyncFn),
     _busReqEnqueueFn(busReqEnqueueFn)
 {
+    // Mutex for handler registration
+    RaftMutex_init(_handlerMutex);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Destructor
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+DeviceIdentMgr::~DeviceIdentMgr()
+{
+    RaftMutex_destroy(_handlerMutex);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -174,9 +187,26 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     // commands and stop measuring), so it must run last - after all non-destructive address-based
     // identification. Dynamically-addressed RSAO devices are excludeFromAddrMap so they never match
     // above and are correctly handled here.
-    if (!identified && _newDeviceIdentFn)
+    // The handler {fn, ctx} pair is copied out under the handler mutex (it may be registered/cleared from
+    // another task) and called outside it
+    RaftNewDeviceIdentFn newDeviceIdentFn = nullptr;
+    void* pNewDeviceIdentCtx = nullptr;
+    if (!identified && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
-        RaftDeviceIdentVerdict verdict = _newDeviceIdentFn(address, deviceStatus, _newDeviceIdentCtx);
+        newDeviceIdentFn = _newDeviceIdentFn;
+        pNewDeviceIdentCtx = _newDeviceIdentCtx;
+        if (newDeviceIdentFn)
+        {
+            _handlerCallingTask = (void*)xTaskGetCurrentTaskHandle();
+            _newDeviceIdentCallCount++;
+            _newDeviceIdentInProgress = true;
+        }
+        RaftMutex_unlock(_handlerMutex);
+    }
+    if (!identified && newDeviceIdentFn)
+    {
+        RaftDeviceIdentVerdict verdict = newDeviceIdentFn(address, deviceStatus, pNewDeviceIdentCtx);
+        _newDeviceIdentInProgress = false;
 
         // The handler may have performed bus transactions (e.g. a synchronous probe) that reset
         // the multiplexer slot selection. The scanner selected this device's slot before calling
@@ -671,41 +701,67 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
     // Form bus request
     BusRequestInfo busReqInfo("", deviceID.getAddress());
 
+    // The completion callback for a (non-poll) request is delivered from BusAccessor::loop() which runs on
+    // the main task. So if this function is itself called on the main task (which is the case for API
+    // handlers) the callback cannot be delivered while waiting here - waiting would simply stall the main
+    // loop for the full timeout and then report failure even though the command is sent by the bus task.
+    // Hence only wait for completion when called from a task other than the main task.
+    bool waitForCompletion = (_busReqEnqueueFn != nullptr) && !RaftThread_isMainTask();
+
     // Use a shared completion block so the request callback can safely outlive
     // this stack frame even if we time out waiting for the bus worker.
     struct CmdCompletion
     {
         SemaphoreHandle_t sem = nullptr;
-        RaftRetCode rslt = RAFT_BUS_PENDING;
+        std::atomic<RaftRetCode> rslt{RAFT_BUS_PENDING};
         CmdCompletion() { sem = xSemaphoreCreateBinary(); }
         ~CmdCompletion() { if (sem) vSemaphoreDelete(sem); }
     };
-    auto completion = std::make_shared<CmdCompletion>();
-
-    busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
-            [completion](void* /*pCallbackData*/, BusRequestResult& reqResult)
-                {
-                    if (completion)
+    std::shared_ptr<CmdCompletion> completion;
+    if (waitForCompletion)
+    {
+        completion = std::make_shared<CmdCompletion>();
+        busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
+                [completion](void* /*pCallbackData*/, BusRequestResult& reqResult)
                     {
-                        completion->rslt = reqResult.getResult();
-                        if (completion->sem)
-                            xSemaphoreGive(completion->sem);
-                    }
-                },
-            nullptr);
+                        if (completion)
+                        {
+                            // Write the result before signalling
+                            completion->rslt = reqResult.getResult();
+                            if (completion->sem)
+                                xSemaphoreGive(completion->sem);
+                        }
+                    },
+                nullptr);
+    }
+    else
+    {
+        busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0, nullptr, nullptr);
+    }
 
-    // Make the request - prefer routing via the bus worker queue so that all
+    // Make the request - route via the bus worker queue so that all
     // bus access (including mux switching) happens on the worker task and is
-    // serialized with polling/scanning. Only fall back to the direct async
-    // path if no enqueue function has been provided (e.g. legacy/unit tests).
+    // serialized with polling/scanning. If the request cannot be queued (queue full or
+    // queue busy) then fail with a busy result - there is NO fallback to performing the
+    // transaction inline on the calling task. The direct async path is only used if no
+    // enqueue function has been provided (e.g. legacy/unit tests).
     RaftRetCode rslt = RAFT_INVALID_DATA;
-    bool routedViaQueue = false;
+    bool cmdQueuedOnly = false;
     if (_busReqEnqueueFn != nullptr)
     {
-        if (_busReqEnqueueFn(busReqInfo))
+        if (!_busReqEnqueueFn(busReqInfo))
         {
-            routedViaQueue = true;
-            // Wait for the worker to process the request and fire our callback
+            rslt = RAFT_BUSY;
+        }
+        else if (!waitForCompletion)
+        {
+            // Queued for the bus worker - result is not known at this point
+            rslt = RAFT_OK;
+            cmdQueuedOnly = true;
+        }
+        else
+        {
+            // Wait for the worker to process the request and the main task to fire our callback
             const TickType_t waitTicks = pdMS_TO_TICKS(500);
             if (completion->sem && xSemaphoreTake(completion->sem, waitTicks) == pdTRUE)
             {
@@ -717,23 +773,21 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
             }
         }
     }
-    if (!routedViaQueue)
+    else if (_busReqAsyncFn != nullptr)
     {
-        if (_busReqAsyncFn != nullptr)
-        {
-            rslt = _busReqAsyncFn(&busReqInfo, 0);
-        }
-        else
-        {
-            rslt = RAFT_BUS_NOT_INIT;
-        }
+        rslt = _busReqAsyncFn(&busReqInfo, 0);
+    }
+    else
+    {
+        rslt = RAFT_BUS_NOT_INIT;
     }
 
     if (respMsg)
     {
-        *respMsg = (rslt == RAFT_OK) ? "Command sent"
+        *respMsg = (rslt == RAFT_OK) ? (cmdQueuedOnly ? "Command queued" : "Command sent")
+                                     : ((rslt == RAFT_BUSY) ? "Bus request queue busy"
                                      : (_busReqEnqueueFn || _busReqAsyncFn ? "Failed to send command"
-                                                                            : "Bus not initialised");
+                                                                            : "Bus not initialised"));
     }
 
 #ifdef DEBUG_MAKE_BUS_REQUEST_VERBOSE
@@ -749,6 +803,100 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
 #endif
 
     return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Register a handler invoked before default identification for newly-detected devices
+/// @param newDeviceIdentFn handler function (nullptr to clear)
+/// @param pCtx opaque context passed to the handler
+void DeviceIdentMgr::registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDeviceIdentFn, void* pCtx)
+{
+    // Store {fn, ctx} as one unit under the mutex
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        LOG_E(MODULE_PREFIX, "registerNewDeviceIdentHandler failed to obtain mutex");
+        return;
+    }
+    _newDeviceIdentFn = newDeviceIdentFn;
+    _newDeviceIdentCtx = pCtx;
+    uint32_t callCountAtReg = _newDeviceIdentCallCount;
+    RaftMutex_unlock(_handlerMutex);
+
+    // Wait for any call to the previous handler to complete
+    waitForHandlerQuiescence(_newDeviceIdentInProgress, _newDeviceIdentCallCount, callCountAtReg, "newDeviceIdent");
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Register a handler serviced on the bus task, for application work that drives the bus itself
+/// @param busTaskServiceFn handler function (nullptr to clear)
+/// @param pCtx opaque context passed to the handler
+void DeviceIdentMgr::registerBusTaskServiceHandler(RaftBusTaskServiceFn busTaskServiceFn, void* pCtx)
+{
+    // Store {fn, ctx} as one unit under the mutex
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        LOG_E(MODULE_PREFIX, "registerBusTaskServiceHandler failed to obtain mutex");
+        return;
+    }
+    _busTaskServiceFn = busTaskServiceFn;
+    _busTaskServiceCtx = pCtx;
+    uint32_t callCountAtReg = _busTaskServiceCallCount;
+    RaftMutex_unlock(_handlerMutex);
+
+    // Wait for any call to the previous handler to complete
+    waitForHandlerQuiescence(_busTaskServiceInProgress, _busTaskServiceCallCount, callCountAtReg, "busTaskService");
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Service any registered bus-task handler (called from the bus worker loop only)
+/// @return true if the handler is mid-operation
+bool DeviceIdentMgr::serviceBusTaskHandler()
+{
+    // Copy out {fn, ctx} under the mutex
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    RaftBusTaskServiceFn busTaskServiceFn = _busTaskServiceFn;
+    void* pBusTaskServiceCtx = _busTaskServiceCtx;
+    if (busTaskServiceFn)
+    {
+        _handlerCallingTask = (void*)xTaskGetCurrentTaskHandle();
+        _busTaskServiceCallCount++;
+        _busTaskServiceInProgress = true;
+    }
+    RaftMutex_unlock(_handlerMutex);
+
+    // Call outside the mutex
+    if (!busTaskServiceFn)
+        return false;
+    bool isBusy = busTaskServiceFn(pBusTaskServiceCtx);
+    _busTaskServiceInProgress = false;
+    return isBusy;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Wait (bounded) for a handler call in progress on another task to complete
+/// @param inProgressFlag in-progress flag for the handler
+/// @param callCount count of calls made to the handler
+/// @param callCountAtReg value of callCount (read under the mutex) when the handler was changed
+/// @param handlerName name for logging
+/// @note Only a call which started before the handler was changed can be using the old {fn, ctx} so the
+///       wait ends when that call completes (or a later call has started)
+void DeviceIdentMgr::waitForHandlerQuiescence(const std::atomic<bool>& inProgressFlag,
+            const std::atomic<uint32_t>& callCount, uint32_t callCountAtReg, const char* handlerName)
+{
+    // No wait if called from the handler itself (on the bus task)
+    if (_handlerCallingTask == (void*)xTaskGetCurrentTaskHandle())
+        return;
+    uint32_t waitStartMs = millis();
+    while (inProgressFlag && (callCount == callCountAtReg))
+    {
+        if (Raft::isTimeout(millis(), waitStartMs, HANDLER_QUIESCE_MAX_MS))
+        {
+            LOG_W(MODULE_PREFIX, "%s handler still in progress after %dms", handlerName, (int)HANDLER_QUIESCE_MAX_MS);
+            break;
+        }
+        vTaskDelay(1);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

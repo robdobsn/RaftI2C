@@ -13,9 +13,11 @@
 #include "BusStatusMgr.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
+#include "RaftThreading.h"
 #include <vector>
 #include <list>
 #include <functional>
+#include <atomic>
 
 class DeviceIdentMgr : public RaftBusDevicesIF
 {
@@ -28,6 +30,14 @@ public:
     /// @param busReqEnqueueFn bus enqueue function (routes cross-task requests through the bus worker queue)
     DeviceIdentMgr(BusStatusMgr& busStatusMgr, BusReqSyncFn busReqSyncFn, BusReqAsyncFn busReqAsyncFn,
                 BusReqEnqueueFn busReqEnqueueFn = nullptr);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Destructor
+    virtual ~DeviceIdentMgr();
+
+    // Not copyable (owns a mutex)
+    DeviceIdentMgr(const DeviceIdentMgr&) = delete;
+    DeviceIdentMgr& operator=(const DeviceIdentMgr&) = delete;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Setup
@@ -125,6 +135,27 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Unregister for device data notifications for a specific address
+    /// @param addressAndSlot address of device
+    /// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+    /// @return true if a matching registration was found (and disarmed)
+    /// @note On return the callback is not in progress and will not be called again for this address (so the
+    ///       subscriber can be destroyed) - see BusStatusMgr::unregisterForDeviceData
+    virtual bool unregisterForDeviceData(BusElemAddrType addressAndSlot, const void* pCallbackInfo) override final
+    {
+        return _busStatusMgr.unregisterForDeviceData(addressAndSlot, pCallbackInfo);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Unregister for device data notifications on all addresses
+    /// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+    /// @return number of registrations disarmed
+    virtual uint32_t unregisterForDeviceDataAll(const void* pCallbackInfo) override final
+    {
+        return _busStatusMgr.unregisterForDeviceDataAll(pCallbackInfo);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get debug JSON
     /// @return JSON string
     virtual String getDebugJSON(bool includeBraces) const override final;
@@ -143,31 +174,23 @@ public:
     /// @brief Register a handler invoked before default identification for newly-detected devices
     /// @param newDeviceIdentFn handler function (nullptr to clear)
     /// @param pCtx opaque context passed to the handler
-    virtual void registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDeviceIdentFn, void* pCtx) override final
-    {
-        _newDeviceIdentFn = newDeviceIdentFn;
-        _newDeviceIdentCtx = pCtx;
-    }
+    /// @note The handler is called on the bus task. The function and context are stored as one unit under a
+    ///       mutex so the bus task can never call the function with a mismatched context. If a previously
+    ///       registered handler is in progress on the bus task this waits (bounded) for it to return so that,
+    ///       after clearing/replacing a handler, the old context can safely be destroyed.
+    virtual void registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDeviceIdentFn, void* pCtx) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Register a handler serviced on the bus task, for application work that drives
     ///        the bus itself
     /// @param busTaskServiceFn handler function (nullptr to clear)
     /// @param pCtx opaque context passed to the handler
-    virtual void registerBusTaskServiceHandler(RaftBusTaskServiceFn busTaskServiceFn, void* pCtx) override final
-    {
-        _busTaskServiceFn = busTaskServiceFn;
-        _busTaskServiceCtx = pCtx;
-    }
+    /// @note The handler is called on the bus task - see registerNewDeviceIdentHandler for registration semantics
+    virtual void registerBusTaskServiceHandler(RaftBusTaskServiceFn busTaskServiceFn, void* pCtx) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service any registered bus-task handler (called from the bus worker loop only)
-    bool serviceBusTaskHandler()
-    {
-        if (!_busTaskServiceFn)
-            return false;
-        return _busTaskServiceFn(_busTaskServiceCtx);
-    }
+    bool serviceBusTaskHandler();
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Set a function used to (re)select a device's multiplexer slot
@@ -212,11 +235,31 @@ private:
     BusReqAsyncFn _busReqAsyncFn = nullptr;
     BusReqEnqueueFn _busReqEnqueueFn = nullptr;
 
-    // Optional new-device identification handler (device-agnostic delegation hook)
+    // Optional new-device identification handler (device-agnostic delegation hook) and bus-task service handler
+    // These are registered from another task (generally the main task) and called on the bus task so each
+    // {fn, ctx} pair is only accessed under _handlerMutex - it is copied out under the mutex and called outside it
+    RaftMutex _handlerMutex;
     RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
     RaftBusTaskServiceFn _busTaskServiceFn = nullptr;
     void* _busTaskServiceCtx = nullptr;
     void* _newDeviceIdentCtx = nullptr;
+
+    // Handler in-progress tracking (set under _handlerMutex when the handler is copied out by the bus task)
+    // used to wait for an in-flight call to complete when a handler is cleared/replaced
+    std::atomic<bool> _newDeviceIdentInProgress{false};
+    std::atomic<bool> _busTaskServiceInProgress{false};
+    std::atomic<uint32_t> _newDeviceIdentCallCount{0};
+    std::atomic<uint32_t> _busTaskServiceCallCount{0};
+    std::atomic<void*> _handlerCallingTask{nullptr};
+    static const uint32_t HANDLER_QUIESCE_MAX_MS = 1000;
+
+    /// @brief Wait (bounded) for a handler call in progress on another task to complete
+    /// @param inProgressFlag in-progress flag for the handler
+    /// @param callCount count of calls made to the handler
+    /// @param callCountAtReg value of callCount (read under the mutex) when the handler was changed
+    /// @param handlerName name for logging
+    void waitForHandlerQuiescence(const std::atomic<bool>& inProgressFlag,
+                const std::atomic<uint32_t>& callCount, uint32_t callCountAtReg, const char* handlerName);
 
     // Optional function to (re)select a device's multiplexer slot after the handler runs
     std::function<RaftRetCode(uint32_t slotNum)> _reselectSlotFn = nullptr;

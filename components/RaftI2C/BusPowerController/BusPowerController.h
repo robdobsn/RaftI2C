@@ -13,6 +13,7 @@
 #include "RaftJsonIF.h"
 #include "BusRequestInfo.h"
 #include "BusIOExpanders.h"
+#include "RaftThreading.h"
 
 /// @brief Bus power controller handles power to either the whole bus OR on a per slot basis
 class BusPowerController
@@ -175,6 +176,11 @@ private:
 
     // Slot groups
     std::vector<SlotPowerControlGroup> _slotPowerCtrlGroups;
+
+    // Mutex for access to the slot records (state, power enable, etc) which are changed both by the I2C task
+    // (taskService, powerCycleSlot) and by other tasks (enableSlot)
+    // The private helpers (getSlotRecord, setSlotState, setVoltageLevel) assume the mutex is already held
+    RaftMutex _slotMutex;
 
     /// @brief Get slot record
     /// @param slotNum Slot number (0 is the main bus)

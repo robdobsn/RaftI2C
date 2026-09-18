@@ -25,12 +25,15 @@
 BusPowerController::BusPowerController(BusIOExpanders& busIOExpanders)
         : _busIOExpanders(busIOExpanders)
 {
+    // Mutex for slot power records
+    RaftMutex_init(_slotMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Destructor
 BusPowerController::~BusPowerController()
 {
+    RaftMutex_destroy(_slotMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +242,10 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
     if (!_powerControlEnabled)
         return true;
 
+    // Obtain access to slot records (if this fails then treat power as not stable)
+    if (!RaftMutex_lock(_slotMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+
     // Get the slot record - if it doesn't exist assume power is stable
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     if (!pSlotRec)
@@ -250,6 +257,7 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 #ifdef DEBUG_POWER_CONTROL_SLOT_STABLE
             LOG_I(MODULE_PREFIX, "isSlotPowerStable slotNum %d not power controlled returning yes", slotNum);
 #endif
+            RaftMutex_unlock(_slotMutex);
             return true;
         }
         else
@@ -277,7 +285,9 @@ bool BusPowerController::isSlotPowerStable(uint32_t slotNum)
 #endif
 
     // Check if power is stable
-    return pSlotRec->pwrCtrlState == SLOT_POWER_AT_REQUIRED_LEVEL;
+    bool isStable = pSlotRec->pwrCtrlState == SLOT_POWER_AT_REQUIRED_LEVEL;
+    RaftMutex_unlock(_slotMutex);
+    return isStable;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -290,11 +300,21 @@ void BusPowerController::powerCycleSlot(uint32_t slotNum, uint32_t timeMs)
     LOG_I(MODULE_PREFIX, "powerCycleSlot POWER OFF slotNum %d slotNum %d timeMs %d", slotNum, slotNum, timeMs);
 #endif
 
+    // Obtain access to slot records
+    if (!RaftMutex_lock(_slotMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        LOG_W(MODULE_PREFIX, "powerCycleSlot slotNum %d failed to obtain mutex", slotNum);
+        return;
+    }
+
     // Turn the slot power off
     setVoltageLevel(slotNum, POWER_CONTROL_OFF);
 
     // Set the state to power off pending cycling
     setSlotState(slotNum, SLOT_POWER_OFF_DURING_CYCLING, timeMs);
+
+    // Release access
+    RaftMutex_unlock(_slotMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -304,6 +324,13 @@ void BusPowerController::taskService(uint32_t timeNowMs)
 {
     // Enaure hardware initialized
     if (!_hardwareInitialized)
+        return;
+
+    // Obtain access to slot records - the slot power state machine (run here on the I2C task) and enableSlot()
+    // (called from another task) both change slot state and power levels so they must not interleave
+    // (note that no bus transactions occur with the mutex held - setVoltageLevel only records the required
+    // IO expander pin states which are written to the hardware later)
+    if (!RaftMutex_lock(_slotMutex, RAFT_MUTEX_WAIT_FOREVER))
         return;
 
     // Iterate over slot groups
@@ -358,6 +385,9 @@ void BusPowerController::taskService(uint32_t timeNowMs)
             }
         }
     }
+
+    // Release access
+    RaftMutex_unlock(_slotMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -370,7 +400,7 @@ bool BusPowerController::isSlotPowerControlled(uint32_t slotNum)
     if (!_hardwareInitialized)
         return false;
 
-    // Get slot record
+    // Get slot record (the slot groups are not changed after setup so no lock is required)
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     return (pSlotRec != nullptr);
 }
@@ -420,7 +450,12 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
     }
 
     // Set pins
-    _busIOExpanders.virtualPinsSet(numPins, voltageLevelPins.data(), voltageLevelValues.data(), nullptr, nullptr);
+    RaftRetCode retc = _busIOExpanders.virtualPinsSet(numPins, voltageLevelPins.data(), voltageLevelValues.data(), nullptr, nullptr);
+    if (retc != RAFT_OK)
+    {
+        LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d levelIdx %d FAILED to set pins retc %d",
+                    slotNum, powerLevelIdx, retc);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -462,10 +497,17 @@ void BusPowerController::powerOffAll()
 /// @return RAFT_OK if successful
 RaftRetCode BusPowerController::enableSlot(uint32_t slotNum, bool enablePower)
 {
+    // Obtain access to slot records (see taskService)
+    if (!RaftMutex_lock(_slotMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return RAFT_BUSY;
+
     // Get slot record
     SlotPowerControlRec* pSlotRec = getSlotRecord(slotNum);
     if (!pSlotRec)
+    {
+        RaftMutex_unlock(_slotMutex);
         return RAFT_INVALID_OBJECT;
+    }
 
     // Check if currently active and going to be disabled
     if (!enablePower && pSlotRec->powerEnabled)
@@ -481,5 +523,8 @@ RaftRetCode BusPowerController::enableSlot(uint32_t slotNum, bool enablePower)
         pSlotRec->setState(SLOT_POWER_OFF_PRE_INIT, millis());
     }
     pSlotRec->powerEnabled = enablePower;
+
+    // Release access
+    RaftMutex_unlock(_slotMutex);
     return RAFT_OK;
 }

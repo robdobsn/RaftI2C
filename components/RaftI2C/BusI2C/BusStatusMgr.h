@@ -15,6 +15,7 @@
 #include "DeviceStatus.h"
 #include "BusAddrRecord.h"
 #include <list>
+#include <atomic>
 
 class BusStatusMgr {
 
@@ -175,6 +176,22 @@ public:
     void registerForDeviceData(BusElemAddrType addrAndSlot, RaftDeviceDataChangeCB dataChangeCB,
                 uint32_t minTimeBetweenReportsMs, const void* pCallbackInfo);
 
+    /// @brief Unregister for device data notifications for a specific address
+    /// @param address address (including slot)
+    /// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+    /// @return true if a matching registration was found (and disarmed)
+    /// @note The callback and its info are disarmed in the address record under the mutex. If the callback is in
+    ///       progress on another task (it is called from the bus task) this waits (bounded) for it to complete so
+    ///       that on return the subscriber can safely be destroyed. May be called from within the callback itself
+    ///       (in which case there is no wait).
+    bool unregisterForDeviceData(BusElemAddrType address, const void* pCallbackInfo);
+
+    /// @brief Unregister for device data notifications on all addresses
+    /// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+    /// @return number of registrations disarmed
+    /// @note see unregisterForDeviceData(address, pCallbackInfo)
+    uint32_t unregisterForDeviceDataAll(const void* pCallbackInfo);
+
     /// @brief Inform that an address is going offline
     /// @param addrList list of addresses
     void goingOffline(std::vector<BusElemAddrType>& addrList);
@@ -284,12 +301,28 @@ private:
     BusOperationStatus _busOperationStatus = BUS_OPERATION_UNKNOWN;
 
     // Bus element status change detection
-    bool _busElemStatusChangeDetected = false;
+    // Set (under _busElemStatusMutex) by the bus task and checked without the mutex in loop()
+    std::atomic<bool> _busElemStatusChangeDetected{false};
 
     // Last status update times us
     uint32_t _lastIdentPollUpdateTimeMs = 0;
     uint32_t _lastBusElemOnlineStatusUpdateTimeMs = 0;
     uint32_t _lastPollOrStatusUpdateTimeMs = 0;
+
+    // Data change callback in-progress tracking (the callback is made outside the mutex on the task which
+    // calls handlePollResult - normally the bus task) - used by unregisterForDeviceData to wait for quiescence
+    std::atomic<bool> _dataChangeCBInProgress{false};
+    std::atomic<const void*> _dataChangeCBInProgressInfo{nullptr};
+    std::atomic<void*> _dataChangeCBInProgressTask{nullptr};
+    std::atomic<uint32_t> _dataChangeCBCallCount{0};
+    static const uint32_t DATA_CHANGE_CB_QUIESCE_MAX_MS = 500;
+
+    /// @brief Unregister helper
+    /// @param matchAllAddresses true to match all addresses
+    /// @param address address to match (if not matchAllAddresses)
+    /// @param pCallbackInfo Callback info to match
+    /// @return number of registrations disarmed
+    uint32_t unregisterForDeviceDataHelper(bool matchAllAddresses, BusElemAddrType address, const void* pCallbackInfo);
 
     // Pending deletion queue - holds deletion notices until they are published
     std::vector<DeletionNotice> _pendingDeletionQueue;

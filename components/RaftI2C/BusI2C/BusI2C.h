@@ -20,6 +20,8 @@
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "SlotController.h"
+#include "RaftThreading.h"
+#include <atomic>
 
 // #define DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
 
@@ -148,8 +150,11 @@ public:
     /// @param pReadData - (out) buffer to receive read data (may be nullptr if no read required)
     /// @return result code
     /// @note Routes to the address's mux slot, performs the transaction, then clears all slots.
-    ///       The caller MUST coordinate with the bus worker (pause()/isPaused()) before using this
-    ///       so the synchronous access does not race the worker task's scanning/polling.
+    ///       The whole sequence is performed holding the bus owner lock so it is serialised against the
+    ///       bus worker task (and any other caller) and may be called from any task. RAFT_BUSY is returned
+    ///       if the bus owner lock cannot be obtained in a reasonable time. The caller should still pause
+    ///       the bus (pause()/isPaused()) if a SEQUENCE of transactions must not be interleaved with the
+    ///       worker task's scanning/polling.
     virtual RaftRetCode busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -317,7 +322,10 @@ public:
     /// @return RAFT_OK if successful
     virtual RaftRetCode enableSlot(uint32_t slotNum, bool enablePower, bool enableData)
     {
-        RaftRetCode retc = _pBusPowerController->enableSlot(slotNum, enablePower);
+        // If there is no bus power controller (no "pwr" config) then slot power is always on and cannot be disabled
+        RaftRetCode retc = enablePower ? RAFT_OK : RAFT_INVALID_OBJECT;
+        if (_pBusPowerController)
+            retc = _pBusPowerController->enableSlot(slotNum, enablePower);
         RaftRetCode retc2 = _busMultiplexers.enableSlot(slotNum, enableData);
         return retc == RAFT_OK ? retc2 : retc;
     }
@@ -406,15 +414,71 @@ private:
     static const int DEFAULT_TASK_PRIORITY = 5;
     static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5000;
     static const uint32_t WAIT_FOR_TASK_EXIT_MS = 1000;
+    static const uint32_t WAIT_FOR_TASK_EXIT_ON_DESTROY_MS = 10000;
 
-    // Pause/run status
-    volatile bool _pauseRequested = false;
-    volatile bool _isPaused = false;
+    // Bus owner lock (recursive mutex)
+    // The I2C hardware (and the state which goes with it - bus multiplexer slot selection, bus frequency, etc)
+    // must only ever be driven by one task at a time. The bus worker task holds this lock for the active part
+    // of each pass of its loop (NOT across its yield delay) and any other task which performs a transaction
+    // inline (i2cSendAsync e.g. from virtualPinRead, i2cSendSync, busReqSync, clearBusStuck) holds it for the
+    // whole slot-enable -> transaction -> slot-disable sequence. It is recursive because these functions nest
+    // (e.g. i2cSendAsync -> enableOneSlot -> i2cSendSync) and because they are called on the worker task
+    // which already holds the lock.
+    //
+    // LOCK ORDER: the bus owner lock is the OUTERMOST lock in RaftI2C. While holding it a task may take any one
+    // of the following (which are only ever held briefly and never while waiting for the bus owner lock):
+    //   BusAccessor::_pollingMutex, BusStatusMgr::_busElemStatusMutex (-> PollDataAggregator::_accessMutex),
+    //   the BusAccessor request/response queue mutexes, DeviceIdentMgr::_handlerMutex,
+    //   BusPowerController::_slotMutex (-> BusIOExpander::_regMutex), BusIOExpander::_regMutex
+    // SlotController::_modeMutex is only used on the calling (main) task and is taken before
+    // BusPowerController::_slotMutex / BusIOExpander::_regMutex - it is never held with the bus owner lock.
+    // Code holding any of those locks MUST NOT perform a bus transaction or otherwise take the bus owner lock.
+    // User callbacks are made without any of the inner locks held (poll-request and device-data callbacks
+    // made on the worker task are made with the bus owner lock held which is safe because it is recursive).
+    SemaphoreHandle_t _busOwnerMutex = nullptr;
+    static const uint32_t BUS_OWNER_LOCK_MAX_WAIT_MS = 100;
+
+    /// @brief Take the bus owner lock (recursive)
+    /// @param maxWaitMs max time to wait (RAFT_MUTEX_WAIT_FOREVER to wait forever)
+    /// @return true if the lock was obtained (busOwnerLockGive() must then be called)
+    bool busOwnerLockTake(uint32_t maxWaitMs);
+
+    /// @brief Give the bus owner lock
+    void busOwnerLockGive();
+
+    // RAII holder for the bus owner lock (released when it goes out of scope)
+    class BusOwnerLock
+    {
+    public:
+        BusOwnerLock(BusI2C& busI2C, uint32_t maxWaitMs) : _busI2C(busI2C)
+        {
+            _isLocked = _busI2C.busOwnerLockTake(maxWaitMs);
+        }
+        ~BusOwnerLock()
+        {
+            if (_isLocked)
+                _busI2C.busOwnerLockGive();
+        }
+        BusOwnerLock(const BusOwnerLock&) = delete;
+        BusOwnerLock& operator=(const BusOwnerLock&) = delete;
+        bool isLocked() const
+        {
+            return _isLocked;
+        }
+    private:
+        BusI2C& _busI2C;
+        bool _isLocked = false;
+    };
+
+    // Pause/run status (pause is requested by any task and actioned by the worker task)
+    std::atomic<bool> _pauseRequested{false};
+    std::atomic<bool> _isPaused{false};
 
     // Haitus for period of ms (generally due to power cycling, etc)
-    volatile bool _hiatusActive = false;
-    uint32_t _hiatusStartMs = 0;
-    uint32_t _hiatusForMs = 0;
+    // The start time and period are written before the flag is set
+    std::atomic<bool> _hiatusActive{false};
+    std::atomic<uint32_t> _hiatusStartMs{0};
+    std::atomic<uint32_t> _hiatusForMs{0};
     
     // Measurement of loop time
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME

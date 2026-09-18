@@ -92,9 +92,20 @@ void BusAccessor::loop()
 /// @brief Pause or resume bus operation
 void BusAccessor::pause(bool pause)
 {
-    // Suspend all polling (or unsuspend)
-    for (PollingVectorItem& pollItem : _pollingVector)
-        pollItem.suspendCount = pause ? MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND : 0;
+    // Suspend all polling (or unsuspend) - the polling vector may be changed (and reallocated) by
+    // addToPollingList on another task so the semaphore is required
+    if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        for (PollingVectorItem& pollItem : _pollingVector)
+            pollItem.suspendCount = pause ? MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND : 0;
+
+        // Return semaphore
+        RaftMutex_unlock(_pollingMutex);
+    }
+    else
+    {
+        LOG_W(MODULE_PREFIX, "pause failed to obtain polling semaphore");
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +114,10 @@ void BusAccessor::pause(bool pause)
 void BusAccessor::clear(bool incPolling)
 {
     // Clear the action queue
-    _responseQueue.clear();
+    if (!_responseQueue.clear())
+    {
+        LOG_W(MODULE_PREFIX, "clear failed to clear response queue");
+    }
 
     // Clear polling list if required
     if (incPolling)
@@ -174,52 +188,76 @@ void BusAccessor::processRequestQueue(bool isPaused)
 /// @brief Process polling (called from thread function)
 void BusAccessor::processPolling()
 {
+    // The polling semaphore is NOT held across the I2C transaction and the user callback (which is made from
+    // within the send function) - otherwise addRequest(poll) from another task blocks for a whole transaction
+    // and a callback which adds a poll request deadlocks the bus task. So the request is copied out under the
+    // semaphore, the transaction is performed unlocked and the semaphore is then re-obtained to update the record
+    // (which is re-found by address since the polling vector may have changed in the meantime)
+    bool pollReqValid = false;
+    int pollListIdx = -1;
+    BusRequestInfo pollReq;
+
     // Obtain semaphore to polling vector
     if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         // Get the next element to poll
-        int pollListIdx = _scheduler.getNext();
+        pollListIdx = _scheduler.getNext();
         if (pollListIdx >= 0)
         {
             // Check valid - if list is empty or has shrunk this test can fail
             // Polling can be suspended if too many failures occur
-            BusRequestInfo* pReqRec = NULL;
             if ((pollListIdx < _pollingVector.size()) &&
                             (_pollingVector[pollListIdx].suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND))
             {
-                // Get request details
-                pReqRec = &_pollingVector[pollListIdx].pollReq;
-            }
-
-            // Check ready to poll
-            if (pReqRec)
-            {
-                // Debug poll timing
-#ifdef DEBUG_POLL_TIME_FOR_ADDR
-                BusElemAddrType address = pReqRec->getAddress();
-                if (pReqRec->isPolling() && (BusI2CAddrAndSlot::getI2CAddr(address) == DEBUG_POLL_TIME_FOR_ADDR))
-                {
-                    LOG_I(MODULE_PREFIX, "i2cWorker polling addr %s elapsed %ld", 
-                                BusI2CAddrAndSlot::toString(address).c_str(), 
-                                Raft::timeElapsed(millis(), _debugLastPollTimeMs));
-                    _debugLastPollTimeMs = millis();
-                }
-#endif
-                // Send poll request
-                RaftRetCode sendResult = _busI2CReqAsyncFn(pReqRec, pollListIdx);
-                // Check for failed send and not barred temporarily
-                if ((sendResult != RAFT_OK) && (sendResult != RAFT_BUS_BARRED))
-                {
-                    // Increment the suspend count if required
-                    if (pollListIdx < _pollingVector.size())
-                        if (_pollingVector[pollListIdx].suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND)
-                            _pollingVector[pollListIdx].suspendCount++;
-                }
+                // Copy request details
+                pollReq = _pollingVector[pollListIdx].pollReq;
+                pollReqValid = true;
             }
         }
 
         // Free the semaphore
         RaftMutex_unlock(_pollingMutex);
+    }
+
+    // Check ready to poll
+    if (!pollReqValid)
+        return;
+
+    // Debug poll timing
+#ifdef DEBUG_POLL_TIME_FOR_ADDR
+    BusElemAddrType address = pollReq.getAddress();
+    if (pollReq.isPolling() && (BusI2CAddrAndSlot::getI2CAddr(address) == DEBUG_POLL_TIME_FOR_ADDR))
+    {
+        LOG_I(MODULE_PREFIX, "i2cWorker polling addr %s elapsed %ld",
+                    BusI2CAddrAndSlot::toString(address).c_str(),
+                    Raft::timeElapsed(millis(), _debugLastPollTimeMs));
+        _debugLastPollTimeMs = millis();
+    }
+#endif
+
+    // Send poll request (semaphore not held)
+    RaftRetCode sendResult = _busI2CReqAsyncFn(&pollReq, pollListIdx);
+
+    // Check for failed send and not barred temporarily
+    if ((sendResult != RAFT_OK) && (sendResult != RAFT_BUS_BARRED))
+    {
+        // Re-obtain the semaphore to update the record
+        if (RaftMutex_lock(_pollingMutex, RAFT_MUTEX_WAIT_FOREVER))
+        {
+            // Re-find the record by address (the index may be stale) and increment the suspend count if required
+            for (PollingVectorItem& pollItem : _pollingVector)
+            {
+                if (pollItem.pollReq.getAddress() == pollReq.getAddress())
+                {
+                    if (pollItem.suspendCount < MAX_CONSEC_FAIL_POLLS_BEFORE_SUSPEND)
+                        pollItem.suspendCount++;
+                    break;
+                }
+            }
+
+            // Free the semaphore
+            RaftMutex_unlock(_pollingMutex);
+        }
     }
 }
 

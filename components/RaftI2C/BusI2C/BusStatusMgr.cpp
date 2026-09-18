@@ -110,56 +110,55 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
     }
 
     // Obtain semaphore controlling access to busElemChange list and flag
-    // so we can update bus and element operation status - don't worry if we can't
-    // access the list as there will be other service loops
-    uint32_t numChanges = 0;
+    // so we can update bus and element operation status
+    // The harvest of changes is done in a single locked section and the change-detected flag is
+    // cleared INSIDE that section (before any callbacks are made). Any change recorded by the bus
+    // task after the harvest sets the flag again (under the same mutex) and is therefore picked up
+    // on a subsequent loop rather than being lost
+    std::vector<BusAddrStatus> statusChanges;
     if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
+        // Clear the flag - also handles the case where the flag was set but no changes are found
+        _busElemStatusChangeDetected = false;
+
         // Go through once and look for changes
+        uint32_t numChanges = 0;
         for (auto& addrStatus : _addrStatus)
         {
             if (addrStatus.isChange || addrStatus.isNewlyIdentified)
                 numChanges++;
         }
 
-        // Return semaphore
+        // Make space for changes
+        statusChanges.reserve(numChanges);
+
+        // Harvest changes
+        for (auto& addrStatus : _addrStatus)
+        {
+            if (addrStatus.isChange || addrStatus.isNewlyIdentified)
+            {
+                // Handle element change - create lightweight status for callback
+                statusChanges.push_back(addrStatus.toStatusChange());
+                addrStatus.isChange = false;
+                addrStatus.isNewlyIdentified = false;
+            }
+
+            // Check if this is the addrForLockupDetect
+            if (_addrForLockupDetectValid &&
+                        (addrStatus.address == _addrForLockupDetect))
+            {
+                newBusOperationStatus = (addrStatus.onlineState == DeviceOnlineState::ONLINE) ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
+            }
+        }
+
+        // Unlock
         RaftMutex_unlock(_busElemStatusMutex);
     }
 
     // Check for status changes
-    if (numChanges > 0)
+    if (statusChanges.size() > 0)
     {
-        // Make space for changes
-        std::vector<BusAddrStatus> statusChanges;
-        statusChanges.reserve(numChanges);
-
-        // Get semaphore again
-        if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
-        {
-            for (auto& addrStatus : _addrStatus)
-            {
-                if (addrStatus.isChange || addrStatus.isNewlyIdentified)
-                {
-                    // Handle element change - create lightweight status for callback
-                    statusChanges.push_back(addrStatus.toStatusChange());
-                    addrStatus.isChange = false;
-                    addrStatus.isNewlyIdentified = false;
-                }
-
-                // Check if this is the addrForLockupDetect
-                if (_addrForLockupDetectValid && 
-                            (addrStatus.address == _addrForLockupDetect))
-                {
-                    newBusOperationStatus = (addrStatus.onlineState == DeviceOnlineState::ONLINE) ? BUS_OPERATION_OK : BUS_OPERATION_FAILING;
-                }
-            }
-
-           // Unlock
-           RaftMutex_unlock(_busElemStatusMutex);
-        }
-
-        // Perform elem state change callback if required
-        if ((statusChanges.size() > 0))
+        // Perform elem state change callback (outside the lock)
         {
 #ifdef DEBUG_LOOP_PROCESS_BUS_ELEM_STATUS_CHANGES
             for (auto& statusChange : statusChanges)
@@ -174,12 +173,22 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
             _raftBus.callBusElemStatusCB(statusChanges);
 
             // Delete records that were pending deletion (OFFLINE devices) now that callback has been made
-            // First add them to the pending deletion queue for publishing
-            if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+            // Only records whose pending deletion was reported in the callback above are deleted - a record
+            // which the bus task marked as pending deletion while the callback was in progress has not yet
+            // been reported and must be retained until a later pass reports it
+            std::vector<BusElemAddrType> reportedDeletions;
+            for (const auto& statusChange : statusChanges)
             {
+                if (statusChange.onlineState == DeviceOnlineState::PENDING_DELETION)
+                    reportedDeletions.push_back(statusChange.address);
+            }
+            if ((reportedDeletions.size() > 0) && RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+            {
+                // First add them to the pending deletion queue for publishing
                 for (const auto& s : _addrStatus)
                 {
-                    if (s.onlineState == DeviceOnlineState::PENDING_DELETION)
+                    if ((s.onlineState == DeviceOnlineState::PENDING_DELETION) &&
+                        (std::find(reportedDeletions.begin(), reportedDeletions.end(), s.address) != reportedDeletions.end()))
                     {
                         // Add to pending deletion queue if not full
                         if (_pendingDeletionQueue.size() < PENDING_DELETION_QUEUE_MAX)
@@ -190,14 +199,14 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                 }
                 _addrStatus.erase(
                     std::remove_if(_addrStatus.begin(), _addrStatus.end(),
-                        [](const BusAddrRecord& s) { return s.onlineState == DeviceOnlineState::PENDING_DELETION; }),
+                        [&reportedDeletions](const BusAddrRecord& s) {
+                            return (s.onlineState == DeviceOnlineState::PENDING_DELETION) &&
+                                (std::find(reportedDeletions.begin(), reportedDeletions.end(), s.address) != reportedDeletions.end());
+                        }),
                     _addrStatus.end());
                 RaftMutex_unlock(_busElemStatusMutex);
             }
         }
-
-        // No more changes
-        _busElemStatusChangeDetected = false;            
     }
 
     // Bus operation change callback if required
@@ -760,6 +769,16 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
         }
     }
 
+    // Flag (while still holding the mutex) that a data change callback is in progress so that
+    // unregisterForDeviceData can wait for it to complete before the subscriber is destroyed
+    if (pCallback)
+    {
+        _dataChangeCBInProgressInfo = pCallbackInfo;
+        _dataChangeCBInProgressTask = (void*)xTaskGetCurrentTaskHandle();
+        _dataChangeCBCallCount++;
+        _dataChangeCBInProgress = true;
+    }
+
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
 
@@ -768,6 +787,9 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     {
         // Call the callback
         pCallback(deviceTypeIdx, pollResultData, pCallbackInfo);
+
+        // Callback no longer in progress
+        _dataChangeCBInProgress = false;
     }
 
 #ifdef DEBUG_HANDLE_POLL_RESULT
@@ -1209,6 +1231,79 @@ void BusStatusMgr::registerForDeviceData(BusElemAddrType address, RaftDeviceData
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Unregister for device data notifications for a specific address
+/// @param address address (including slot)
+/// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+/// @return true if a matching registration was found (and disarmed)
+bool BusStatusMgr::unregisterForDeviceData(BusElemAddrType address, const void* pCallbackInfo)
+{
+    return unregisterForDeviceDataHelper(false, address, pCallbackInfo) > 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Unregister for device data notifications on all addresses
+/// @param pCallbackInfo Callback info that was passed when registering (identifies the subscriber)
+/// @return number of registrations disarmed
+uint32_t BusStatusMgr::unregisterForDeviceDataAll(const void* pCallbackInfo)
+{
+    return unregisterForDeviceDataHelper(true, 0, pCallbackInfo);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Unregister helper
+/// @param matchAllAddresses true to match all addresses
+/// @param address address to match (if not matchAllAddresses)
+/// @param pCallbackInfo Callback info to match
+/// @return number of registrations disarmed
+uint32_t BusStatusMgr::unregisterForDeviceDataHelper(bool matchAllAddresses, BusElemAddrType address, const void* pCallbackInfo)
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    // Disarm the callback and callback info in all matching records (under the mutex so the bus task
+    // can never pick up a callback with mismatched info)
+    uint32_t numDisarmed = 0;
+    for (BusAddrRecord& addrStatus : _addrStatus)
+    {
+        if (!matchAllAddresses && (addrStatus.address != address))
+            continue;
+        if (addrStatus.getDataChangeCB() && (addrStatus.getCallbackInfo() == pCallbackInfo))
+        {
+            addrStatus.registerForDataChange(nullptr, 0, nullptr);
+            numDisarmed++;
+        }
+    }
+
+    // Check (under the mutex) if a callback for this subscriber is in progress on another task
+    bool waitForCB = _dataChangeCBInProgress && (_dataChangeCBInProgressInfo == pCallbackInfo) &&
+                (_dataChangeCBInProgressTask != (void*)xTaskGetCurrentTaskHandle());
+    uint32_t callCountAtUnreg = _dataChangeCBCallCount;
+
+    // Return semaphore
+    RaftMutex_unlock(_busElemStatusMutex);
+
+    // Wait for the in-progress callback to complete (no new callback for this subscriber can start
+    // on an address disarmed above so only the call which was in progress at that point is of interest)
+    if (waitForCB)
+    {
+        uint32_t waitStartMs = millis();
+        while (_dataChangeCBInProgress && (_dataChangeCBCallCount == callCountAtUnreg))
+        {
+            if (Raft::isTimeout(millis(), waitStartMs, DATA_CHANGE_CB_QUIESCE_MAX_MS))
+            {
+                LOG_W(MODULE_PREFIX, "unregisterForDeviceData callback still in progress after %dms",
+                            (int)DATA_CHANGE_CB_QUIESCE_MAX_MS);
+                break;
+            }
+            vTaskDelay(1);
+        }
+    }
+    return numDisarmed;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Clear an element's identification so the scanner identifies it again
 /// @param address address (including slot)

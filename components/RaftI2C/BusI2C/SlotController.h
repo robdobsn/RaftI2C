@@ -26,6 +26,7 @@
 #include "RaftArduino.h"
 #include "RaftRetCode.h"
 #include "RaftJsonIF.h"
+#include "RaftThreading.h"
 
 class RaftBus;
 
@@ -40,8 +41,18 @@ public:
         SerialHalf = 2,
     };
 
-    SlotController() = default;
-    ~SlotController() = default;
+    SlotController()
+    {
+        RaftMutex_init(_modeMutex);
+    }
+    ~SlotController()
+    {
+        RaftMutex_destroy(_modeMutex);
+    }
+
+    // Not copyable (owns a mutex)
+    SlotController(const SlotController&) = delete;
+    SlotController& operator=(const SlotController&) = delete;
 
     /// @brief Setup
     /// @param slotsCfg JSON config containing a "slots" array (one entry per slot, slot 1 = slots[0])
@@ -97,6 +108,12 @@ private:
 
     // Bus pointer (not owned)
     RaftBus* _pBus = nullptr;
+
+    // Mutex serialising mode changes (setMode is a check-then-act sequence on the slot's current mode)
+    RaftMutex _modeMutex;
+
+    /// @brief Set the mode of a slot (assumes _modeMutex is held)
+    RaftRetCode setModeLocked(uint32_t slotNum, SlotMode mode);
 
     // Helpers
     static SlotMode parseDefaultModeField(const RaftJsonIF& slotJson);
