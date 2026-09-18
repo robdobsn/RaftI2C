@@ -258,11 +258,18 @@ void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftRetCode send
                     pReqRec->getCallback(), 
                     pReqRec->getCallbackParam());
 
-    // Check polling
-    if (pReqRec->isPolling())
+    // Callback here, on the bus worker task, or defer it to the response queue.
+    //
+    // Polling has always been called back directly. A request may now ask for the same treatment,
+    // which is the only way its result can be WAITED for: the queue below is drained from the bus's
+    // loop(), a SysMod loop on the main loop task, so a caller that blocks that task waiting for a
+    // result stops the queue being drained and waits for something that can never arrive. Opt-in,
+    // so every caller that has not asked keeps the deferred delivery it has today.
+    if (pReqRec->isPolling() || pReqRec->isCallbackFromBusTask())
     {
         // Poll complete stats
-        _raftBus.getBusStats().pollComplete();
+        if (pReqRec->isPolling())
+            _raftBus.getBusStats().pollComplete();
 
         // Check if callback is required
         BusRequestCallbackType callback = reqResult.getCallback();
