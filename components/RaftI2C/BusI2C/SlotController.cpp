@@ -79,6 +79,18 @@ void SlotController::applyDefaults()
 /// @brief Set the mode of a slot
 RaftRetCode SlotController::setMode(uint32_t slotNum, SlotMode newMode)
 {
+    // Serialise mode changes (the mode change is a check-then-act sequence)
+    if (!RaftMutex_lock(_modeMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return RAFT_BUSY;
+    RaftRetCode retc = setModeLocked(slotNum, newMode);
+    RaftMutex_unlock(_modeMutex);
+    return retc;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set the mode of a slot (assumes _modeMutex is held)
+RaftRetCode SlotController::setModeLocked(uint32_t slotNum, SlotMode newMode)
+{
     if ((slotNum == 0) || (slotNum > _slots.size()))
     {
         LOG_W(MODULE_PREFIX, "setMode slotNum %d out of range (1..%d)", slotNum, (int)_slots.size());

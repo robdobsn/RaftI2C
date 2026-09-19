@@ -14,6 +14,7 @@
 #include "BusI2CElemTracker.h"
 #include "RaftJsonIF.h"
 #include "driver/gpio.h"
+#include <atomic>
 
 class BusMultiplexers
 {
@@ -204,13 +205,15 @@ private:
 
         // Current bit mask (each bit enables a slot when 1)
         uint32_t curBitMask = 0;
-
-        // Disabled slots mask (each bit disables a slot when 1)
-        uint32_t disabledSlotsMask = 0;
     };
 
     // Bus multiplexer records
     std::vector<BusMux> _busMuxRecs;
+
+    // Disabled slots masks - one per mux (each bit disables a slot when 1)
+    // These are written by enableSlot (called from a task other than the I2C task) and read by the I2C task
+    // so are atomic (and are held separately from BusMux as atomics cannot be held in a resizable vector)
+    std::atomic<uint32_t> _disabledSlotsMasks[I2C_BUS_MUX_MAX] = {};
 
     // Bus mux slot indices (that have been found on discovered bus multiplexers)
     std::vector<uint8_t> _busMuxSlotIndices;

@@ -66,6 +66,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     // Init
     _lastI2CCommsUs = micros();
 
+    // Bus owner lock (recursive mutex - see notes in header)
+    _busOwnerMutex = xSemaphoreCreateRecursiveMutex();
+
     // Clear barring
     for (uint32_t i = 0; i < ELEM_BAR_I2C_ADDRESS_MAX; i++)
         _busAccessBarMs[i] = 0;
@@ -98,6 +101,30 @@ BusI2C::~BusI2C()
     // Close to stop task
     close();
 
+    // Check the worker task has exited (it clears the task handle as the last thing it does)
+    // If not then wait longer as the worker may be part way through a long operation
+    if (_i2cWorkerTaskHandle != nullptr)
+    {
+        LOG_W(MODULE_PREFIX, "destructor worker task still running - waiting");
+        uint32_t waitStartMs = millis();
+        while ((_i2cWorkerTaskHandle != nullptr) &&
+                    !Raft::isTimeout(millis(), waitStartMs, WAIT_FOR_TASK_EXIT_ON_DESTROY_MS))
+        {
+            vTaskDelay(1);
+        }
+    }
+
+    // If the worker still hasn't exited then it must not be allowed to continue to use this object
+    // (or the I2C central) - so suspend it permanently and leak the objects it may be using rather than
+    // deleting them while they may be in use
+    TaskHandle_t workerTaskHandle = _i2cWorkerTaskHandle;
+    if (workerTaskHandle != nullptr)
+    {
+        LOG_E(MODULE_PREFIX, "destructor worker task FAILED TO EXIT - suspending it and leaking I2C central");
+        vTaskSuspend(workerTaskHandle);
+        return;
+    }
+
     // Clean up
     if (_i2cCentralNeedsToBeDeleted)
         delete _pI2CCentral;
@@ -105,6 +132,10 @@ BusI2C::~BusI2C()
     // Check if bus power controller needs to be deleted
     if (_pBusPowerController)
         delete _pBusPowerController;
+
+    // Remove bus owner lock
+    if (_busOwnerMutex)
+        vSemaphoreDelete(_busOwnerMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -320,6 +351,13 @@ void BusI2C::i2cWorkerTask()
     digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 0);
 #endif
 
+    // Allocate core-specific resources for the I2C central (e.g. the I2C interrupt) on the core that this
+    // task runs on - so the ISR runs on the same core as the task which performs bus accesses
+    if (_pI2CCentral && !_pI2CCentral->initOnBusTask())
+    {
+        LOG_W(MODULE_PREFIX, "i2cWorkerTask initOnBusTask failed");
+    }
+
     _debugLastBusLoopMs = millis();
     while (ulTaskNotifyTake(pdTRUE, 0) == 0)
     {
@@ -357,7 +395,9 @@ void BusI2C::i2cWorkerTask()
         // Check bus hiatus
         if (_hiatusActive)
         {
-            if (!Raft::isTimeout(curTimeMs, _hiatusStartMs, _hiatusForMs))
+            uint32_t hiatusStartMs = _hiatusStartMs;
+            uint32_t hiatusForMs = _hiatusForMs;
+            if (!Raft::isTimeout(curTimeMs, hiatusStartMs, hiatusForMs))
                 continue;
             _hiatusActive = false;
 #ifdef DEBUG_BUS_HIATUS
@@ -373,6 +413,16 @@ void BusI2C::i2cWorkerTask()
             _isPaused = false;
         else if ((!_isPaused) && (_pauseRequested))
             _isPaused = true;
+        bool isPaused = _isPaused;
+
+        // Obtain the bus owner lock for the active part of this pass of the loop so that a transaction
+        // performed inline by any other task is serialised against everything done here (scanning,
+        // identification, queued requests and polling - including slot selection and bus frequency changes)
+        // The lock is released at the end of the pass (including on continue) and hence is
+        // NOT held across the yield delay at the top of the loop
+        BusOwnerLock busOwnerLock(*this, RAFT_MUTEX_WAIT_FOREVER);
+        if (!busOwnerLock.isLocked())
+            continue;
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -392,12 +442,12 @@ void BusI2C::i2cWorkerTask()
         // Suspending scanning during RSAO address assignment therefore blocked the very
         // recovery the assignment depends on, and every transaction NACKed until it gave up.
         bool busTaskHandlerBusy = false;
-        if (!_isPaused)
+        if (!isPaused)
             busTaskHandlerBusy = _deviceIdentMgr.serviceBusTaskHandler();
 
         // Handle bus scanning
 #ifndef DEBUG_NO_SCANNING
-        if (!_isPaused)
+        if (!isPaused)
         {
             // Service bus scanner
             if (_busScanner.isScanPending(curTimeMs))
@@ -408,10 +458,10 @@ void BusI2C::i2cWorkerTask()
 #endif
 
         // Handle requests
-        _busAccessor.processRequestQueue(_isPaused);
+        _busAccessor.processRequestQueue(isPaused);
 
         // Don't do any polling when paused
-        if (_isPaused)
+        if (isPaused)
             continue;
 
 #ifdef DEBUG_NO_POLLING
@@ -500,11 +550,18 @@ void BusI2C::i2cWorkerTask()
 /// @return result code
 /// @note This is called from the worker task/thread and does not set the bus extender so if a slotted address
 ///       is used then the bus extender must be set before calling this function
+///       The bus owner lock is held for the transaction (it is recursive so this is a nested take when called
+///       on the worker task or from busReqSync/i2cSendAsync which already hold it)
 RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
 {
     // Check valid
     if (!_pI2CCentral)
         return RAFT_BUS_NOT_INIT;
+
+    // Obtain the bus owner lock
+    BusOwnerLock busOwnerLock(*this, BUS_OWNER_LOCK_MAX_WAIT_MS);
+    if (!busOwnerLock.isLocked())
+        return RAFT_BUSY;
 
     // Get address
     BusElemAddrType address = pReqRec->getAddress();
@@ -567,12 +624,19 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 /// @param pReadData - pointer to buffer for read data (may be nullptr)
 /// @return result code
 /// @note Generic, device-agnostic blocking transaction. Routes to the address's mux slot,
-///       performs the access, then clears all slots. The caller MUST coordinate with the bus
-///       worker (pause()/isPaused()) so this does not race the worker task.
+///       performs the access, then clears all slots. The whole sequence is performed holding the
+///       bus owner lock so it cannot race the worker task (or any other caller). The caller should
+///       still pause the bus (pause()/isPaused()) if a sequence of transactions must not be
+///       interleaved with scanning/polling.
 RaftRetCode BusI2C::busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
 {
     if (!_pI2CCentral)
         return RAFT_BUS_NOT_INIT;
+
+    // Obtain the bus owner lock for the whole slot-enable -> transaction -> slot-disable sequence
+    BusOwnerLock busOwnerLock(*this, BUS_OWNER_LOCK_MAX_WAIT_MS);
+    if (!busOwnerLock.isLocked())
+        return RAFT_BUSY;
 
     // Route to the slot for this address (slot 0 = main bus, a no-op enable)
     const uint16_t slotNum = BusI2CAddrAndSlot::getSlotNum(pReqRec->getAddress());
@@ -609,6 +673,13 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
     auto rslt = checkAddrValidAndNotBarred(address);
     if (rslt != RAFT_OK)
         return rslt;
+
+    // Obtain the bus owner lock for the whole slot-enable -> transaction -> slot-disable sequence
+    // This function is called on the worker task (which already holds the lock - it is recursive) but can
+    // also be called inline on another task (e.g. virtualPinRead) which must be serialised against the worker
+    BusOwnerLock busOwnerLock(*this, BUS_OWNER_LOCK_MAX_WAIT_MS);
+    if (!busOwnerLock.isLocked())
+        return RAFT_BUSY;
 
     // Check if a bus mux slot is specified
     rslt = _busMultiplexers.enableOneSlot(slotNum);
@@ -723,6 +794,45 @@ bool BusI2C::isBusStuck() const
 /// @return true if the bus is no longer stuck afterwards
 bool BusI2C::clearBusStuck()
 {
+    // Obtain the bus owner lock as clocking the bus involves bus transactions
+    BusOwnerLock busOwnerLock(*this, BUS_OWNER_LOCK_MAX_WAIT_MS);
+    if (!busOwnerLock.isLocked())
+    {
+        LOG_W(MODULE_PREFIX, "clearBusStuck failed to obtain bus owner lock");
+        return !_busStuckHandler.isStuck();
+    }
     _busStuckHandler.clearStuckByClocking();
     return !_busStuckHandler.isStuck();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Take the bus owner lock (recursive)
+/// @param maxWaitMs max time to wait (RAFT_MUTEX_WAIT_FOREVER to wait forever)
+/// @return true if the lock was obtained (busOwnerLockGive() must then be called)
+bool BusI2C::busOwnerLockTake(uint32_t maxWaitMs)
+{
+    // Check mutex was created
+    if (!_busOwnerMutex)
+        return false;
+    TickType_t ticksToWait = 0;
+    if (maxWaitMs == RAFT_MUTEX_WAIT_FOREVER)
+    {
+        ticksToWait = portMAX_DELAY;
+    }
+    else if (maxWaitMs != 0)
+    {
+        // Ensure a non-zero wait never degrades to a try-lock (when tick rate < 1kHz)
+        ticksToWait = pdMS_TO_TICKS(maxWaitMs);
+        if (ticksToWait == 0)
+            ticksToWait = 1;
+    }
+    return xSemaphoreTakeRecursive(_busOwnerMutex, ticksToWait) == pdTRUE;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Give the bus owner lock
+void BusI2C::busOwnerLockGive()
+{
+    if (_busOwnerMutex)
+        xSemaphoreGiveRecursive(_busOwnerMutex);
 }
