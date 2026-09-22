@@ -32,6 +32,11 @@ public:
                 uint32_t busFilteringLevel = DEFAULT_BUS_FILTER_LEVEL) override final;
     virtual void deinit() override final;
 
+    // Allocate core-specific resources (the I2C interrupt) on the core of the calling task
+    // This should be called on the task which performs bus accesses (if it isn't then the interrupt is
+    // allocated on first use in access() - i.e. on the core of the first task to access the bus)
+    virtual bool initOnBusTask() override final;
+
     // Busy
     virtual bool isBusy() override final;
 
@@ -82,6 +87,12 @@ private:
     // Access result code
     volatile bool _accessNackDetected = false;
     volatile RaftRetCode _accessResultCode = RAFT_BUS_PENDING;
+
+    // Access in progress - set/cleared by the accessing task and checked by the ISR - in both cases only inside
+    // the _i2cAccessMutex critical section. The ISR (which may be running on a different core to the accessing
+    // task) only touches the read/write buffers, result code and interrupt enables when this is set so a late
+    // interrupt (e.g. after a software time-out) can never write through a stale/null buffer pointer
+    volatile bool _accessInProgress = false;
 
     // Interrupt handle, clear and enable flags
     intr_handle_t _i2cISRHandle = nullptr;
@@ -270,7 +281,7 @@ private:
     void reinitI2CModule();
     uint32_t getApbFrequency();
     void setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byte_num, bool ack_val, bool ack_exp, bool ack_en);
-    bool initInterrupts();
+    void initInterruptFlags();
     void initBusFiltering();
     bool checkI2CLinesOk(String& busLinesErrorMsg);
     static void FUNCTION_DECORATOR_IRAM_ATTR i2cISRStatic(void* arg);

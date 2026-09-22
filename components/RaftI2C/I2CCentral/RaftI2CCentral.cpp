@@ -211,8 +211,12 @@ bool RaftI2CCentral::init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uin
 #endif
 #endif // ESP_IDF_VERSION >= 6.0.0
 
-    // Setup interrupts on the required port
-    initInterrupts();
+    // Setup interrupt flags for the required port
+    // Note that the interrupt itself is NOT allocated here. ESP IDF allocates an interrupt on the core of
+    // the calling task and init() is generally called on the main task which may not be on the same core as
+    // the task which performs bus accesses. So allocation is deferred to initOnBusTask() (or to the first
+    // access() if that isn't called). On single-core chips there is only one core so this makes no difference.
+    initInterruptFlags();
 
     // Create binary semaphore for blocking wait on I2C transaction completion
     if (_accessSemaphore == nullptr)
@@ -282,6 +286,10 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
 #if defined(DEBUG_RAFT_I2C_CENTRAL_ISR) || defined(DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL)
     _debugI2CISR.clear();
 #endif
+
+    // Ensure the interrupt is allocated (on the core of the task performing accesses)
+    if (!_i2cISRHandle && !initOnBusTask())
+        return RAFT_BUS_NOT_READY;
 
     // Ensure the engine is ready
     if (!ensureI2CReady())
@@ -417,13 +425,22 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
           totalBytesTxAndRx, totalBitsTxAndRx, minTotalUs, I2C_START_RESTART_END_OVERHEAD_US, maxExpectedUs);
 #endif
 
-    // Clear interrupts and enable
-    I2C_DEVICE.int_clr.val = _interruptClearFlags;
-    I2C_DEVICE.int_ena.val = _interruptEnFlags;
+    // Drain any stale token from the access semaphore (zero-timeout take which never blocks)
+    // A token can be left if the ISR signalled completion of a previous access just after the wait for
+    // that access timed-out. Without this the wait below would return immediately and a software time-out
+    // would be falsely reported while the transaction is still in progress.
+    if (_accessSemaphore != nullptr)
+        xSemaphoreTake(_accessSemaphore, 0);
 
-    // Reset result pending flags
+    // Start of access - inside the critical section (which the ISR also uses) reset the result pending flags,
+    // flag that an access is in progress and clear and enable interrupts
+    portENTER_CRITICAL(&_i2cAccessMutex);
     _accessNackDetected = false;
     _accessResultCode = RAFT_BUS_PENDING;
+    _accessInProgress = true;
+    I2C_DEVICE.int_clr.val = _interruptClearFlags;
+    I2C_DEVICE.int_ena.val = _interruptEnFlags;
+    portEXIT_CRITICAL(&_i2cAccessMutex);
 
     // Debug
 #ifdef DEBUG_RICI2C_ACCESS
@@ -461,13 +478,14 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
         }
     }
 
-    // Check for software time-out
+    // If no result has been signalled (software time-out) then RTOS scheduling jitter may have caused the task
+    // to miss the ISR completion. Check the hardware command registers directly to see if the I2C transaction
+    // actually completed at the hardware level. This is sampled BEFORE the access is ended (below) so that,
+    // if all commands are done, all of the read data is in the Rx FIFO when it is emptied.
+    bool allCmdsDone = false;
     if (_accessResultCode == RAFT_BUS_PENDING)
     {
-        // The polling loop timed out, but RTOS scheduling jitter may have caused the task
-        // to miss the ISR completion. Check the hardware command registers directly to see
-        // if the I2C transaction actually completed at the hardware level.
-        bool allCmdsDone = true;
+        allCmdsDone = true;
         I2C_COMMAND_REG_TYPE *pCmd = (I2C_COMMAND_REG_TYPE*) &(I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME);
         for (uint32_t i = 0; i < cmdIdx; i++)
         {
@@ -477,12 +495,30 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
                 break;
             }
         }
+    }
 
+    // End of access - inside the critical section (which the ISR also uses) disable and clear interrupts,
+    // extract any remaining read data and clear the read and write buffer pointers. This is done here
+    // for ALL outcomes (including software time-out where interrupts are otherwise still enabled). The ISR
+    // may be running on a different core and checks _accessInProgress and the buffer pointers inside the
+    // same critical section so, once this section is complete, the ISR can never write to the caller's
+    // buffers (which may be on the caller's stack), change the result code or re-enable interrupts.
+    portENTER_CRITICAL(&_i2cAccessMutex);
+    I2C_DEVICE.int_ena.val = 0;
+    I2C_DEVICE.int_clr.val = _interruptClearFlags;
+    emptyRxFifo();
+    numRead = _readBufPos;
+    _readBufStartPtr = nullptr;
+    _writeBufStartPtr = nullptr;
+    _accessInProgress = false;
+    portEXIT_CRITICAL(&_i2cAccessMutex);
+
+    // Check for software time-out (the ISR can no longer change the result code at this point)
+    if (_accessResultCode == RAFT_BUS_PENDING)
+    {
         if (allCmdsDone)
         {
-            // Hardware completed the transaction - disable/clear interrupts and treat as success
-            I2C_DEVICE.int_ena.val = 0;
-            I2C_DEVICE.int_clr.val = _interruptClearFlags;
+            // Hardware completed the transaction (interrupts already disabled/cleared above) - treat as success
             _accessResultCode = _accessNackDetected ? RAFT_BUS_ACK_ERROR : RAFT_OK;
             _i2cStats.recordSoftwareTimeout(); // Still record that polling timed out for diagnostics
         }
@@ -534,13 +570,8 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     }
 #endif
 
-    // Empty Rx FIFO to extract any read data
-    emptyRxFifo();
-    numRead = _readBufPos;
-
-    // Clear the read and write buffer pointers defensively - in case of spurious ISRs after this point
-    _readBufStartPtr = nullptr;
-    _writeBufStartPtr = nullptr;
+    // Note that the Rx FIFO has already been emptied (and the buffer pointers cleared) in the
+    // end of access critical section above
 
     // Debug
 #ifdef DEBUG_RICI2C_ACCESS
@@ -889,35 +920,60 @@ void RaftI2CCentral::setI2CCommand(uint32_t cmdIdx, uint8_t op_code, uint8_t byt
 // Initialise interrupts
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool RaftI2CCentral::initInterrupts()
+void RaftI2CCentral::initInterruptFlags()
 {
-    // ISR flags allowing for calling if cache disabled, low/medium priority, shared interrupts
-    uint32_t isrFlags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_SHARED;
-
     // Enable flags
     _interruptEnFlags = INTERRUPT_BASE_ENABLES;
 
     // Clear flags
     _interruptClearFlags = INTERRUPT_BASE_CLEARS;
 
-    // Clear any pending interrupt
+    // Ensure interrupts are disabled and clear any pending interrupt
+    I2C_DEVICE.int_ena.val = 0;
     I2C_DEVICE.int_clr.val = _interruptClearFlags;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Allocate the I2C interrupt on the core of the calling task
+// This should be called on the task which performs bus accesses. ESP IDF allocates an interrupt on the core
+// of the calling task so this results in the ISR running on the same core as that task (if it is pinned).
+// If the interrupt is already allocated this does nothing. The interrupt is freed in deinit() - ESP IDF
+// handles freeing an interrupt which was allocated on a different core.
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool RaftI2CCentral::initOnBusTask()
+{
+    // Check initialised
+    if (!_isInitialised)
+        return false;
+
+    // Check if already allocated
+    if (_i2cISRHandle)
+        return true;
+
+    // ISR flags allowing for calling if cache disabled, low/medium priority, shared interrupts
+    uint32_t isrFlags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_SHARED;
+
+    // Ensure interrupts are disabled and clear any pending interrupt
+    I2C_DEVICE.int_ena.val = 0;
+    I2C_DEVICE.int_clr.val = INTERRUPT_BASE_CLEARS;
 
     // Create ISR using the mask to define which interrupts to test for
     esp_err_t retc = ESP_OK;
     if (_i2cPort == 0)
-        esp_intr_alloc_intrstatus(ETS_I2C_EXT0_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
-                                  _interruptEnFlags, i2cISRStatic, this, &_i2cISRHandle);
+        retc = esp_intr_alloc_intrstatus(ETS_I2C_EXT0_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
+                                  INTERRUPT_BASE_ENABLES, i2cISRStatic, this, &_i2cISRHandle);
 #if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32C6) && !defined(CONFIG_IDF_TARGET_ESP32C5)
     else
-        esp_intr_alloc_intrstatus(ETS_I2C_EXT1_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
-                                  _interruptEnFlags, i2cISRStatic, this, &_i2cISRHandle);
+        retc = esp_intr_alloc_intrstatus(ETS_I2C_EXT1_INTR_SOURCE, isrFlags, (uint32_t) & (I2C_DEVICE.int_status.val),
+                                  INTERRUPT_BASE_ENABLES, i2cISRStatic, this, &_i2cISRHandle);
 #endif
 
     // Warn if problems
     if (retc != ESP_OK)
     {
-        LOG_W(MODULE_PREFIX, "initInterrupts failed retc %d\n", retc);
+        LOG_W(MODULE_PREFIX, "initOnBusTask interrupt alloc failed retc %d\n", retc);
+        _i2cISRHandle = nullptr;
     }
     return retc == ESP_OK;
 }
@@ -962,6 +1018,21 @@ void RaftI2CCentral::i2cISRStatic(void *arg)
 
 void RaftI2CCentral::i2cISR()
 {
+    // The ISR may run on a different core to the task which is performing the access (and, after a software
+    // time-out, that task may already have returned from access() and released its buffers). So all of the
+    // handling is done inside the critical section which the accessing task also uses at the start and end
+    // of an access - and nothing is touched unless an access is in progress.
+    portENTER_CRITICAL_ISR(&_i2cAccessMutex);
+    if (!_accessInProgress)
+    {
+        // Late/spurious interrupt - ensure interrupts are disabled and cleared
+        I2C_DEVICE.int_ena.val = 0;
+        I2C_DEVICE.int_clr.val = _interruptClearFlags;
+        portEXIT_CRITICAL_ISR(&_i2cAccessMutex);
+        return;
+    }
+
+    // Get interrupt status (inside the critical section so it relates to the access in progress)
     uint32_t intStatus = I2C_DEVICE.int_status.val;
 #if defined(DEBUG_RAFT_I2C_CENTRAL_ISR) || defined(DEBUG_RAFT_I2C_CENTRAL_ISR_ON_FAIL)
     _debugI2CISR.debugISRAdd("", intStatus, I2C_DEVICE.I2C_STATUS_REGISTER_NAME.val, I2C_DEVICE.fifo_st.val);
@@ -1014,6 +1085,9 @@ void RaftI2CCentral::i2cISR()
         if (_accessResultCode == RAFT_BUS_PENDING)
             _accessResultCode = rsltCode;
 
+        // Exit critical section
+        portEXIT_CRITICAL_ISR(&_i2cAccessMutex);
+
         // Unblock the waiting task
         if (_accessSemaphore != nullptr)
         {
@@ -1049,6 +1123,9 @@ void RaftI2CCentral::i2cISR()
 
     // Restore interrupt enables
     I2C_DEVICE.int_ena.val = _interruptEnFlags;
+
+    // Exit critical section
+    portEXIT_CRITICAL_ISR(&_i2cAccessMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1134,12 +1211,17 @@ uint32_t RaftI2CCentral::fillTxFifo()
 
 uint32_t RaftI2CCentral::emptyRxFifo()
 {
-    // Check valid
-    if (!_readBufStartPtr)
-        return RX_FIFO_NEARING_FULL_INT;
-
     // Start critical section for access to I2C FIFO
+    // (this may be nested as the callers also use this critical section - which is permitted)
     portENTER_CRITICAL_ISR(&_i2cAccessMutex);
+
+    // Check valid - this check is inside the critical section as the buffer pointer is cleared by the
+    // accessing task (inside the critical section) which may be running on a different core to the ISR
+    if (!_readBufStartPtr)
+    {
+        portEXIT_CRITICAL_ISR(&_i2cAccessMutex);
+        return RX_FIFO_NEARING_FULL_INT;
+    }
 
     // Empty received data from the Rx FIFO
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32C5)

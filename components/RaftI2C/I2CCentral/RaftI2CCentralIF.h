@@ -29,6 +29,14 @@ public:
 
     virtual void deinit() = 0;
 
+    // Called (optionally) on the task which will perform bus accesses - before the first access - so that
+    // any core-specific resources (e.g. the I2C interrupt) are allocated on the core that task runs on
+    // Returns true if successful (or nothing to do)
+    virtual bool initOnBusTask()
+    {
+        return true;
+    }
+
     // Busy
     virtual bool isBusy() = 0;
 

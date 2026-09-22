@@ -93,6 +93,14 @@ RaftRetCode BusIOExpander::virtualPinsSet(uint32_t numPins, const int* pPinNums,
         // Unlock access to registers
         RaftMutex_unlock(_regMutex);
     }
+    else
+    {
+        // The lock couldn't be obtained so nothing has been done - report busy (the callback will not be called)
+#ifdef DEBUG_SET_VIRTUAL_PIN_LEVEL
+        LOG_W(MODULE_PREFIX, "virtualPinsSet failed to obtain mutex firstPin %d", pPinNums[0]);
+#endif
+        return RAFT_BUSY;
+    }
 
 #ifdef DEBUG_SET_VIRTUAL_PIN_LEVEL
     LOG_W(MODULE_PREFIX, "virtualPinSet numPins %d config 0x%04x data 0x%04x", 
@@ -138,16 +146,19 @@ RaftRetCode BusIOExpander::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAsy
             }
             uint32_t readInputReg = busRequestResult.getReadDataVec()[0] | (busRequestResult.getReadDataVec()[1] << 8);
             bool pinLevel = (readInputReg & (1 << pinIdx)) != 0;
-            vPinCallback(pCallbackData, VirtualPinResult(pinNum, pinLevel, busRequestResult.getResult()));
+            if (vPinCallback)
+                vPinCallback(pCallbackData, VirtualPinResult(pinNum, pinLevel, busRequestResult.getResult()));
             return RAFT_OK;
         },
         this);
 
-    // Send the request
-    busI2CReqAsyncFn(&reqRec, 0);
-
-    // Return OK
-    return RAFT_OK;
+    // Send the request - this is performed inline on the calling task. The function provided (BusI2C::i2cSendAsync)
+    // holds the bus owner lock for the whole slot-enable -> transaction -> slot-disable sequence so this is
+    // serialised against the bus worker task. The callback is made later (from the bus's loop() function) but only if
+    // the request was successful - so return the result (e.g. RAFT_BUSY if the bus owner lock could not be obtained)
+    if (!busI2CReqAsyncFn)
+        return RAFT_BUS_NOT_INIT;
+    return busI2CReqAsyncFn(&reqRec, 0);
 }
 
 /// @brief Update power control registers for all slots

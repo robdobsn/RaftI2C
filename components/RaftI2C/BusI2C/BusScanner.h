@@ -9,6 +9,7 @@
 #pragma once
 
 #include <vector>
+#include <atomic>
 #include "RaftJson.h"
 #include "BusI2CConsts.h"
 #include "BusStatusMgr.h"
@@ -103,8 +104,11 @@ private:
     // Scan priority counts
     static constexpr uint16_t SCAN_PRIORITY_COUNTS[] = { 1, 3, 9 };
 
-    // Enable slow scanning
-    bool _slowScanEnabled = true;
+    // Enable slow scanning (set from any task by requestScan)
+    std::atomic<bool> _slowScanEnabled{true};
+
+    // Fast scan requested (set from any task by requestScan and consumed by the I2C task)
+    std::atomic<bool> _fastScanRequested{false};
 
     // Status manager
     BusStatusMgr& _busStatusMgr;
@@ -123,6 +127,9 @@ private:
 
     // Bus i2c request function (synchronous)
     BusReqSyncFn _busReqSyncFn = nullptr;
+
+    /// @brief Handle a scan request (called on the I2C task only)
+    void handleScanRequest();
 
     /// @brief Set scan mode
     /// @param scanMode Scan mode

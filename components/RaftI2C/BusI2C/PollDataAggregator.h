@@ -32,6 +32,18 @@ public:
         _resultSize = resultSize;
     }
 
+    /// @brief Destructor
+    virtual ~PollDataAggregator()
+    {
+        // Access semaphore
+        RaftMutex_destroy(_accessMutex);
+    }
+
+    // Not copyable (owns a mutex which is destroyed in the destructor)
+    // Aggregators are held via std::shared_ptr (see DeviceStatus) so are never copied
+    PollDataAggregator(const PollDataAggregator&) = delete;
+    PollDataAggregator& operator=(const PollDataAggregator&) = delete;
+
     ////////////////////////////////////////////////////////////////////////////
     /// @brief Clear the circular buffer
     void clear() override

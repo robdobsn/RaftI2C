@@ -169,11 +169,12 @@ RaftRetCode BusIOExpanders::virtualPinRead(int pinNum, BusReqAsyncFn busI2CReqAs
         return RAFT_INVALID_DATA;
 
     // Perform the IO expander operation
-    pBusIOExpander->virtualPinRead(pinNum, busI2CReqAsyncFn, vPinCallback, pCallbackData);
+    RaftRetCode retc = pBusIOExpander->virtualPinRead(pinNum, busI2CReqAsyncFn, vPinCallback, pCallbackData);
 
 #ifdef DEBUG_IO_BIT_SETTINGS
-    LOG_I(MODULE_PREFIX, "getVirtualPinLevel IOExp vPin %d callback pending", pinNum);
+    LOG_I(MODULE_PREFIX, "getVirtualPinLevel IOExp vPin %d retc %d %s", pinNum, retc,
+                retc == RAFT_OK ? "callback pending" : "FAILED");
 #endif
 
-    return RAFT_OK;
+    return retc;
 }

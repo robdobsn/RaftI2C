@@ -120,6 +120,9 @@ void BusScanner::loop()
 /// @return true if fast scanning in progress
 bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, uint64_t maxSlowTimeInLoopUs)
 {
+    // Handle any scan request made from another task
+    handleScanRequest();
+
     // Time of last scan
     uint32_t curTimeMs = curTimeUs / 1000;
     _scanLastMs = curTimeMs;
@@ -290,6 +293,9 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
 /// @return true if a scan is pending
 bool BusScanner::isScanPending(uint32_t curTimeMs)
 {
+    // Handle any scan request made from another task
+    handleScanRequest();
+
     switch(_scanMode)
     {
         case SCAN_MODE_IDLE:
@@ -530,14 +536,27 @@ uint32_t BusScanner::getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweep
 /// @brief Request a bus scan
 /// @param enableSlowScan Enable slow scan
 /// @param requestFastScan Request fast scan
+/// @note This may be called from any task - the scanner state is owned by the I2C task so the request is
+///       recorded in atomic flags which are consumed by the I2C task (see handleScanRequest)
 void BusScanner::requestScan(bool enableSlowScan, bool requestFastScan)
 {
+    // Slow scan enable
+    _slowScanEnabled = enableSlowScan;
+
     // Perform fast scans to detect online/offline status
     if (requestFastScan)
+        _fastScanRequested = true;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Handle a scan request (called on the I2C task only)
+void BusScanner::handleScanRequest()
+{
+    // Consume the request flag
+    if (_fastScanRequested.exchange(false))
     {
         setScanMode(SCAN_MODE_SCAN_FAST);
     }
-    _slowScanEnabled = enableSlowScan;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
