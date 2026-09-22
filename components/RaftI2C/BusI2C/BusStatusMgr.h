@@ -96,6 +96,12 @@ public:
     ///       devices of the same type.
     void clearDeviceIdentification(BusElemAddrType address);
 
+    /// @brief Clear every element's identification in one locked operation
+    /// @return number of address records whose identification was cleared
+    /// @note Call this from the I2C worker at a safe boundary. Clearing the complete
+    ///       set under one lock avoids exposing a partly-cleared inventory to readers.
+    uint32_t clearAllDeviceIdentifications();
+
     /// @brief Get pending ident poll (this is the poll of the device based on its identified type)
     /// @param timeNowUs current time in us
     /// @param pollInfo (out) device polling info

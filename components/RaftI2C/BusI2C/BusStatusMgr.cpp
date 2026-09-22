@@ -1322,3 +1322,25 @@ void BusStatusMgr::clearDeviceIdentification(BusElemAddrType address)
     }
     RaftMutex_unlock(_busElemStatusMutex);
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Clear every element's identification in one locked operation
+/// @return number of address records whose identification was cleared
+uint32_t BusStatusMgr::clearAllDeviceIdentifications()
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+
+    const uint32_t numCleared = _addrStatus.size();
+    for (BusAddrRecord& addrStatus : _addrStatus)
+    {
+        // Keep the element's online state and address record. Only the conclusion about
+        // which device occupies it is invalidated, so polling stops until the scanner
+        // identifies it against the updated type table.
+        addrStatus.deviceStatus.clear();
+        addrStatus.isNewlyIdentified = false;
+    }
+
+    RaftMutex_unlock(_busElemStatusMutex);
+    return numCleared;
+}

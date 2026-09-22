@@ -424,6 +424,11 @@ void BusI2C::i2cWorkerTask()
         if (!busOwnerLock.isLocked())
             continue;
 
+        // Consume re-identification requests only at a worker-task boundary. Identification
+        // itself also runs on this task, so an old result cannot be published after this clear.
+        // A request that arrives during identification remains set for the following pass.
+        _deviceIdentMgr.serviceReIdentifyRequest();
+
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
         delayMicroseconds(1);

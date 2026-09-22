@@ -190,18 +190,27 @@ public:
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Discard what has been concluded about every device on the bus, so each is identified again
-    /// @return number of devices whose identification was discarded
-    /// @note Safe to call from any task: it only takes BusStatusMgr's own mutex and issues no bus
-    ///       transactions. The scanner picks the work up on its next sweep - BusScanner already
-    ///       retries identification for elements that are online but unidentified.
+    /// @return number of devices currently known to the bus (the number scheduled for re-identification)
+    /// @note Safe to call from any task. This records an atomic request; the I2C worker clears
+    ///       identification at the next safe boundary. The scanner then picks the work up on its
+    ///       next sweep - BusScanner already retries online-but-unidentified elements.
     virtual uint32_t reIdentifyDevices() override final
     {
-        std::vector<uint32_t> addresses;
-        if (!_busStatusMgr.getBusElemAddresses(addresses, false))
+        _reIdentifyRequested = true;
+        return _busStatusMgr.getAddrStatusCount();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Consume a pending re-identification request
+    /// @return number of device identifications cleared, or zero if no request was pending
+    /// @note Must be called by the I2C worker only, between complete worker operations. If a request
+    ///       arrives during identification, that result may finish publishing first, but this method
+    ///       clears it on the following worker pass so an old result cannot survive the request.
+    uint32_t serviceReIdentifyRequest()
+    {
+        if (!_reIdentifyRequested.exchange(false))
             return 0;
-        for (uint32_t address : addresses)
-            _busStatusMgr.clearDeviceIdentification(address);
-        return addresses.size();
+        return _busStatusMgr.clearAllDeviceIdentifications();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -267,6 +276,7 @@ private:
     std::atomic<uint32_t> _newDeviceIdentCallCount{0};
     std::atomic<uint32_t> _busTaskServiceCallCount{0};
     std::atomic<void*> _handlerCallingTask{nullptr};
+    std::atomic<bool> _reIdentifyRequested{false};
     static const uint32_t HANDLER_QUIESCE_MAX_MS = 1000;
 
     /// @brief Wait (bounded) for a handler call in progress on another task to complete

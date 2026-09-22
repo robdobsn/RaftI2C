@@ -398,6 +398,34 @@ TEST_CASE("test_rafti2c_bus_status", "[rafti2c_busi2c_adv_tests]")
     TEST_ASSERT_MESSAGE(busStatusMgr.getAddrStatusCount() == 1, "address status recs should be 1 at end of test");
 }
 
+TEST_CASE("test_reidentify_is_consumed_at_worker_boundary", "[rafti2c_busi2c_adv_tests]")
+{
+    static const BusElemAddrType testAddr = 0x52;
+    helper_setup_i2c_tests({});
+
+    // Create an online address record and give it an existing identification.
+    helper_elem_states_handle({{testAddr, 0}}, true, 2);
+    DeviceStatus identifiedStatus;
+    identifiedStatus.deviceTypeIndex = 12;
+    busStatusMgr.setBusElemDeviceStatus(testAddr, identifiedStatus);
+    TEST_ASSERT_EQUAL_UINT16(12, busStatusMgr.getDeviceTypeIndexByAddr(testAddr));
+
+    // The cross-task API only records the request. Model the problematic ordering where
+    // identification was already in flight and publishes an old result after that request.
+    TEST_ASSERT_EQUAL_UINT32(1, deviceIdentMgr.reIdentifyDevices());
+    TEST_ASSERT_EQUAL_UINT16(12, busStatusMgr.getDeviceTypeIndexByAddr(testAddr));
+    DeviceStatus staleInFlightStatus;
+    staleInFlightStatus.deviceTypeIndex = 13;
+    busStatusMgr.setBusElemDeviceStatus(testAddr, staleInFlightStatus);
+
+    // At the next worker boundary, the request clears even that late old result. A second
+    // service is a no-op, proving the atomic request is consumed exactly once.
+    TEST_ASSERT_EQUAL_UINT32(1, deviceIdentMgr.serviceReIdentifyRequest());
+    TEST_ASSERT_EQUAL_UINT16(DEVICE_TYPE_INDEX_INVALID,
+                busStatusMgr.getDeviceTypeIndexByAddr(testAddr));
+    TEST_ASSERT_EQUAL_UINT32(0, deviceIdentMgr.serviceReIdentifyRequest());
+}
+
 TEST_CASE("test_rafti2c_bus_scanner_basic", "[rafti2c_busi2c_tests]")
 {
     // Setup test
