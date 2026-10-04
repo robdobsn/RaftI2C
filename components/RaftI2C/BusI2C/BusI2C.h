@@ -155,7 +155,7 @@ public:
     ///       if the bus owner lock cannot be obtained in a reasonable time. The caller should still pause
     ///       the bus (pause()/isPaused()) if a SEQUENCE of transactions must not be interleaved with the
     ///       worker task's scanning/polling.
-    virtual RaftRetCode busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData) override final;
+    virtual RaftRetCode busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData, uint32_t busHz = 0) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check if an element is responding
