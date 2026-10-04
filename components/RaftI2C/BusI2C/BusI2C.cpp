@@ -622,13 +622,14 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 /// @brief Perform a synchronous (blocking) I2C transaction: write then optional read
 /// @param pReqRec - bus request information (address+slot, write data, read length)
 /// @param pReadData - pointer to buffer for read data (may be nullptr)
+/// @param busHz - bus speed (Hz) for this transaction only, restored afterwards (0 = current speed)
 /// @return result code
 /// @note Generic, device-agnostic blocking transaction. Routes to the address's mux slot,
 ///       performs the access, then clears all slots. The whole sequence is performed holding the
 ///       bus owner lock so it cannot race the worker task (or any other caller). The caller should
 ///       still pause the bus (pause()/isPaused()) if a sequence of transactions must not be
 ///       interleaved with scanning/polling.
-RaftRetCode BusI2C::busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData)
+RaftRetCode BusI2C::busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_t>* pReadData, uint32_t busHz)
 {
     if (!_pI2CCentral)
         return RAFT_BUS_NOT_INIT;
@@ -644,8 +645,21 @@ RaftRetCode BusI2C::busReqSync(const BusRequestInfo* pReqRec, std::vector<uint8_
     if (rslt != RAFT_OK)
         return rslt;
 
+    // Switch bus frequency for this transaction if requested (as DevicePollingMgr does for polls)
+    bool speedChanged = false;
+    uint32_t savedBusFreqHz = 0;
+    if ((busHz != 0) && (busHz != _pI2CCentral->getBusFrequency()))
+    {
+        savedBusFreqHz = _pI2CCentral->getBusFrequency();
+        speedChanged = _pI2CCentral->setBusFrequency(busHz);
+    }
+
     // Perform the synchronous transaction
     rslt = i2cSendSync(pReqRec, pReadData);
+
+    // Restore bus frequency if it was changed
+    if (speedChanged)
+        _pI2CCentral->setBusFrequency(savedBusFreqHz);
 
     // Clear all slots so the bus is left in a known state
     _busMultiplexers.disableAllSlots(false);
