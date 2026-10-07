@@ -541,24 +541,30 @@ std::vector<uint8_t> DeviceIdentMgr::getQueuedDeviceDataBinary(uint32_t connMode
         if (deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID || numSamples == 0)
             continue;
 
-        // Get per-device sequence counter
-        uint8_t seqNum = _busStatusMgr.getAndIncrementDeviceSeqCounter(address);
-
-        // Build length-prefixed sample payload
+        // Build length-prefixed sample payloads (samples over 255 bytes use the long-sample
+        // escape). A record's length is 16 bits, so a run of samples that would overflow one
+        // record continues in another record for the same device (with its own sequence number)
         std::vector<uint8_t> payload;
         uint32_t offset = 0;
         for (uint32_t i = 0; i < numSamples; i++) {
             uint16_t len = sampleLengths[i];
-            if (len > 255) len = 255;  // cap for 1-byte prefix
-            payload.push_back(static_cast<uint8_t>(len));
-            payload.insert(payload.end(),
-                           sampleData.data() + offset,
-                           sampleData.data() + offset + len);
-            offset += sampleLengths[i];
+            if ((payload.size() > 0) &&
+                (payload.size() + RaftDevice::lengthPrefixedSampleSize(len) > RaftDevice::DEVBIN_MAX_RECORD_PAYLOAD_LEN))
+            {
+                uint8_t seqNum = _busStatusMgr.getAndIncrementDeviceSeqCounter(address);
+                RaftDevice::genBinaryDeviceRecord(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
+                payload.clear();
+            }
+            RaftDevice::appendLengthPrefixedSample(payload, sampleData.data() + offset, len);
+            offset += len;
         }
 
         // Generate binary device record with pre-formatted length-prefixed payload
-        RaftDevice::genBinaryDeviceRecord(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
+        if (payload.size() > 0)
+        {
+            uint8_t seqNum = _busStatusMgr.getAndIncrementDeviceSeqCounter(address);
+            RaftDevice::genBinaryDeviceRecord(binData, connMode, address, deviceTypeIndex, onlineState, seqNum, payload);
+        }
     }
 
     // Add pending deletion notices (devices that have been removed)
