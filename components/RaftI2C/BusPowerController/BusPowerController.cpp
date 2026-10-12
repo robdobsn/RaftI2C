@@ -7,6 +7,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "BusPowerController.h"
+#include "RaftBusSystem.h"
 #include "RaftUtils.h"
 #include "Logger.h"
 #include "RaftJson.h"
@@ -432,25 +433,40 @@ void BusPowerController::setVoltageLevel(uint32_t slotNum, uint32_t powerLevelId
         return;
     }
 
-    // List of pins and levels
-    std::vector<int> voltageLevelPins(numPins);
-    std::vector<uint8_t> voltageLevelValues(numPins);
+    // List of pins and levels (pins not set in the config are skipped)
+    std::vector<int> voltageLevelPins;
+    std::vector<uint8_t> voltageLevelValues;
+    voltageLevelPins.reserve(numPins);
+    voltageLevelValues.reserve(numPins);
 
     // Iterate over pins
     for (uint32_t pinIdx = 0; pinIdx < numPins; pinIdx++)
     {
         uint32_t pinPowerLevelIdx = pinIdx + 1;
         VoltageLevelPinRec& vPinRec = pSlotRec->voltageLevelPins[pinIdx];
-        voltageLevelPins[pinIdx] = vPinRec.pinNum;
-        voltageLevelValues[pinIdx] = (pinPowerLevelIdx == powerLevelIdx) ? vPinRec.onLevel : !vPinRec.onLevel;
+        if (!vPinRec.isValid)
+            continue;
+        voltageLevelPins.push_back(vPinRec.pinNum);
+        voltageLevelValues.push_back((pinPowerLevelIdx == powerLevelIdx) ? vPinRec.onLevel : !vPinRec.onLevel);
 #ifdef DEBUG_SET_VOLTAGE_LEVEL
         LOG_I(MODULE_PREFIX, "setVoltageLevel slotNum %d levelIdx %d pinNum %d = %d", slotNum, 
-                        powerLevelIdx, vPinRec.pinNum, voltageLevelValues[pinIdx]);
+                        powerLevelIdx, vPinRec.pinNum, voltageLevelValues.back());
 #endif
     }
+    if (voltageLevelPins.empty())
+        return;
 
-    // Set pins
-    RaftRetCode retc = _busIOExpanders.virtualPinsSet(numPins, voltageLevelPins.data(), voltageLevelValues.data(), nullptr, nullptr);
+    // Set pins - IO expander pins on this bus first; pins no expander here owns
+    // go to the bus system, which offers them to every bus and otherwise drives
+    // them as plain GPIOs, so a board whose connector power is switched by a
+    // GPIO (an LDO enable, say) is described by config alone.  A GPIO write is
+    // immediate and involves no bus transaction, so it is safe with the slot
+    // mutex held.
+    RaftRetCode retc = _busIOExpanders.virtualPinsSet(voltageLevelPins.size(), voltageLevelPins.data(),
+                voltageLevelValues.data(), nullptr, nullptr);
+    if (retc == RAFT_INVALID_DATA)
+        retc = raftBusSystem.virtualPinsSet(voltageLevelPins.size(), voltageLevelPins.data(),
+                voltageLevelValues.data(), nullptr, nullptr);
     if (retc != RAFT_OK)
     {
         LOG_W(MODULE_PREFIX, "setVoltageLevel slotNum %d levelIdx %d FAILED to set pins retc %d",

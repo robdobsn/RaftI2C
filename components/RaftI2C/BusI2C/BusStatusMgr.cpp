@@ -954,7 +954,7 @@ uint32_t BusStatusMgr::getBusElemPollResponsesWithLengths(BusElemAddrType addres
 /// @brief Get latest poll response for a bus element (non-destructive peek)
 bool BusStatusMgr::getBusElemLatestPollResponse(BusElemAddrType address,
             DeviceOnlineState& onlineState, uint16_t& deviceTypeIndex,
-            uint64_t& dataTimeUs, std::vector<uint8_t>& data)
+            uint64_t& dataTimeUs, std::vector<uint8_t>& data, bool peek)
 {
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
         return false;
@@ -965,7 +965,8 @@ bool BusStatusMgr::getBusElemLatestPollResponse(BusElemAddrType address,
     {
         onlineState = pAddrStatus->onlineState;
         deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
-        result = pAddrStatus->deviceStatus.getLatestPollResponse(dataTimeUs, data);
+        result = peek ? pAddrStatus->deviceStatus.peekLatestPollResponse(dataTimeUs, data) :
+                        pAddrStatus->deviceStatus.getLatestPollResponse(dataTimeUs, data);
     }
 
     RaftMutex_unlock(_busElemStatusMutex);

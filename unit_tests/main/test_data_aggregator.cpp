@@ -330,3 +330,30 @@ TEST_CASE("Test PollDataAggregator getLatestValue Newness Resets On Put", "[Poll
     TEST_ASSERT_TRUE(data2 == dataOut);
     TEST_ASSERT_TRUE(time2 == dataTimeUs);
 }
+
+TEST_CASE("Test PollDataAggregator peekLatestValue", "[PollDataAggregator]")
+{
+    PollDataAggregator aggregator(5, 3);
+    uint64_t dataTimeUs = 0;
+    std::vector<uint8_t> dataOut;
+
+    // Nothing to peek at yet
+    TEST_ASSERT_FALSE(aggregator.peekLatestValue(dataTimeUs, dataOut));
+
+    std::vector<uint8_t> data1 = {1, 2, 3};
+    uint64_t time1 = 100000;
+    TEST_ASSERT_TRUE(aggregator.put(time1, data1));
+
+    // Peeking returns the value every time and leaves it new for getLatestValue
+    TEST_ASSERT_TRUE(aggregator.peekLatestValue(dataTimeUs, dataOut));
+    TEST_ASSERT_TRUE(data1 == dataOut);
+    TEST_ASSERT_TRUE(time1 == dataTimeUs);
+    TEST_ASSERT_TRUE(aggregator.peekLatestValue(dataTimeUs, dataOut));
+    TEST_ASSERT_TRUE(aggregator.getLatestValue(dataTimeUs, dataOut));
+    TEST_ASSERT_TRUE(data1 == dataOut);
+
+    // After getLatestValue has consumed it, a peek still returns it
+    TEST_ASSERT_FALSE(aggregator.getLatestValue(dataTimeUs, dataOut));
+    TEST_ASSERT_TRUE(aggregator.peekLatestValue(dataTimeUs, dataOut));
+    TEST_ASSERT_TRUE(data1 == dataOut);
+}

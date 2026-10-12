@@ -99,13 +99,24 @@ public:
                     uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get latest decoded poll response (non-destructive peek at most recent value)
+    /// @brief Get latest decoded poll response if new since the previous call (see RaftBusDevicesIF)
+    /// @param address address of device to get data from
+    /// @param pStructOut pointer to structure to receive decoded data
+    /// @param structOutSize size of structure (in bytes) to receive decoded data
+    /// @param decodeState decode state for this device
+    /// @return true if a new value was successfully decoded
+    virtual bool getLatestDecodedPollResponse(BusElemAddrType address,
+                    void* pStructOut, uint32_t structOutSize,
+                    RaftBusDeviceDecodeState& decodeState) const override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Get the most recent decoded poll response whether or not it has been read before
     /// @param address address of device to get data from
     /// @param pStructOut pointer to structure to receive decoded data
     /// @param structOutSize size of structure (in bytes) to receive decoded data
     /// @param decodeState decode state for this device
     /// @return true if a value was successfully decoded
-    virtual bool getLatestDecodedPollResponse(BusElemAddrType address,
+    virtual bool peekLatestDecodedPollResponse(BusElemAddrType address,
                     void* pStructOut, uint32_t structOutSize,
                     RaftBusDeviceDecodeState& decodeState) const override final;
 
@@ -249,6 +260,9 @@ public:
     bool processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
 
 private:
+    bool decodeLatestPollResponse(BusElemAddrType address, void* pStructOut, uint32_t structOutSize,
+                RaftBusDeviceDecodeState& decodeState, bool peek) const;
+
     // Device indentification enabled
     bool _isEnabled = false;
 
