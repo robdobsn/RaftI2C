@@ -626,12 +626,36 @@ bool DeviceIdentMgr::getLatestDecodedPollResponse(BusElemAddrType address,
                 void* pStructOut, uint32_t structOutSize,
                 RaftBusDeviceDecodeState& decodeState) const
 {
-    // Get latest poll result (non-destructive)
+    return decodeLatestPollResponse(address, pStructOut, structOutSize, decodeState, false);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get the most recent decoded poll response whether or not it has been read before
+/// @param address address of device to get data from
+/// @param pStructOut pointer to structure to receive decoded data
+/// @param structOutSize size of structure (in bytes) to receive decoded data
+/// @param decodeState decode state for this device
+/// @return true if a value was successfully decoded
+bool DeviceIdentMgr::peekLatestDecodedPollResponse(BusElemAddrType address,
+                void* pStructOut, uint32_t structOutSize,
+                RaftBusDeviceDecodeState& decodeState) const
+{
+    return decodeLatestPollResponse(address, pStructOut, structOutSize, decodeState, true);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Decode the latest poll response (does not drain the stored results)
+/// @param peek true for the latest response regardless, false for one new since the last call
+/// @return true if a value was successfully decoded
+bool DeviceIdentMgr::decodeLatestPollResponse(BusElemAddrType address,
+                void* pStructOut, uint32_t structOutSize,
+                RaftBusDeviceDecodeState& decodeState, bool peek) const
+{
     DeviceOnlineState onlineState = DeviceOnlineState::OFFLINE;
     uint16_t deviceTypeIndex = 0;
     uint64_t dataTimeUs = 0;
     std::vector<uint8_t> latestData;
-    if (!_busStatusMgr.getBusElemLatestPollResponse(address, onlineState, deviceTypeIndex, dataTimeUs, latestData))
+    if (!_busStatusMgr.getBusElemLatestPollResponse(address, onlineState, deviceTypeIndex, dataTimeUs, latestData, peek))
         return false;
 
     if (latestData.empty())

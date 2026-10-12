@@ -226,6 +226,22 @@ public:
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    /// @brief Get the latest value whether or not it has been read before, leaving
+    /// the "new" state that getLatestValue() reports untouched
+    /// @param dataTimeUs (output) timestamp of the latest value
+    /// @param data (output) latest value
+    /// @return true if there is a latest value
+    bool peekLatestValue(uint64_t& dataTimeUs, std::vector<uint8_t>& data) override
+    {
+        if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
+            return false;
+        dataTimeUs = _lastestValueTimeUs;
+        data = _latestValue;
+        RaftMutex_unlock(_accessMutex);
+        return !data.empty();
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     /// @brief Get and clear overflow count
     /// @return number of overwrites since last call
 #ifdef DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW
