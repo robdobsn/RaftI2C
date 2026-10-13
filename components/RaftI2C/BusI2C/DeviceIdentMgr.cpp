@@ -271,9 +271,10 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
 
 bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec)
 {
-    // Get the detection records
+    // Get the detection records - a record with an invalid detection value never matches
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
-    deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs);
+    if (!deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs))
+        return false;
 
     // Check if all values match
     bool detectionValuesMatch = true;
