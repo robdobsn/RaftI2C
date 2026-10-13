@@ -246,10 +246,9 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         }
         if (verdict == RaftDeviceIdentVerdict::Deferred)
         {
-            // Not ready to identify yet; leave unidentified and unpolled. Note that
-            // identifyDevice is only called on an offline->online transition, so "later scan"
-            // means the next time this device drops off the bus and comes back - not the next
-            // scan sweep.
+            // Not ready to identify yet; leave unidentified and unpolled. identifyDevice is
+            // called on an offline->online transition and also periodically (BusScanner retry)
+            // for online devices that are still unidentified, so this will be retried.
 #ifdef DEBUG_DEVICE_IDENT_MGR
             LOG_I(MODULE_PREFIX, "identifyDevice handler DEFERRED address %s - left unidentified and unpolled",
                     BusI2CAddrAndSlot::toString(address).c_str());
@@ -837,7 +836,7 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Register a handler invoked before default identification for newly-detected devices
+/// @brief Register a handler invoked for newly-detected devices that no device type record matched
 /// @param newDeviceIdentFn handler function (nullptr to clear)
 /// @param pCtx opaque context passed to the handler
 void DeviceIdentMgr::registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDeviceIdentFn, void* pCtx)

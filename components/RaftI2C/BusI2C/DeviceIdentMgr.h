@@ -182,7 +182,7 @@ public:
     virtual RaftRetCode sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Register a handler invoked before default identification for newly-detected devices
+    /// @brief Register a handler invoked for newly-detected devices that no device type record matched
     /// @param newDeviceIdentFn handler function (nullptr to clear)
     /// @param pCtx opaque context passed to the handler
     /// @note The handler is called on the bus task. The function and context are stored as one unit under a
