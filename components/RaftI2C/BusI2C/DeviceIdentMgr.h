@@ -182,6 +182,16 @@ public:
     virtual RaftRetCode sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg) override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Send command to device on bus and get the result later (does not wait)
+    /// @param deviceID ID of the device
+    /// @param cmdJSON Command JSON string (as for sendCmdToDevice())
+    /// @param resultFn function called with the result (on the main task) - only called if RAFT_OK is returned
+    /// @return RAFT_OK if queued, RAFT_BUSY if the bus request queue is full, RAFT_NOT_IMPLEMENTED if there is
+    ///         no bus request queue
+    virtual RaftRetCode sendCmdToDeviceAsync(RaftDeviceID deviceID, const char* cmdJSON, 
+                RaftBusCmdResultFn resultFn) override final;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Register a handler invoked for newly-detected devices that no device type record matched
     /// @param newDeviceIdentFn handler function (nullptr to clear)
     /// @param pCtx opaque context passed to the handler
@@ -235,6 +245,9 @@ public:
     bool processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
 
 private:
+    // Form a bus element request from a command JSON string
+    static HWElemReq cmdJSONToHWElemReq(const char* cmdJSON);
+
     bool decodeLatestPollResponse(BusElemAddrType address, void* pStructOut, uint32_t structOutSize,
                 RaftBusDeviceDecodeState& decodeState, bool peek) const;
 
