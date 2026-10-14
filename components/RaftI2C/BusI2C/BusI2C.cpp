@@ -684,21 +684,29 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
                     pReqRec->getReadReqLen(), pReqRec->getBusReqType(), pollListIdx);
 #endif
 
+    // A queued (non-polling, non-scan) request which fails before reaching the bus is reported to its
+    // requester with the failure code so that it is never left waiting for a result which will not arrive
+    auto failRequest = [this, pReqRec](RaftRetCode failCode) {
+        if (!pReqRec->isScan() && !pReqRec->isPolling())
+            _busAccessor.handleResponse(pReqRec, failCode, nullptr, 0);
+        return failCode;
+    };
+
     auto rslt = checkAddrValidAndNotBarred(address);
     if (rslt != RAFT_OK)
-        return rslt;
+        return failRequest(rslt);
 
     // Obtain the bus owner lock for the whole slot-enable -> transaction -> slot-disable sequence
     // This function is called on the worker task (which already holds the lock - it is recursive) but can
     // also be called inline on another task (e.g. virtualPinRead) which must be serialised against the worker
     BusOwnerLock busOwnerLock(*this, BUS_OWNER_LOCK_MAX_WAIT_MS);
     if (!busOwnerLock.isLocked())
-        return RAFT_BUSY;
+        return failRequest(RAFT_BUSY);
 
     // Check if a bus mux slot is specified
     rslt = _busMultiplexers.enableOneSlot(slotNum);
     if (rslt != RAFT_OK)
-        return rslt;
+        return failRequest(rslt);
 
     // Buffer for read and address
     uint32_t readReqLen = pReqRec->getReadReqLen();
@@ -708,9 +716,8 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
 
     // Access the bus
     uint32_t numBytesRead = 0;
-    rslt = RAFT_BUS_NOT_INIT;
     if (!_pI2CCentral)
-        return rslt;
+        return failRequest(RAFT_BUS_NOT_INIT);
     rslt = _pI2CCentral->access(i2cAddr, pReqRec->getWriteData(), writeReqLen, 
             readBuf, readReqLen, numBytesRead);
 

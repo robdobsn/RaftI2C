@@ -172,8 +172,9 @@ void BusAccessor::processRequestQueue(bool isPaused)
             }
             else
             {
-                // Debug
-                // LOG_I(MODULE_PREFIX, "worker not sending as paused");
+                // Not sent as the bus is paused - report the request as failed rather than dropping it
+                // silently so that the requester is not left waiting for a result
+                handleResponse(&reqRec, RAFT_BUS_NOT_READY, nullptr, 0);
             }
         }
         else
@@ -284,16 +285,26 @@ void BusAccessor::handleResponse(const BusRequestInfo* pReqRec, RaftRetCode send
         delayMicroseconds(10);
         digitalWrite(DEBUG_I2C_LENGTH_MISMATCH_WITH_BUTTON_GPIO_NUM, 1);
 #endif
-        return;
+
+        // Polling results are only reported when complete (unchanged behaviour)
+        if (pReqRec->isPolling())
+            return;
+
+        // A queued request is always reported - as a failure with no data if the read is incomplete (e.g.
+        // the device NACKed) - so the requester is never left waiting for a result that will not arrive
+        if (sendResult == RAFT_OK)
+            sendResult = RAFT_BUS_INCOMPLETE;
+        numBytesRead = 0;
     }
 
-    // Create response
-    BusRequestResult reqResult(pReqRec->getAddress(), 
-                    pReqRec->getCmdId(), 
-                    pReadBuf, 
-                    numBytesRead, 
-                    sendResult == RAFT_OK,
-                    pReqRec->getCallback(), 
+    // Create response - queued requests carry the actual result code, polling keeps its OK/pending result
+    RaftRetCode result = pReqRec->isPolling() ? (sendResult == RAFT_OK ? RAFT_OK : RAFT_BUS_PENDING) : sendResult;
+    BusRequestResult reqResult(pReqRec->getAddress(),
+                    pReqRec->getCmdId(),
+                    pReadBuf,
+                    numBytesRead,
+                    result,
+                    pReqRec->getCallback(),
                     pReqRec->getCallbackParam());
 
     // Check polling
