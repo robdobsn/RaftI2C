@@ -524,10 +524,18 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
         }
         else
         {
-            _accessResultCode = RAFT_BUS_SW_TIME_OUT;
+            // A NACK stops the I2C engine part way through the commands - report it as such
+            _accessResultCode = _accessNackDetected ? RAFT_BUS_ACK_ERROR : RAFT_BUS_SW_TIME_OUT;
             _i2cStats.recordSoftwareTimeout();
         }
     }
+
+    // A NACK part way through a write (e.g. on the address when there is data to write) stops the I2C engine
+    // with the remaining commands, including the STOP, not executed. The next transaction on the bus then fails
+    // whatever its address (seen as a device which is present failing to respond to a poll straight after a
+    // command to an absent device) so complete a START ... STOP sequence on the bus before returning
+    // (an address-only access is never resynced as that is what is used to resync)
+    bool busResyncRequired = (_accessResultCode != RAFT_OK) && (i2cOpType != ACCESS_POLL) && !areAllCmdsDone(cmdIdx);
 
     // Check all of the I2C commands to ensure everything was marked done
     if (_accessResultCode == RAFT_OK)
@@ -579,7 +587,31 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     debugShowStatus("access end: ", address);
 #endif
 
-    return _accessResultCode;
+    // Resync the bus if required using an address-only probe of the same address (all of its commands, including
+    // the STOP, are executed even if the address is NACKed) - the result of the probe is not used
+    RaftRetCode accessResultCode = _accessResultCode;
+    if (busResyncRequired)
+    {
+        uint32_t probeNumRead = 0;
+        access(address, nullptr, 0, nullptr, 0, probeNumRead);
+        _i2cStats.recordBusResync();
+    }
+    return accessResultCode;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check if all of the I2C engine commands of the last access were executed
+/// @param numCmds number of commands in the access
+/// @return true if all commands are marked done
+bool RaftI2CCentral::areAllCmdsDone(uint32_t numCmds)
+{
+    I2C_COMMAND_REG_TYPE *pCmd = (I2C_COMMAND_REG_TYPE*) &(I2C_DEVICE.I2C_COMMAND_0_REGISTER_NAME);
+    for (uint32_t i = 0; i < numCmds; i++)
+    {
+        if (pCmd[i].done == 0)
+            return false;
+    }
+    return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

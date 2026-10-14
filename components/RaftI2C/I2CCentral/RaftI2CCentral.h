@@ -277,6 +277,7 @@ private:
 
     // Helpers
     bool ensureI2CReady();
+    bool areAllCmdsDone(uint32_t numCmds);
     void prepareI2CAccess();
     void reinitI2CModule();
     uint32_t getApbFrequency();
