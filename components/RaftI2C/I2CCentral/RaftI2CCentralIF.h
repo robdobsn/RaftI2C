@@ -73,6 +73,7 @@ public:
             arbitrationLostCount = 0;
             txFifoEmptyCount = 0;
             incompleteTransaction = 0;
+            busResyncCount = 0;
         }
         void FUNCTION_DECORATOR_IRAM_ATTR update(bool transStart,
             bool ackErr,
@@ -106,13 +107,17 @@ public:
         {
             incompleteTransaction++;
         }
+        void recordBusResync()
+        {
+            busResyncCount++;
+        }
         String debugStr()
         {
-            char outStr[200];
-            snprintf(outStr, sizeof(outStr), "ISRs %lu Starts %lu NAKs %lu EngTimO %lu TransComps %lu ArbLost %lu MastTransComp %lu SwTimO %lu TxFIFOmt %lu incomplete %lu", 
+            char outStr[240];
+            snprintf(outStr, sizeof(outStr), "ISRs %lu Starts %lu NAKs %lu EngTimO %lu TransComps %lu ArbLost %lu MastTransComp %lu SwTimO %lu TxFIFOmt %lu incomplete %lu resync %lu", 
                             (unsigned long)isrCount, (unsigned long)startCount, (unsigned long)nackCount, (unsigned long)engineTimeOutCount, (unsigned long)transCompleteCount,
                             (unsigned long)arbitrationLostCount,  (unsigned long)masterTransCompleteCount, (unsigned long)softwareTimeOutCount, 
-                            (unsigned long)txFifoEmptyCount, (unsigned long)incompleteTransaction);
+                            (unsigned long)txFifoEmptyCount, (unsigned long)incompleteTransaction, (unsigned long)busResyncCount);
             return outStr;
         }
         uint32_t isrCount;
@@ -125,6 +130,7 @@ public:
         uint32_t masterTransCompleteCount;
         uint32_t txFifoEmptyCount;
         uint32_t incompleteTransaction;
+        uint32_t busResyncCount;
     };
 
     // Get stats

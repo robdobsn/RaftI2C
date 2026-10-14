@@ -712,21 +712,8 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
 ///       - "numToRd": number of bytes to read from the device (optional)
 RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* cmdJSON, String* respMsg)
 {
-    // Get command and parameters from JSON
-    RaftJson cmdJsonObj(cmdJSON);
-    String hexWriteData = cmdJsonObj.getString("hexWr", "");
-    int numBytesToRead = cmdJsonObj.getLong("numToRd", 0);
-
-    // Convert hex write data to binary
-    uint32_t numBytesToWrite = hexWriteData.length() / 2;
-    std::vector<uint8_t> writeVec;
-    writeVec.resize(numBytesToWrite);
-    uint32_t writeBytesLen = Raft::getBytesFromHexStr(hexWriteData.c_str(), writeVec.data(), numBytesToWrite);
-    writeVec.resize(writeBytesLen);
-
     // Create element request
-    static const uint32_t CMDID_CMDRAW = 100;
-    HWElemReq hwElemReq = {writeVec, numBytesToRead, CMDID_CMDRAW, "cmdraw", 0};
+    HWElemReq hwElemReq = cmdJSONToHWElemReq(cmdJSON);
 
     // Form bus request
     BusRequestInfo busReqInfo("", deviceID.getAddress());
@@ -833,6 +820,58 @@ RaftRetCode DeviceIdentMgr::sendCmdToDevice(RaftDeviceID deviceID, const char* c
 #endif
 
     return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Send command to device on bus and get the result later (does not wait)
+/// @param deviceID ID of the device
+/// @param cmdJSON Command JSON string (as for sendCmdToDevice())
+/// @param resultFn function called with the result (on the main task) - only called if RAFT_OK is returned
+/// @return RAFT_OK if queued, RAFT_BUSY if the bus request queue is full, RAFT_NOT_IMPLEMENTED if there is
+///         no bus request queue
+RaftRetCode DeviceIdentMgr::sendCmdToDeviceAsync(RaftDeviceID deviceID, const char* cmdJSON, RaftBusCmdResultFn resultFn)
+{
+    // Requests are only sent via the bus worker queue - the result callback for a (non-poll) request is then 
+    // delivered from BusAccessor::loop() on the main task and is made for every outcome (including bus errors)
+    if (_busReqEnqueueFn == nullptr)
+        return RAFT_NOT_IMPLEMENTED;
+
+    // Form bus request
+    HWElemReq hwElemReq = cmdJSONToHWElemReq(cmdJSON);
+    BusRequestInfo busReqInfo("", deviceID.getAddress());
+    busReqInfo.set(BUS_REQ_TYPE_STD, hwElemReq, 0,
+            [resultFn](void* /*pCallbackData*/, BusRequestResult& reqResult)
+                {
+                    if (resultFn)
+                        resultFn(reqResult);
+                },
+            nullptr);
+
+    // Queue the request
+    return _busReqEnqueueFn(busReqInfo) ? RAFT_OK : RAFT_BUSY;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Form a bus element request from a command JSON string
+/// @param cmdJSON Command JSON string with "hexWr" (hex data to write) and optional "numToRd" (bytes to read)
+/// @return element request
+HWElemReq DeviceIdentMgr::cmdJSONToHWElemReq(const char* cmdJSON)
+{
+    // Get command and parameters from JSON
+    RaftJson cmdJsonObj(cmdJSON);
+    String hexWriteData = cmdJsonObj.getString("hexWr", "");
+    int numBytesToRead = cmdJsonObj.getLong("numToRd", 0);
+
+    // Convert hex write data to binary
+    uint32_t numBytesToWrite = hexWriteData.length() / 2;
+    std::vector<uint8_t> writeVec;
+    writeVec.resize(numBytesToWrite);
+    uint32_t writeBytesLen = Raft::getBytesFromHexStr(hexWriteData.c_str(), writeVec.data(), numBytesToWrite);
+    writeVec.resize(writeBytesLen);
+
+    // Create element request
+    static const uint32_t CMDID_CMDRAW = 100;
+    return HWElemReq{writeVec, numBytesToRead, CMDID_CMDRAW, "cmdraw", 0};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
