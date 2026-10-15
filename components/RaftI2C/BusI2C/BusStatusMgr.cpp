@@ -889,41 +889,15 @@ uint32_t BusStatusMgr::getBusElemPollResponses(BusElemAddrType address, DeviceOn
         numResponses = pAddrStatus->deviceStatus.getPollResponses(devicePollResponseData, responseSize, maxResponsesToReturn);
         
 #ifdef DEBUG_POLL_RESULT_DETAIL
-        // Log retrieved poll data for debugging
-        if ((numResponses > 0) && (devicePollResponseData.size() >= 4))
+        // Log retrieved poll data for debugging (start of the data, whatever the device)
+        if (numResponses > 0)
         {
-            // Bytes [0:2] = BE timestamp, bytes [2:4] = FIFO status from reg 0x3A
-            // uint16_t ts = (devicePollResponseData[0] << 8) | devicePollResponseData[1];
-            uint16_t wordCount = ((devicePollResponseData[3] & 0x0F) << 8) | devicePollResponseData[2];
-
-            // Check FIFO overflow/full flags across all responses
-            uint32_t overrunCount = 0;
-            uint32_t fifoFullCount = 0;
-            uint16_t maxWordCount = wordCount;
-            for (uint32_t respIdx = 0; respIdx < numResponses && responseSize > 0; respIdx++)
-            {
-                uint32_t respOffset = respIdx * responseSize;
-                if (respOffset + 3 < devicePollResponseData.size())
-                {
-                    uint8_t fifoStatus2 = devicePollResponseData[respOffset + 3];
-                    if (fifoStatus2 & 0x40) overrunCount++;
-                    if (fifoStatus2 & 0x20) fifoFullCount++;
-                    uint16_t wc = ((fifoStatus2 & 0x0F) << 8) | devicePollResponseData[respOffset + 2];
-                    if (wc > maxWordCount) maxWordCount = wc;
-                }
-            }
-
-            // Get ring buffer overflow count if available
-            uint32_t ringBufOverflows = 0;
-            if (pAddrStatus->deviceStatus.pDataAggregator)
-                ringBufOverflows = pAddrStatus->deviceStatus.pDataAggregator->debugGetAndClearOverflowCount();
-
             char hexBuf[64] = {};
             size_t hexLen = std::min(devicePollResponseData.size(), (size_t)20);
             for (size_t i = 0; i < hexLen; i++)
                 snprintf(hexBuf + i*3, sizeof(hexBuf) - i*3, "%02x ", devicePollResponseData[i]);
-            LOG_I(MODULE_PREFIX, "getPoll addr=0x%03x n=%d wc=%d maxWc=%d fifoOvr=%d fifoFull=%d ringOvr=%d hex=[%s]", 
-                  address, numResponses, wordCount, maxWordCount, overrunCount, fifoFullCount, ringBufOverflows, hexBuf);
+            LOG_I(MODULE_PREFIX, "getPoll addr=0x%03x n=%d respSize=%d hex=[%s]",
+                  address, numResponses, responseSize, hexBuf);
         }
 #endif
     }
