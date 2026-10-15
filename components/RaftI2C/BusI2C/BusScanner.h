@@ -91,6 +91,11 @@ private:
     
     // Scan priority
     std::vector<std::vector<BusElemAddrType>> _scanPriorityLists;
+
+    // Scan boost addresses (config "scanBoost") and the device type records generation the lists were built from
+    std::vector<uint32_t> _scanBoostAddrs;
+    uint32_t _scanListsGeneration = 0;
+    void loadScanLists();
     
     // Scanning priority state - three MUST be exactly the same number
     // of scan priority recs as there are scan priority lists

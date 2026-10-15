@@ -99,10 +99,10 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         return;
     }
 
-    // Get the raw I2C address (excluding slot number) and the list of standard device-type
-    // records registered for it.
+    // Get the raw I2C address (excluding slot number) and the device type records that can identify a
+    // device there, in the order to try them
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
-    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
+    std::vector<DeviceTypeIndexType> deviceTypesForAddr = deviceTypeRecords.getIdentCandidates(i2cAddr);
 
     // Address-based identification runs FIRST. Detection is a non-destructive read/compare, so a
     // device with a matching device-type record is identified without disturbing it. Only if

@@ -57,51 +57,16 @@ void BusScanner::setup(const RaftJsonIF& config)
     // Debug
     LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
 
-    // Get scan priority lists
-    deviceTypeRecords.getScanPriorityLists(_scanPriorityLists);
-
-    // Ensure there is at least one scan priority list
-    if (_scanPriorityLists.size() == 0)
-        _scanPriorityLists.resize(1);
-
-    // Scan boost
+    // Scan boost addresses (added to the highest priority list)
+    _scanBoostAddrs.clear();
     std::vector<String> scanBoostAddrStrs;
     config.getArrayElems("scanBoost", scanBoostAddrStrs);
-    if (scanBoostAddrStrs.size() != 0)
-    {
-        // Scan boost addresses
-        for (uint32_t i = 0; i < scanBoostAddrStrs.size(); i++)
-        {
-            uint32_t addr = strtoul(scanBoostAddrStrs[i].c_str(), nullptr, 0);
-            // Add to the highest priority list
-            _scanPriorityLists[0].push_back(addr);
-        }
-    }
+    for (const String& addrStr : scanBoostAddrStrs)
+        _scanBoostAddrs.push_back(strtoul(addrStr.c_str(), nullptr, 0));
 
-    // Scan state records
-    _scanPriorityRecs.clear();
-    uint32_t listTotal = 0;
-    for (uint32_t i = 0; i < _scanPriorityLists.size(); i++)
-    {
-        // Set maxCount to square of index + 1
-        ScanPriorityRec scanStateRec;
+    // Scan priority lists (built from the device type records, and rebuilt when records are added)
+    loadScanLists();
 
-        // Set maxCount to the scan priority count if specified
-        if (i < sizeof(SCAN_PRIORITY_COUNTS)/sizeof(SCAN_PRIORITY_COUNTS[0]))
-            scanStateRec.maxCount = SCAN_PRIORITY_COUNTS[i];
-        else
-            scanStateRec.maxCount = (i+1) * (i+1);
-
-        // Add the record
-        _scanPriorityRecs.push_back(scanStateRec);
-        listTotal += _scanPriorityLists[i].size();
-
-#ifdef DEBUG_SCAN_PRIORITY_LISTS
-        LOG_I(MODULE_PREFIX, "setup scanPriorityList %d addrListSize %d total %d maxCount %d", 
-                            i, _scanPriorityLists[i].size(), listTotal, scanStateRec.maxCount);
-#endif
-    }
-    
     // Scanner reset
     setScanMode(SCAN_MODE_IDLE);
 }
@@ -110,6 +75,48 @@ void BusScanner::setup(const RaftJsonIF& config)
 /// @brief Service
 void BusScanner::loop()
 {
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Load the scan priority lists from the device type records (plus the scan boost addresses)
+/// @note keeps each list's scan position where the list still has it
+void BusScanner::loadScanLists()
+{
+    // Get scan priority lists
+    _scanListsGeneration = deviceTypeRecords.getGeneration();
+    deviceTypeRecords.getScanPriorityLists(_scanPriorityLists);
+
+    // Ensure there is at least one scan priority list
+    if (_scanPriorityLists.size() == 0)
+        _scanPriorityLists.resize(1);
+
+    // Scan boost addresses go in the highest priority list
+    for (uint32_t addr : _scanBoostAddrs)
+        _scanPriorityLists[0].push_back(addr);
+
+    // Scan state records
+    _scanPriorityRecs.resize(_scanPriorityLists.size());
+    uint32_t listTotal = 0;
+    for (uint32_t i = 0; i < _scanPriorityLists.size(); i++)
+    {
+        ScanPriorityRec& scanStateRec = _scanPriorityRecs[i];
+
+        // Set maxCount to the scan priority count if specified, otherwise to the square of index + 1
+        if (i < sizeof(SCAN_PRIORITY_COUNTS)/sizeof(SCAN_PRIORITY_COUNTS[0]))
+            scanStateRec.maxCount = SCAN_PRIORITY_COUNTS[i];
+        else
+            scanStateRec.maxCount = (i+1) * (i+1);
+        if (scanStateRec.scanListIndex >= _scanPriorityLists[i].size())
+            scanStateRec.scanListIndex = 0;
+        listTotal += _scanPriorityLists[i].size();
+
+#ifdef DEBUG_SCAN_PRIORITY_LISTS
+        LOG_I(MODULE_PREFIX, "loadScanLists scanPriorityList %d addrListSize %d total %d maxCount %d", 
+                            i, _scanPriorityLists[i].size(), listTotal, scanStateRec.maxCount);
+#endif
+    }
+    if (_scanAddressesCurrentList >= _scanPriorityLists.size())
+        _scanAddressesCurrentList = 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,6 +129,10 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
 {
     // Handle any scan request made from another task
     handleScanRequest();
+
+    // Pick up the scan lists again if device type records have been added
+    if (deviceTypeRecords.getGeneration() != _scanListsGeneration)
+        loadScanLists();
 
     // Time of last scan
     uint32_t curTimeMs = curTimeUs / 1000;
