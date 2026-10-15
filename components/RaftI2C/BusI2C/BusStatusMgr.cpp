@@ -636,7 +636,7 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     // Callback
     RaftDeviceDataChangeCB pCallback = nullptr;
     const void* pCallbackInfo = nullptr;
-    uint16_t deviceTypeIdx = 0;
+    uint16_t deviceTypeIndex = 0;
     uint32_t timeNowMs = timeNowUs / 1000;
 
     // Obtain semaphore
@@ -753,7 +753,7 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
                 if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
                 {
                     // Get device type index and callback info
-                    deviceTypeIdx = pAddrStatus->deviceStatus.getDeviceTypeIndex();
+                    deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
                     pCallbackInfo = pAddrStatus->getCallbackInfo();
                     pAddrStatus->lastDataChangeReportTimeMs = timeNowMs;
                 }
@@ -786,7 +786,7 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     if (pCallback)
     {
         // Call the callback
-        pCallback(deviceTypeIdx, pollResultData, pCallbackInfo);
+        pCallback(deviceTypeIndex, pollResultData, pCallbackInfo);
 
         // Callback no longer in progress
         _dataChangeCBInProgress = false;
@@ -794,7 +794,7 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
 
 #ifdef DEBUG_HANDLE_POLL_RESULT
     LOG_I(MODULE_PREFIX, "handlePollResult address %04x pAddrStatus %p deviceTypeIdx %d callbackValid %s", 
-                address, pAddrStatus, deviceTypeIdx,
+                address, pAddrStatus, deviceTypeIndex,
                 pCallback ? "Y" : "N");
 #endif
 

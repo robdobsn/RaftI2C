@@ -112,11 +112,11 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     bool anyDeviceIdentified = false;
 #endif
     bool identified = false;
-    for (const auto& deviceTypeIdx : deviceTypesForAddr)
+    for (const auto& deviceTypeIndex : deviceTypesForAddr)
     {
         // Get JSON definition for device
         DeviceTypeRecord devTypeRec;
-        if (!deviceTypeRecords.getDeviceInfo(deviceTypeIdx, devTypeRec))
+        if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
@@ -141,7 +141,7 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
             processDeviceInit(address, &devTypeRec);
 
             // Set device type index
-            deviceStatus.deviceTypeIndex = deviceTypeIdx;
+            deviceStatus.deviceTypeIndex = deviceTypeIndex;
 
             // Get polling info
             deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
@@ -450,13 +450,13 @@ String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceTypeKey,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get device type info JSON by device type index
-/// @param deviceTypeIdx device type index
+/// @param deviceTypeIndex device type index
 /// @param includePlugAndPlayInfo include plug and play info
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIdx, bool includePlugAndPlayInfo) const
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIndex, bool includePlugAndPlayInfo) const
 {
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIndex, includePlugAndPlayInfo);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

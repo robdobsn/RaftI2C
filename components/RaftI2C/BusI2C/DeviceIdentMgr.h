@@ -68,10 +68,10 @@ public:
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type info JSON by device type index
-    /// @param deviceTypeIdx device type index
+    /// @param deviceTypeIndex device type index
     /// @param includePlugAndPlayInfo include plug and play info
     /// @return JSON string
-    virtual String getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIdx, bool includePlugAndPlayInfo) const override final;
+    virtual String getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIndex, bool includePlugAndPlayInfo) const override final;
      
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get queued device data in JSON format
