@@ -59,12 +59,12 @@ public:
     virtual String getDevTypeInfoJsonByAddr(BusElemAddrType address, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device type information by device type name
-    /// @param deviceType device type name
+    /// @brief Get device type information by device type key
+    /// @param deviceTypeKey device type key
     /// @param includePlugAndPlayInfo true to include plug and play information
     /// @param deviceTypeIndex (out) device type index
     /// @return JSON string
-    virtual String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
+    virtual String getDevTypeInfoJsonByTypeName(const String& deviceTypeKey, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type info JSON by device type index

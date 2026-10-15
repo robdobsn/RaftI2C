@@ -438,14 +438,14 @@ String DeviceIdentMgr::getDevTypeInfoJsonByAddr(BusElemAddrType address, bool in
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for device type info
-/// @param deviceType Device type
+/// @param deviceTypeKey device type key
 /// @param includePlugAndPlayInfo true to include plug and play information
 /// @param deviceTypeIndex (out) device type index
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceTypeKey, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const
 {
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo, deviceTypeIndex);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceTypeKey, includePlugAndPlayInfo, deviceTypeIndex);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
