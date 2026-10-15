@@ -357,3 +357,60 @@ TEST_CASE("Test PollDataAggregator peekLatestValue", "[PollDataAggregator]")
     TEST_ASSERT_TRUE(aggregator.peekLatestValue(dataTimeUs, dataOut));
     TEST_ASSERT_TRUE(data1 == dataOut);
 }
+
+TEST_CASE("Test PollDataAggregator stores at least one result", "[PollDataAggregator]")
+{
+    // A record or devconfig asking for 0 results still gets one slot (0 used to index past the buffer)
+    PollDataAggregator aggregator(0, 3);
+    std::vector<uint8_t> data1 = {1, 2, 3};
+    std::vector<uint8_t> data2 = {4, 5, 6};
+    TEST_ASSERT_TRUE(aggregator.put(1, data1));
+    TEST_ASSERT_TRUE(aggregator.put(2, data2));
+    TEST_ASSERT_TRUE(aggregator.count() == 1);
+    std::vector<uint8_t> dataOut;
+    TEST_ASSERT_TRUE(aggregator.get(dataOut));
+    TEST_ASSERT_TRUE(data2 == dataOut);
+
+    TEST_ASSERT_TRUE(aggregator.resize(0));
+    TEST_ASSERT_TRUE(aggregator.put(3, data1));
+    TEST_ASSERT_TRUE(aggregator.count() == 1);
+}
+
+TEST_CASE("Test PollDataAggregator limits buffer size", "[PollDataAggregator]")
+{
+    // 200-byte results: at most MAX_BUFFER_BYTES / 200 are stored
+    const uint32_t resultSize = 200;
+    const uint32_t maxResults = PollDataAggregator::MAX_BUFFER_BYTES / resultSize;
+    PollDataAggregator aggregator(maxResults * 4, resultSize);
+    std::vector<uint8_t> data(resultSize, 0x55);
+    for (uint32_t i = 0; i < maxResults + 10; i++)
+        TEST_ASSERT_TRUE(aggregator.put(i, data));
+    TEST_ASSERT_TRUE(aggregator.count() == maxResults);
+
+    // Large buffers (over the old 16-bit offsets) work: 300 results of 100 bytes is 30000 bytes
+    PollDataAggregator large(300, 100);
+    for (uint32_t i = 0; i < 300; i++)
+    {
+        std::vector<uint8_t> sample(100, (uint8_t)i);
+        TEST_ASSERT_TRUE(large.put(i, sample));
+    }
+    TEST_ASSERT_TRUE(large.count() == 300);
+    std::vector<uint8_t> dataOut;
+    uint32_t responseSize = 0;
+    TEST_ASSERT_TRUE(large.get(dataOut, responseSize, 0) == 300);
+    TEST_ASSERT_TRUE(dataOut.size() == 30000);
+    TEST_ASSERT_TRUE(dataOut[299 * 100] == (uint8_t)299);
+}
+
+TEST_CASE("Test PollDataAggregator clear resets latest value", "[PollDataAggregator]")
+{
+    PollDataAggregator aggregator(3, 3);
+    std::vector<uint8_t> data = {1, 2, 3};
+    TEST_ASSERT_TRUE(aggregator.put(100, data));
+    aggregator.clear();
+    uint64_t timeUs = 0;
+    std::vector<uint8_t> latest;
+    TEST_ASSERT_FALSE(aggregator.getLatestValue(timeUs, latest));
+    TEST_ASSERT_FALSE(aggregator.peekLatestValue(timeUs, latest));
+    TEST_ASSERT_TRUE(latest.empty());
+}

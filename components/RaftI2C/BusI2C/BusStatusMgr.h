@@ -13,6 +13,7 @@
 #include "RaftBus.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
+#include "DevicePollScheduler.h"
 #include "BusAddrRecord.h"
 #include <list>
 #include <atomic>
@@ -100,7 +101,14 @@ public:
     /// @param timeNowUs current time in us
     /// @param pollInfo (out) device polling info
     /// @return true if there is a pending ident poll
+    /// @note of the devices that are due, the one with the earliest due time is returned (on a tie, round robin)
     bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
+
+    /// @brief Get the earliest time any device poll (or poll step) is due
+    /// @param timeNowUs current time in us
+    /// @param dueUs (out) earliest due time (may be in the past)
+    /// @return false if no device is polled
+    bool getNextPollDueUs(uint64_t timeNowUs, uint64_t& dueUs);
 
     /// @brief Handle poll result
     /// @param nextReqIdx index of next request to store (0 = full poll, 1+ = partial poll)
@@ -194,12 +202,19 @@ public:
     /// @note see unregisterForDeviceData(address, pCallbackInfo)
     uint32_t unregisterForDeviceDataAll(const void* pCallbackInfo);
 
-    /// @brief Inform that an address is going offline
-    /// @param addrList list of addresses
-    void goingOffline(std::vector<BusElemAddrType>& addrList);
+    /// @brief Inform that the devices on a slot are going offline (e.g. the slot is being power cycled)
+    /// @param slotNum slot number (0 for the main bus)
+    void goingOfflineOnSlot(uint32_t slotNum);
 
     /// @brief Inform that the bus is stuck
     void informBusStuck();
+
+    /// @brief Get addresses whose per-address state on the bus task (e.g. CRC trailer capability) should be
+    ///        forgotten since the last call, because the record was deleted or its identification was cleared
+    /// @param addrs (out) addresses
+    /// @return false if some were missed (more than the list holds) - then forget the state of every address
+    /// @note called from the bus task; cheap when there is nothing to report
+    bool getForgottenAddresses(std::vector<BusElemAddrType>& addrs);
 
     /// @brief Get debug JSON
     /// @return JSON string
@@ -264,6 +279,23 @@ public:
     /// @return JSON object keyed by element address (hex), e.g. {"68":{"dtIdx":5,"cfgUs":50000,...}}
     String getPollTimingJson() const;
 
+    /// @brief Record the bus time a device's poll (or poll step) took
+    /// @param address address
+    /// @param busTimeUs bus time in us
+    void recordPollBusTimeUs(BusElemAddrType address, uint64_t busTimeUs);
+
+    /// @brief Estimate the share of the bus time that polling online devices at their intervals needs
+    /// @param defaultBusHz bus frequency for devices that don't set their own
+    /// @return estimated load in percent (can exceed 100 when more polling is configured than the bus can do)
+    /// @note uses each device's measured bus time per poll once it has been polled, else an estimate
+    uint32_t getPollLoadPct(uint32_t defaultBusHz) const;
+
+    /// @brief Estimate the bus time one poll of a device takes
+    /// @param pollInfo device polling info
+    /// @param busHz bus frequency
+    /// @return estimated time in us
+    static uint32_t estimatePollTimeUs(const DevicePollingInfo& pollInfo, uint32_t busHz);
+
     /// @brief Reset the poll timing statistics of all devices
     void resetPollTiming();
 
@@ -300,6 +332,28 @@ private:
     // Address status records (internal heavy structure)
     std::vector<BusAddrRecord> _addrStatus;
     static const uint32_t ADDR_STATUS_MAX = 50;
+
+    // Chooses the next device to poll (earliest due first) - only online devices are polled
+    DevicePollScheduler _pollScheduler;
+    static DeviceStatus* getRecordDeviceStatusIfOnline(BusAddrRecord& rec)
+    {
+        return (rec.onlineState == DeviceOnlineState::ONLINE) ? &rec.deviceStatus : nullptr;
+    }
+
+    // A device that was online, or found and not yet online, has gone (e.g. its slot lost power): an online
+    // device is reported and then deleted, others are deleted at once. Assumes the lock is held
+    void markGoneOffline(BusAddrRecord& rec);
+    void eraseSpuriousRecords();
+
+    // Addresses whose per-address state on the bus task (CRC recovery) should be forgotten
+    static const uint32_t FORGOTTEN_ADDRS_MAX = 16;
+    std::vector<BusElemAddrType> _forgottenAddrs;
+    bool _forgottenAddrsOverflow = false;
+    std::atomic<bool> _forgottenAddrsPending = false;
+    void addForgottenAddr(BusElemAddrType address);
+
+    // Warn once when the address table is full
+    bool _addrStatusFullWarned = false;
 
     // Find address record
     // Assumes semaphore already taken

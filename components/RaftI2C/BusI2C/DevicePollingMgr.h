@@ -27,8 +27,10 @@ public:
     // Setup
     void setup(const RaftJsonIF& config);
 
-    // Service from I2C task
-    void taskService(uint64_t timeNowUs);
+    /// @brief Service from I2C task - polls due devices, earliest due first
+    /// @param timeNowUs time now in us
+    /// @param pollBudgetUs no further poll is started once this long has been spent polling
+    void taskService(uint64_t timeNowUs, uint32_t pollBudgetUs);
 
     /// @brief Cumulative poll-response integrity counters (all devices)
     /// Zero unless a device type record declares pollInfo.crc. See RaftI2C
@@ -48,6 +50,9 @@ public:
     uint32_t getPollStepCount() const { return _pollStepCount; }
 
 private:
+
+    // Poll the device that has been due longest; returns false if none was due
+    bool pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& polledAddress);
 
     // Validate (and if necessary re-read) a poll response carrying a CRC trailer.
     // On success readData is truncated to the declared length, i.e. the trailer is
@@ -127,7 +132,6 @@ private:
         uint64_t lastPollStartUs = 0;
         uint64_t cumulTransactionUs = 0;
         uint64_t cumulIntervalUs = 0;
-        uint32_t cumulFifoWords = 0;
         uint32_t pollCount = 0;
         uint64_t lastReportTimeUs = 0;
     };

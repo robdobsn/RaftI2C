@@ -14,6 +14,7 @@
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 #include "BusI2CAddrAndSlot.h"
+#include <algorithm>
 
 // Auto-select I2C implementation based on chip if not explicitly defined
 #if !defined(I2C_USE_RAFT_I2C) && !defined(I2C_USE_ESP_IDF)
@@ -170,6 +171,9 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
 
     // Yield values
     _loopYieldMs = config.getLong("loopYieldMs", I2C_BUS_LOOP_YIELD_MS);
+    if (_loopYieldMs < 1)
+        _loopYieldMs = 1;
+    _pollBudgetUs = config.getLong("pollBudgetUs", I2C_BUS_POLL_BUDGET_DEFAULT_US);
     _loopFastUnyieldUs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS) * 1000;
     _loopSlowUnyieldUs = config.getLong("slowScanMaxUnyieldMs", I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS) * 1000;
 
@@ -282,7 +286,8 @@ void BusI2C::close()
     if (_i2cWorkerTaskHandle != nullptr) 
     {
         // Shutdown task
-        xTaskNotifyGive(_i2cWorkerTaskHandle);
+        _workerExitRequested = true;
+        wakeWorkerTask();
         uint32_t waitStartMs = millis();
         while (!Raft::isTimeout(millis(), waitStartMs, WAIT_FOR_TASK_EXIT_MS))
         {
@@ -316,6 +321,24 @@ void BusI2C::loop()
 
     // Service bus accessor
     _busAccessor.loop();
+
+    // Warn if more polling is configured than the bus can comfortably do (rates will fall short)
+    if (Raft::isTimeout(millis(), _pollLoadCheckLastMs, POLL_LOAD_CHECK_MS))
+    {
+        _pollLoadCheckLastMs = millis();
+        uint32_t pollLoadPct = _busStatusMgr.getPollLoadPct(_freq);
+        if ((pollLoadPct >= POLL_LOAD_WARN_PCT) && !_pollLoadWarned)
+        {
+            LOG_W(MODULE_PREFIX, "%s polling needs about %d%% of the bus time (warning above %d%%) - polls will be late "
+                        "or missed; lengthen poll intervals or raise the bus speed", _busName.c_str(), (int)pollLoadPct,
+                        (int)POLL_LOAD_WARN_PCT);
+            _pollLoadWarned = true;
+        }
+        else if (pollLoadPct < POLL_LOAD_WARN_PCT * 9 / 10)
+        {
+            _pollLoadWarned = false;
+        }
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -359,7 +382,9 @@ void BusI2C::i2cWorkerTask()
     }
 
     _debugLastBusLoopMs = millis();
-    while (ulTaskNotifyTake(pdTRUE, 0) == 0)
+    const uint32_t maxWaitTicks = pdMS_TO_TICKS(_loopYieldMs) > 0 ? pdMS_TO_TICKS(_loopYieldMs) : 1;
+    uint32_t waitTicks = maxWaitTicks;
+    while (!_workerExitRequested)
     {
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         for (int ii = 0; ii < 5; ii++)
@@ -370,8 +395,12 @@ void BusI2C::i2cWorkerTask()
             delayMicroseconds(1);
         }
 #endif        
-        // Allow other tasks to run
-        vTaskDelay(pdMS_TO_TICKS(_loopYieldMs));
+        // Wait until the next poll is due, a request is queued (or the task is asked to exit) or the
+        // longest wait is reached. This also lets other tasks run
+        ulTaskNotifyTake(pdTRUE, waitTicks);
+        if (_workerExitRequested)
+            break;
+        waitTicks = maxWaitTicks;
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -451,22 +480,6 @@ void BusI2C::i2cWorkerTask()
         _activityStats.addSectionUs(BusI2CActivityStats::SECTION_HANDLER, sectionEndUs - passStartUs);
         uint64_t sectionStartUs = sectionEndUs;
 
-        // Handle bus scanning
-#ifndef DEBUG_NO_SCANNING
-        if (!isPaused)
-        {
-            // Service bus scanner
-            if (_busScanner.isScanPending(curTimeMs))
-            {
-                _busScanner.taskService(curTimeUs, _loopFastUnyieldUs, _loopSlowUnyieldUs);
-            }
-        }
-#endif
-
-        sectionEndUs = micros();
-        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_SCAN, sectionEndUs - sectionStartUs);
-        sectionStartUs = sectionEndUs;
-
         // Handle requests
         _busAccessor.processRequestQueue(isPaused);
         sectionEndUs = micros();
@@ -479,10 +492,6 @@ void BusI2C::i2cWorkerTask()
             _activityStats.endPass(passStartUs, sectionEndUs, _busScanner.getScanProbeCount(), _devicePollingMgr.getPollStepCount());
             continue;
         }
-
-#ifdef DEBUG_NO_POLLING
-        continue;
-#endif
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -522,8 +531,10 @@ void BusI2C::i2cWorkerTask()
         // Polling is pure bus load with no role in recovery, so unlike scanning it is safe to
         // suspend: it is what makes the bus busy (a single VCP at the default rates occupies
         // ~50% of a 100kHz bus), and a timed assignment sequence should not queue behind it.
+#ifndef DEBUG_NO_POLLING
         if (!busTaskHandlerBusy)
-            _devicePollingMgr.taskService(micros());
+            _devicePollingMgr.taskService(micros(), _pollBudgetUs);
+#endif
 
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
@@ -539,10 +550,43 @@ void BusI2C::i2cWorkerTask()
         // Service bus stuck handler
         _busStuckHandler.loopSync();
 
-        // Activity statistics - polling section and end of pass
+        // Activity statistics - polling section
         sectionEndUs = micros();
         _activityStats.addSectionUs(BusI2CActivityStats::SECTION_POLL, sectionEndUs - sectionStartUs);
+        sectionStartUs = sectionEndUs;
+
+        // Bus scanning - after polling, so a scan doesn't delay polls that are due. It runs at most once per
+        // loopYieldMs (from the end of the previous scan, less a tick as a wait of loopYieldMs can end up to a
+        // tick early), however often the worker wakes for polls and requests, and stops in time for the next
+        // poll that is due (but always makes some progress)
+#ifndef DEBUG_NO_SCANNING
+        const uint64_t tickUs = portTICK_PERIOD_MS * 1000;
+        const uint64_t scanIntervalUs = ((uint64_t)_loopYieldMs * 1000 > tickUs) ? (uint64_t)_loopYieldMs * 1000 - tickUs : 0;
+        if (_busScanner.isScanPending(curTimeMs) && (sectionStartUs - _lastScanEndUs >= scanIntervalUs))
+        {
+            uint64_t maxFastScanUs = _loopFastUnyieldUs;
+            uint64_t maxSlowScanUs = _loopSlowUnyieldUs;
+            uint64_t pollDueUs = 0;
+            if (!busTaskHandlerBusy && _busStatusMgr.getNextPollDueUs(sectionStartUs, pollDueUs))
+            {
+                uint64_t untilPollUs = (pollDueUs > sectionStartUs) ? (pollDueUs - sectionStartUs) : 0;
+                if (untilPollUs < I2C_BUS_SCAN_MIN_BUDGET_US)
+                    untilPollUs = I2C_BUS_SCAN_MIN_BUDGET_US;
+                maxFastScanUs = std::min(maxFastScanUs, untilPollUs);
+                maxSlowScanUs = std::min(maxSlowScanUs, untilPollUs);
+            }
+            _busScanner.taskService(sectionStartUs, maxFastScanUs, maxSlowScanUs);
+            _lastScanEndUs = micros();
+        }
+#endif
+        sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_SCAN, sectionEndUs - sectionStartUs);
+
+        // Activity statistics - end of pass
         _activityStats.endPass(passStartUs, sectionEndUs, _busScanner.getScanProbeCount(), _devicePollingMgr.getPollStepCount());
+
+        // Wait until the next poll is due
+        waitTicks = getWorkerWaitTicks(!busTaskHandlerBusy);
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         // Debug
@@ -565,6 +609,31 @@ void BusI2C::i2cWorkerTask()
     // Task has exited
     _i2cWorkerTaskHandle = nullptr;
     vTaskDelete(NULL);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Ticks for the worker to wait before its next pass
+/// @param pollingActive true if device polling is running (false while held off by the bus task handler)
+/// @return ticks to wait: until the next poll is due, at least one tick (so other tasks can run) and at most
+///         loopYieldMs (which also gives scanning its next pass)
+uint32_t BusI2C::getWorkerWaitTicks(bool pollingActive)
+{
+    uint64_t nowUs = micros();
+    uint64_t maxWaitUs = (uint64_t)_loopYieldMs * 1000;
+    uint64_t wakeUs = nowUs + maxWaitUs;
+
+    // Next poll (or poll step)
+    uint64_t pollDueUs = 0;
+    if (pollingActive && _busStatusMgr.getNextPollDueUs(nowUs, pollDueUs) && (pollDueUs < wakeUs))
+        wakeUs = pollDueUs;
+
+    // Round up to whole ticks
+    const uint64_t tickUs = portTICK_PERIOD_MS * 1000;
+    uint64_t waitUs = (wakeUs > nowUs) ? (wakeUs - nowUs) : 0;
+    uint32_t waitTicks = (waitUs + tickUs - 1) / tickUs;
+    if (waitTicks < 1)
+        waitTicks = 1;
+    return waitTicks;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

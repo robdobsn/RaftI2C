@@ -13,6 +13,7 @@
 // #define DEBUG_DYNAMIC_READ_LEN
 
 #include "DevicePollingMgr.h"
+#include <algorithm>
 #include "BusI2CAddrAndSlot.h"
 #include "RaftUtils.h"
 #include "RaftI2CCentralIF.h"
@@ -50,196 +51,30 @@ void DevicePollingMgr::setup(const RaftJsonIF& config)
 // Service from I2C task
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void DevicePollingMgr::taskService(uint64_t timeNowUs)
+void DevicePollingMgr::taskService(uint64_t timeNowUs, uint32_t pollBudgetUs)
 {
-    // See if any devices need polling
-    DevicePollingInfo pollInfo;
-    if (_busStatusMgr.getPendingIdentPoll(timeNowUs, pollInfo))
+    // Forget per-address state (CRC trailer capability, drop counts) of devices that have been deleted or
+    // whose identification was cleared, so a new device at the same address starts afresh
+    std::vector<BusElemAddrType> forgottenAddrs;
+    bool allReported = _busStatusMgr.getForgottenAddresses(forgottenAddrs);
+    for (RecoveryState& state : _recoveryStates)
     {
-        // Count poll steps (for activity statistics)
-        _pollStepCount++;
+        if (state.inUse && (!allReported ||
+                    (std::find(forgottenAddrs.begin(), forgottenAddrs.end(), state.address) != forgottenAddrs.end())))
+            state.inUse = false;
+    }
 
-        // Get the address and slot
-        if (pollInfo.pollReqs.size() == 0)
-            return;
-        BusElemAddrType address = pollInfo.pollReqs[0].getAddress();
-        BusI2CAddrAndSlot addrAndSlot(address);
-
-        // Get the next request index
-        uint32_t nextReqIdx = pollInfo.partialPollNextReqIdx;
-
-#ifdef DEBUG_POLL_REQUEST
-        LOG_I(MODULE_PREFIX, "taskService pollreq %s (%04x)", addrAndSlot.toString().c_str(), address);
-#endif
-
-        // Enable the slot
-        auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.getSlotNum());
-        if (rslt != RAFT_OK)
-            return;
-
-        // Switch bus frequency if device specifies a custom poll speed
-        // and (no slot mask set OR this device's slot is in the mask)
-        bool speedChanged = false;
-        uint32_t savedBusFreqHz = 0;
-        if (pollInfo.pollBusHz != 0 && _pI2CCentral &&
-            (pollInfo.pollBusHzSlotMask == 0 || (pollInfo.pollBusHzSlotMask & (1ULL << addrAndSlot.getSlotNum()))))
-        {
-            savedBusFreqHz = _pI2CCentral->getBusFrequency();
-            if (pollInfo.pollBusHz != savedBusFreqHz)
-                speedChanged = _pI2CCentral->setBusFrequency(pollInfo.pollBusHz);
-        }
-
-#ifdef DEBUG_POLL_TIMING
-        // Get timing stats for this address
-        PollTimingStats& timing = getTimingStats(address);
-        uint64_t txnStartUs = micros();
-#endif
-
-        // Prep poll result data
-        std::vector<uint8_t> pollDataResult;
-
-        // Track per-operation results for dynamic read length expressions
-        std::vector<std::vector<uint8_t>> perOpResults;
-
-        // If this is the start of the poll then setup the timestamp
-        if (nextReqIdx == 0)
-        {
-            // Setup the timestamp
-            pollDataResult.resize(DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE);
-            uint32_t timeNowPollUnits = timeNowUs / DevicePollingInfo::POLL_RESULT_RESOLUTION_US;
-            if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 2)
-                Raft::setBEUInt16(pollDataResult.data(), 0, timeNowPollUnits & 0xffff);
-            else if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 4)
-                Raft::setBEUInt32(pollDataResult.data(), 0, timeNowPollUnits);
-        }
-
-        // Loop through the requests starting at the next request index
-        bool allResultsOkAndComplete = true;
-        for (uint32_t i = nextReqIdx; i < pollInfo.pollReqs.size(); i++)
-        {
-            // Get the request record
-            BusRequestInfo& busReqRec = pollInfo.pollReqs[i];
-
-            // If this request has a dynamic read length, evaluate it now
-            if (busReqRec.hasDynamicReadLen())
-            {
-                uint16_t computedLen = busReqRec.getReadReqLen(perOpResults);
-                busReqRec.setReadReqLen(computedLen);
-#ifdef DEBUG_DYNAMIC_READ_LEN
-                LOG_I(MODULE_PREFIX, "dynReadLen addr %04x op %d computedLen %d", address, i, computedLen);
-#endif
-                // Skip the I2C transaction if computed read length is 0 (e.g. FIFO empty)
-                if (computedLen == 0)
-                {
-                    perOpResults.push_back(std::vector<uint8_t>());
-                    continue;
-                }
-            }
-
-            // Perform the request
-            std::vector<uint8_t> readData;
-            auto rslt = _busReqSyncFn(&busReqRec, &readData);
-
-#ifdef DEBUG_POLL_RESULT
-#ifdef DEBUG_POLL_RESULT_SPECIFIC_ADDRESS
-            if (addrAndSlot.getI2CAddr() == DEBUG_POLL_RESULT_SPECIFIC_ADDRESS)
-#endif
-            {
-                String writeDataHexStr;
-                Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
-                String readDataHexStr;
-                Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
-                LOG_I(MODULE_PREFIX, "taskService pollrslt addr %s (%04x) writeData %s readData %s rslt %s", 
-                                addrAndSlot.toString().c_str(),
-                                address,
-                                writeDataHexStr.c_str(),
-                                readDataHexStr.c_str(),
-                                Raft::getRetCodeStr(rslt));
-            }
-#endif
-
-            if (rslt != RAFT_OK)
-            {
-                bool isOnline = false;
-                _busStatusMgr.updateBusElemState(address, false, isOnline);
-                allResultsOkAndComplete = false;
-                break;
-            }
-
-            // Check the response integrity trailer if this device carries one. A
-            // response that cannot be validated is discarded rather than decoded -
-            // dropping a sample is always better than reporting a wrong measurement.
-            // The device stays online: this is data corruption, not absence.
-            if (!validatePollResponse(pollInfo, busReqRec, address, readData))
-            {
-                allResultsOkAndComplete = false;
-                break;
-            }
-
-            // Store this operation's result for use by later dynamic read expressions
-            perOpResults.push_back(readData);
-
-            // Append the received data to the poll result data
-            pollDataResult.insert(pollDataResult.end(), readData.begin(), readData.end());
-
-            // Check if the request contains a pause after send and this is not the last request
-            uint32_t pauseAfterSendMs = busReqRec.getBarAccessForMsAfterSend();
-            if (pauseAfterSendMs > 0 && i < pollInfo.pollReqs.size() - 1)
-            {
-                // Update the ident poll info with the pause after send and received data
-                _busStatusMgr.handlePollResult(i+1, timeNowUs, address, pollDataResult, &pollInfo, pauseAfterSendMs);
-                allResultsOkAndComplete = false;
-                break;
-            }
-        }
-
-        // Store the poll result if all requests succeeded
-        if (allResultsOkAndComplete)
-        {
-            _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, &pollInfo, 0);
-        }
-
-#ifdef DEBUG_POLL_TIMING
-        // Record poll timing
-        uint64_t txnEndUs = micros();
-        uint64_t txnDurationUs = txnEndUs - txnStartUs;
-        if (timing.lastPollStartUs != 0)
-            timing.cumulIntervalUs += (txnStartUs - timing.lastPollStartUs);
-        timing.lastPollStartUs = txnStartUs;
-        timing.cumulTransactionUs += txnDurationUs;
-        timing.pollCount++;
-
-        // Extract FIFO word count from poll result (bytes 2-3 after 2-byte timestamp)
-        if (pollDataResult.size() >= 4 + DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE)
-        {
-            uint32_t statusOffset = DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE;
-            uint16_t wc = ((pollDataResult[statusOffset + 1] & 0x0F) << 8) | pollDataResult[statusOffset];
-            timing.cumulFifoWords += wc;
-        }
-
-        // Periodic timing report
-        if (timing.pollCount > 0 && Raft::isTimeout(txnEndUs, timing.lastReportTimeUs, POLL_TIMING_REPORT_INTERVAL_US))
-        {
-            uint32_t avgIntervalUs = timing.pollCount > 1 ? timing.cumulIntervalUs / (timing.pollCount - 1) : 0;
-            uint32_t avgTxnUs = timing.cumulTransactionUs / timing.pollCount;
-            float fifoSamplesPerSec = timing.cumulIntervalUs > 0 ? 
-                (timing.cumulFifoWords / 6.0f) * 1000000.0f / timing.cumulIntervalUs : 0;
-            LOG_I(MODULE_PREFIX, "pollTiming addr=0x%03x polls=%d avgInterval=%duS avgTxn=%duS fifoRate=%.1fHz totalFifoWords=%d",
-                  address, timing.pollCount, avgIntervalUs, avgTxnUs, fifoSamplesPerSec, timing.cumulFifoWords);
-            timing.cumulTransactionUs = 0;
-            timing.cumulIntervalUs = 0;
-            timing.cumulFifoWords = 0;
-            timing.pollCount = 0;
-            timing.lastReportTimeUs = txnEndUs;
-        }
-#endif
-
-        // Restore bus frequency if it was changed
-        if (speedChanged && _pI2CCentral)
-            _pI2CCentral->setBusFrequency(savedBusFreqHz);
-
-        // Restore the bus multiplexers if necessary
-        _busMultiplexers.disableAllSlots(false);
+    // Poll due devices (earliest due first) until none are due or the budget for this pass is used
+    uint64_t pollStartUs = timeNowUs;
+    BusElemAddrType polledAddress = 0;
+    while (pollNextDueDevice(pollStartUs, polledAddress))
+    {
+        // Bus time the poll took (includes slot selection and bus speed changes)
+        uint64_t pollEndUs = micros();
+        _busStatusMgr.recordPollBusTimeUs(polledAddress, pollEndUs - pollStartUs);
+        pollStartUs = pollEndUs;
+        if (pollStartUs - timeNowUs >= pollBudgetUs)
+            break;
     }
 
     // Periodically report poll-response integrity. Silent unless something has
@@ -254,6 +89,201 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
                         _crcStats.checked ? (100.0 * _crcStats.failed / _crcStats.checked) : 0.0);
         }
     }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Poll the device that has been due longest (or perform the next step of a poll split by a pause)
+// Returns false if no poll was due; polledAddress is set to the address polled
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& polledAddress)
+{
+    // See if any devices need polling
+    DevicePollingInfo pollInfo;
+    if (!_busStatusMgr.getPendingIdentPoll(timeNowUs, pollInfo))
+        return false;
+
+    // Count poll steps (for activity statistics)
+    _pollStepCount++;
+
+    // Get the address and slot
+    if (pollInfo.pollReqs.size() == 0)
+        return true;
+    BusElemAddrType address = pollInfo.pollReqs[0].getAddress();
+    BusI2CAddrAndSlot addrAndSlot(address);
+    polledAddress = address;
+
+    // Get the next request index
+    uint32_t nextReqIdx = pollInfo.partialPollNextReqIdx;
+
+#ifdef DEBUG_POLL_REQUEST
+    LOG_I(MODULE_PREFIX, "taskService pollreq %s (%04x)", addrAndSlot.toString().c_str(), address);
+#endif
+
+    // Enable the slot
+    // A slot that can't be selected (e.g. its multiplexer has gone) counts as a failed poll, so the device
+    // goes offline rather than staying online with no data
+    auto rslt = _busMultiplexers.enableOneSlot(addrAndSlot.getSlotNum());
+    if (rslt != RAFT_OK)
+    {
+        bool isOnline = false;
+        _busStatusMgr.updateBusElemState(address, false, isOnline);
+        return true;
+    }
+
+    // Switch bus frequency if device specifies a custom poll speed
+    // and (no slot mask set OR this device's slot is in the mask)
+    bool speedChanged = false;
+    uint32_t savedBusFreqHz = 0;
+    if (pollInfo.pollBusHz != 0 && _pI2CCentral &&
+        (pollInfo.pollBusHzSlotMask == 0 || (pollInfo.pollBusHzSlotMask & (1ULL << addrAndSlot.getSlotNum()))))
+    {
+        savedBusFreqHz = _pI2CCentral->getBusFrequency();
+        if (pollInfo.pollBusHz != savedBusFreqHz)
+            speedChanged = _pI2CCentral->setBusFrequency(pollInfo.pollBusHz);
+    }
+
+#ifdef DEBUG_POLL_TIMING
+    // Get timing stats for this address
+    PollTimingStats& timing = getTimingStats(address);
+    uint64_t txnStartUs = micros();
+#endif
+
+    // Prep poll result data
+    std::vector<uint8_t> pollDataResult;
+
+    // Track per-operation results for dynamic read length expressions
+    std::vector<std::vector<uint8_t>> perOpResults;
+
+    // If this is the start of the poll then setup the timestamp
+    if (nextReqIdx == 0)
+    {
+        // Setup the timestamp
+        pollDataResult.resize(DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE);
+        uint32_t timeNowPollUnits = timeNowUs / DevicePollingInfo::POLL_RESULT_RESOLUTION_US;
+        if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 2)
+            Raft::setBEUInt16(pollDataResult.data(), 0, timeNowPollUnits & 0xffff);
+        else if (DevicePollingInfo::POLL_RESULT_TIMESTAMP_SIZE == 4)
+            Raft::setBEUInt32(pollDataResult.data(), 0, timeNowPollUnits);
+    }
+
+    // Loop through the requests starting at the next request index
+    bool allResultsOkAndComplete = true;
+    for (uint32_t i = nextReqIdx; i < pollInfo.pollReqs.size(); i++)
+    {
+        // Get the request record
+        BusRequestInfo& busReqRec = pollInfo.pollReqs[i];
+
+        // If this request has a dynamic read length, evaluate it now
+        if (busReqRec.hasDynamicReadLen())
+        {
+            uint16_t computedLen = busReqRec.getReadReqLen(perOpResults);
+            busReqRec.setReadReqLen(computedLen);
+#ifdef DEBUG_DYNAMIC_READ_LEN
+            LOG_I(MODULE_PREFIX, "dynReadLen addr %04x op %d computedLen %d", address, i, computedLen);
+#endif
+            // Skip the I2C transaction if computed read length is 0 (e.g. FIFO empty)
+            if (computedLen == 0)
+            {
+                perOpResults.push_back(std::vector<uint8_t>());
+                continue;
+            }
+        }
+
+        // Perform the request
+        std::vector<uint8_t> readData;
+        auto rslt = _busReqSyncFn(&busReqRec, &readData);
+
+#ifdef DEBUG_POLL_RESULT
+#ifdef DEBUG_POLL_RESULT_SPECIFIC_ADDRESS
+        if (addrAndSlot.getI2CAddr() == DEBUG_POLL_RESULT_SPECIFIC_ADDRESS)
+#endif
+        {
+            String writeDataHexStr;
+            Raft::getHexStrFromBytes(busReqRec.getWriteData(), busReqRec.getWriteDataLen(), writeDataHexStr);
+            String readDataHexStr;
+            Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataHexStr);
+            LOG_I(MODULE_PREFIX, "taskService pollrslt addr %s (%04x) writeData %s readData %s rslt %s", 
+                            addrAndSlot.toString().c_str(),
+                            address,
+                            writeDataHexStr.c_str(),
+                            readDataHexStr.c_str(),
+                            Raft::getRetCodeStr(rslt));
+        }
+#endif
+
+        if (rslt != RAFT_OK)
+        {
+            bool isOnline = false;
+            _busStatusMgr.updateBusElemState(address, false, isOnline);
+            allResultsOkAndComplete = false;
+            break;
+        }
+
+        // Check the response integrity trailer if this device carries one. A
+        // response that cannot be validated is discarded rather than decoded -
+        // dropping a sample is always better than reporting a wrong measurement.
+        // The device stays online: this is data corruption, not absence.
+        if (!validatePollResponse(pollInfo, busReqRec, address, readData))
+        {
+            allResultsOkAndComplete = false;
+            break;
+        }
+
+        // Store this operation's result for use by later dynamic read expressions
+        perOpResults.push_back(readData);
+
+        // Append the received data to the poll result data
+        pollDataResult.insert(pollDataResult.end(), readData.begin(), readData.end());
+
+        // Check if the request contains a pause after send and this is not the last request
+        uint32_t pauseAfterSendMs = busReqRec.getBarAccessForMsAfterSend();
+        if (pauseAfterSendMs > 0 && i < pollInfo.pollReqs.size() - 1)
+        {
+            // Update the ident poll info with the pause after send and received data
+            _busStatusMgr.handlePollResult(i+1, timeNowUs, address, pollDataResult, &pollInfo, pauseAfterSendMs);
+            allResultsOkAndComplete = false;
+            break;
+        }
+    }
+
+    // Store the poll result if all requests succeeded
+    if (allResultsOkAndComplete)
+    {
+        _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, &pollInfo, 0);
+    }
+
+#ifdef DEBUG_POLL_TIMING
+    // Record poll timing
+    uint64_t txnEndUs = micros();
+    uint64_t txnDurationUs = txnEndUs - txnStartUs;
+    if (timing.lastPollStartUs != 0)
+        timing.cumulIntervalUs += (txnStartUs - timing.lastPollStartUs);
+    timing.lastPollStartUs = txnStartUs;
+    timing.cumulTransactionUs += txnDurationUs;
+    timing.pollCount++;
+
+    // Periodic timing report
+    if (timing.pollCount > 0 && Raft::isTimeout(txnEndUs, timing.lastReportTimeUs, POLL_TIMING_REPORT_INTERVAL_US))
+    {
+        uint32_t avgIntervalUs = timing.pollCount > 1 ? timing.cumulIntervalUs / (timing.pollCount - 1) : 0;
+        uint32_t avgTxnUs = timing.cumulTransactionUs / timing.pollCount;
+        LOG_I(MODULE_PREFIX, "pollTiming addr=0x%03x polls=%d avgInterval=%duS avgTxn=%duS",
+              address, timing.pollCount, avgIntervalUs, avgTxnUs);
+        timing.cumulTransactionUs = 0;
+        timing.cumulIntervalUs = 0;
+        timing.pollCount = 0;
+        timing.lastReportTimeUs = txnEndUs;
+    }
+#endif
+
+    // Restore bus frequency if it was changed
+    if (speedChanged && _pI2CCentral)
+        _pI2CCentral->setBusFrequency(savedBusFreqHz);
+
+    // Restore the bus multiplexers if necessary
+    _busMultiplexers.disableAllSlots(false);
+    return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -11,6 +11,7 @@
 #include "PollDataAggregatorIF.h"
 #include <RaftThreading.h>
 #include <cstring>
+#include "Logger.h"
 
 class PollDataAggregator : public PollDataAggregatorIF
 {
@@ -24,13 +25,17 @@ public:
         RaftMutex_init(_accessMutex);
 
         // Ring buffer
-        _ringBuffer.resize(numResultsToStore*resultSize);
+        _resultSize = resultSize > 0 ? resultSize : 1;
+        numResultsToStore = limitNumResults(numResultsToStore);
+        _ringBuffer.resize(numResultsToStore*_resultSize);
         _actualLengths.resize(numResultsToStore, 0);
         _ringBufHeadOffset = 0;
         _ringBufCount = 0;
         _maxElems = numResultsToStore;
-        _resultSize = resultSize;
     }
+
+    // Most bytes one device's stored results may use
+    static const uint32_t MAX_BUFFER_BYTES = 32768;
 
     /// @brief Destructor
     virtual ~PollDataAggregator()
@@ -53,6 +58,9 @@ public:
             return;
         _ringBufHeadOffset = 0;
         _ringBufCount = 0;
+        _latestValue.clear();
+        _lastestValueTimeUs = 0;
+        _latestValueIsNew = false;
         RaftMutex_unlock(_accessMutex);
     }
 
@@ -70,7 +78,7 @@ public:
             return false;
 
         // Record actual length
-        uint16_t slotIndex = _ringBufHeadOffset / _resultSize;
+        uint32_t slotIndex = _ringBufHeadOffset / _resultSize;
         _actualLengths[slotIndex] = data.size();
 
         // Copy actual data and zero-fill remainder
@@ -260,9 +268,12 @@ public:
     /// @brief Resize the aggregator to store a different number of results
     /// @param numResultsToStore New number of results to store
     /// @return true if resized successfully
-    /// @note This clears any existing buffered data
+    /// @note This clears any existing buffered data. The number is at least 1 and is limited so the buffer is
+    ///       at most MAX_BUFFER_BYTES
     bool resize(uint32_t numResultsToStore) override
     {
+        numResultsToStore = limitNumResults(numResultsToStore);
+
         // Obtain access
         if (!RaftMutex_lock(_accessMutex, RAFT_MUTEX_WAIT_FOREVER))
             return false;
@@ -309,8 +320,8 @@ public:
 
         for (uint32_t i = 0; i < numToReturn; i++)
         {
-            uint16_t slotIndex = pos / _resultSize;
-            uint16_t actualLen = _actualLengths[slotIndex];
+            uint32_t slotIndex = pos / _resultSize;
+            uint32_t actualLen = _actualLengths[slotIndex];
             if (actualLen == 0)
                 actualLen = _resultSize; // backwards compat: 0 means legacy full-size
 
@@ -330,13 +341,28 @@ public:
     }
 
 private:
+    // Number of results limited to at least 1 and to MAX_BUFFER_BYTES in all
+    uint32_t limitNumResults(uint32_t numResultsToStore) const
+    {
+        uint32_t maxResults = MAX_BUFFER_BYTES / _resultSize;
+        if (maxResults < 1)
+            maxResults = 1;
+        if (numResultsToStore > maxResults)
+        {
+            LOG_W(MODULE_PREFIX, "limitNumResults %u results of %u bytes exceeds %u bytes - storing %u",
+                        (unsigned)numResultsToStore, (unsigned)_resultSize, (unsigned)MAX_BUFFER_BYTES, (unsigned)maxResults);
+            return maxResults;
+        }
+        return numResultsToStore < 1 ? 1 : numResultsToStore;
+    }
+
     // Circular buffer
     std::vector<uint8_t> _ringBuffer;
     std::vector<uint16_t> _actualLengths; // actual data length per slot
-    uint16_t _ringBufHeadOffset = 0;
-    uint16_t _ringBufCount = 0;
-    uint16_t _resultSize = 0;
-    uint16_t _maxElems = 0;
+    uint32_t _ringBufHeadOffset = 0;
+    uint32_t _ringBufCount = 0;
+    uint32_t _resultSize = 0;
+    uint32_t _maxElems = 0;
 
     // Overflow counter
 #ifdef DEBUG_POLL_DATA_AGGREGATOR_OVERFLOW

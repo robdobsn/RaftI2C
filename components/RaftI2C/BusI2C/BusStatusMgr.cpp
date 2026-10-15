@@ -26,7 +26,6 @@
 // #define DEBUG_HANDLE_POLL_RESULT
 // #define DEBUG_GET_POLL_RESULT
 // #define DEBUG_POLL_RESULT_DETAIL
-// #define DEBUG_LSM6DS_FIFO_DECODE
 // #define DEBUG_OVERFLOW_MONITOR
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,10 +89,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                 if (addrStatus.deviceStatus.pDataAggregator)
                 {
                     uint32_t ringOvr = addrStatus.deviceStatus.pDataAggregator->debugGetAndClearOverflowCount();
-                    uint32_t fifoOvr = addrStatus.deviceStatus.debugGetAndClearFifoOverrunCount();
-                    uint32_t fifoFull = addrStatus.deviceStatus.debugGetAndClearFifoFullCount();
-                    LOG_I(MODULE_PREFIX, "overflowMon addr=0x%03x fifoOvr=%d fifoFull=%d ringOvr=%d",
-                          addrStatus.address, fifoOvr, fifoFull, ringOvr);
+                    LOG_I(MODULE_PREFIX, "overflowMon addr=0x%03x ringOvr=%d", addrStatus.address, ringOvr);
                 }
             }
             RaftMutex_unlock(_busElemStatusMutex);
@@ -199,6 +195,7 @@ void BusStatusMgr::loop(bool hwIsOperatingOk)
                         {
                             _pendingDeletionQueue.push_back({s.address, s.deviceStatus.deviceTypeIndex});
                         }
+                        addForgottenAddr(s.address);
                     }
                 }
                 _addrStatus.erase(
@@ -262,6 +259,13 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
 
         // If not found and element is responding then add a new record
+        if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() >= ADDR_STATUS_MAX) &&
+                    !_addrStatusFullWarned)
+        {
+            _addrStatusFullWarned = true;
+            LOG_W(MODULE_PREFIX, "updateBusElemState address table full (%d) - address %04x and any others found "
+                        "will not be tracked", (int)ADDR_STATUS_MAX, address);
+        }
         if ((pAddrStatus == nullptr) && elemResponding && (_addrStatus.size() < ADDR_STATUS_MAX))
         {
             // Add new record (isNewlyIdentified is false - set later by setBusElemDeviceStatus when identified)
@@ -319,6 +323,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         if (flagSpuriousRecord)
         {
             // Remove the record
+            addForgottenAddr(address);
             _addrStatus.erase(std::remove_if(_addrStatus.begin(), _addrStatus.end(), 
                 [address](BusAddrRecord& addrStatus) { return addrStatus.address == address; }), 
                 _addrStatus.end());
@@ -566,26 +571,21 @@ bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Inform that addresses are going offline
-/// @param addrList list of addresses
-void BusStatusMgr::goingOffline(std::vector<BusElemAddrType>& addrList)
+/// @brief Inform that the devices on a slot are going offline (e.g. the slot is being power cycled)
+/// @param slotNum slot number (0 for the main bus)
+void BusStatusMgr::goingOfflineOnSlot(uint32_t slotNum)
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
         return;
 
-    // Go through all devices and set status
+    // Records hold slot-encoded addresses, so match on the slot
     for (BusAddrRecord& addrStatus : _addrStatus)
     {
-        if (std::find(addrList.begin(), addrList.end(), addrStatus.address) != addrList.end())
-        {
-            addrStatus.isChange = addrStatus.onlineState == DeviceOnlineState::ONLINE;
-            addrStatus.onlineState = DeviceOnlineState::OFFLINE;
-            _busElemStatusChangeDetected = true;
-            _lastBusElemOnlineStatusUpdateTimeMs = millis();
-            _lastPollOrStatusUpdateTimeMs = millis();
-        }
+        if (BusI2CAddrAndSlot(addrStatus.address).getSlotNum() == slotNum)
+            markGoneOffline(addrStatus);
     }
+    eraseSpuriousRecords();
 
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
@@ -600,22 +600,90 @@ void BusStatusMgr::informBusStuck()
         return;
 
     // Go through all devices and set status to offline
-    bool anySet = false;
     for (BusAddrRecord& addrStatus : _addrStatus)
-    {
-        addrStatus.isChange = addrStatus.onlineState == DeviceOnlineState::ONLINE;
-        addrStatus.onlineState = DeviceOnlineState::OFFLINE;
-        anySet = true;
-    }
-    _busElemStatusChangeDetected = anySet;
-    if (anySet)
-    {
-        _lastBusElemOnlineStatusUpdateTimeMs = millis();
-        _lastPollOrStatusUpdateTimeMs = millis();
-    }
+        markGoneOffline(addrStatus);
+    eraseSpuriousRecords();
 
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief A device has gone (e.g. its slot lost power). An online device is reported as going and then
+///        deleted (as when it stops responding); a device not yet online is marked for eraseSpuriousRecords()
+/// @param rec record
+/// @note assumes the lock is held
+void BusStatusMgr::markGoneOffline(BusAddrRecord& rec)
+{
+    switch (rec.onlineState)
+    {
+        case DeviceOnlineState::ONLINE:
+        case DeviceOnlineState::OFFLINE:
+            rec.onlineState = DeviceOnlineState::PENDING_DELETION;
+            rec.isChange = true;
+            rec.count = 0;
+            _busElemStatusChangeDetected = true;
+            _lastBusElemOnlineStatusUpdateTimeMs = millis();
+            _lastPollOrStatusUpdateTimeMs = millis();
+            break;
+        case DeviceOnlineState::INITIAL:
+            // Never reported, so nothing to tell anyone - erased by eraseSpuriousRecords()
+            rec.onlineState = DeviceOnlineState::OFFLINE;
+            rec.isChange = false;
+            break;
+        case DeviceOnlineState::PENDING_DELETION:
+            break;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Erase records that went offline without ever being reported online (see markGoneOffline())
+/// @note assumes the lock is held
+void BusStatusMgr::eraseSpuriousRecords()
+{
+    for (const BusAddrRecord& rec : _addrStatus)
+    {
+        if ((rec.onlineState == DeviceOnlineState::OFFLINE) && !rec.isChange)
+            addForgottenAddr(rec.address);
+    }
+    _addrStatus.erase(std::remove_if(_addrStatus.begin(), _addrStatus.end(),
+            [](const BusAddrRecord& rec) { return (rec.onlineState == DeviceOnlineState::OFFLINE) && !rec.isChange; }),
+        _addrStatus.end());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Add an address to the addresses whose bus task state should be forgotten
+/// @note assumes the lock is held
+void BusStatusMgr::addForgottenAddr(BusElemAddrType address)
+{
+    _forgottenAddrsPending = true;
+    if (std::find(_forgottenAddrs.begin(), _forgottenAddrs.end(), address) != _forgottenAddrs.end())
+        return;
+    if (_forgottenAddrs.size() >= FORGOTTEN_ADDRS_MAX)
+    {
+        _forgottenAddrsOverflow = true;
+        return;
+    }
+    _forgottenAddrs.push_back(address);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get addresses whose per-address state on the bus task should be forgotten since the last call
+/// @param addrs (out) addresses
+/// @return false if some were missed (more than the list holds) - then forget the state of every address
+bool BusStatusMgr::getForgottenAddresses(std::vector<BusElemAddrType>& addrs)
+{
+    addrs.clear();
+    if (!_forgottenAddrsPending)
+        return true;
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return true;
+    addrs.swap(_forgottenAddrs);
+    bool allReported = !_forgottenAddrsOverflow;
+    _forgottenAddrsOverflow = false;
+    _forgottenAddrsPending = false;
+    RaftMutex_unlock(_busElemStatusMutex);
+    return allReported;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -628,21 +696,33 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
         return false;
 
-    // Check for any pending requests
-    for (BusAddrRecord& addrStatus : _addrStatus)
+    // Find the due device with the earliest due time
+    bool pollPending = false;
+    int32_t recIdx = _pollScheduler.findEarliestDue(_addrStatus, getRecordDeviceStatusIfOnline, timeNowUs);
+    if (recIdx != DevicePollScheduler::NONE_DUE)
     {
-        // Check if a poll is due
-        if (addrStatus.deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo))
-        {
-            // Return semaphore
-            RaftMutex_unlock(_busElemStatusMutex);
-            return true;
-        }
+        pollPending = _addrStatus[recIdx].deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo);
+        _pollScheduler.markPolled(recIdx);
     }
 
     // Return semaphore
     RaftMutex_unlock(_busElemStatusMutex);
-    return false;
+    return pollPending;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get the earliest time any device poll (or poll step) is due
+/// @param timeNowUs current time in us
+/// @param dueUs (out) earliest due time (may be in the past)
+/// @return false if no device is polled
+bool BusStatusMgr::getNextPollDueUs(uint64_t timeNowUs, uint64_t& dueUs)
+{
+    // Obtain semaphore
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    bool anyPolled = DevicePollScheduler::getEarliestDueUs(_addrStatus, getRecordDeviceStatusIfOnline, timeNowUs, dueUs);
+    RaftMutex_unlock(_busElemStatusMutex);
+    return anyPolled;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -675,97 +755,6 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     {
         // Add result to aggregator
         putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs);
-
-        // Track FIFO overrun flag from status bytes if present (LSM6DS-style FIFO_STATUS1/2)
-        if ((nextReqIdx == 0) && (pollResultData.size() >= 4))
-        {
-            uint8_t fifoStatus2 = pollResultData[3];
-            if (fifoStatus2 & 0x40)
-                pAddrStatus->deviceStatus.debugIncFifoOverrunCount();
-            if (fifoStatus2 & 0x20)
-                pAddrStatus->deviceStatus.debugIncFifoFullCount();
-        }
-
-#ifdef DEBUG_LSM6DS_FIFO_DECODE
-        // TEMPORARY DEBUG: Decode LSM6DS FIFO poll data to diagnose framing issues
-        // Buffer layout: [0:2]=BE timestamp, [2:6]=FIFO_STATUS1-4, [6:198]=FIFO data (single read 0x3a=r196, IF_INC wraps 0x3F->0x3E)
-        // FIFO_STATUS1/2 (bytes[2:4]): word count in bits[11:0], overrun=bit14, full=bit13, empty=bit12
-        // FIFO_STATUS3/4 (bytes[4:6]): pattern counter in bits[9:0]
-        // FIFO word order per pattern cycle: gx(0), gy(1), gz(2), ax(3), ay(4), az(5)
-        if ((pollResultData.size() >= 8) && (nextReqIdx == 0) && ((address & 0xFF) == 0x6a))
-        {
-            uint16_t ts = (pollResultData[0] << 8) | pollResultData[1];
-            // FIFO_STATUS1/2
-            uint16_t wordCount = ((pollResultData[3] & 0x0F) << 8) | pollResultData[2];
-            bool overrun = (pollResultData[3] & 0x40) != 0;
-            bool fifoFull = (pollResultData[3] & 0x20) != 0;
-            bool fifoEmpty = (pollResultData[3] & 0x10) != 0;
-            // FIFO_STATUS3/4 - pattern counter
-            uint16_t pattern = ((pollResultData[5] & 0x03) << 8) | pollResultData[4];
-
-            // Hex dump of status bytes [2:6]
-            LOG_I(MODULE_PREFIX, "LSM6DS addr=0x%03x len=%zu ts=%u STATUS=[%02x %02x %02x %02x] wc=%d pat=%d ovr=%d full=%d empty=%d",
-                  address, pollResultData.size(), ts,
-                  pollResultData[2], pollResultData[3], pollResultData[4], pollResultData[5],
-                  wordCount, pattern, overrun, fifoFull, fifoEmpty);
-
-            // Decode first few complete 6-axis samples from FIFO data
-            // FIFO data starts at offset 6 in pollResultData
-            // Each sample = 12 bytes (6 words x 2 bytes): gx, gy, gz, ax, ay, az (all LE int16)
-            const size_t fifoDataOffset = 6;
-            const size_t fifoDataLen = pollResultData.size() - fifoDataOffset;
-            const size_t bytesPerSample = 12;
-
-            // Show raw hex of first 24 bytes of FIFO data (2 full samples worth)
-            char hexBuf[128] = {};
-            size_t hexLen = std::min(fifoDataLen, (size_t)24);
-            for (size_t i = 0; i < hexLen; i++)
-                snprintf(hexBuf + i*3, sizeof(hexBuf) - i*3, "%02x ", pollResultData[fifoDataOffset + i]);
-            LOG_I(MODULE_PREFIX, "LSM6DS FIFO raw first %zu bytes: [%s]", hexLen, hexBuf);
-
-            // Decode and display up to 3 samples starting from the beginning (no alignment skip)
-            // This will show if the data is misaligned - gravity (~8192 for ax or ~16384 for gyro) in wrong fields
-            size_t maxSamples = std::min((size_t)3, fifoDataLen / bytesPerSample);
-            for (size_t s = 0; s < maxSamples; s++)
-            {
-                size_t k = fifoDataOffset + s * bytesPerSample;
-                if (k + bytesPerSample > pollResultData.size())
-                    break;
-                int16_t gx = (int16_t)((pollResultData[k+1] << 8) | pollResultData[k]);
-                int16_t gy = (int16_t)((pollResultData[k+3] << 8) | pollResultData[k+2]);
-                int16_t gz = (int16_t)((pollResultData[k+5] << 8) | pollResultData[k+4]);
-                int16_t ax = (int16_t)((pollResultData[k+7] << 8) | pollResultData[k+6]);
-                int16_t ay = (int16_t)((pollResultData[k+9] << 8) | pollResultData[k+8]);
-                int16_t az = (int16_t)((pollResultData[k+11] << 8) | pollResultData[k+10]);
-                LOG_I(MODULE_PREFIX, "LSM6DS sample[%zu] raw: gx=%d gy=%d gz=%d ax=%d ay=%d az=%d  (%.2f %.2f %.2f g, %.1f %.1f %.1f dps)",
-                      s, gx, gy, gz, ax, ay, az,
-                      ax/8192.0, ay/8192.0, az/8192.0,
-                      gx/16.384, gy/16.384, gz/16.384);
-            }
-
-            // Also decode with pattern-based alignment skip to compare
-            uint32_t skip = (6 - pattern % 6) % 6;
-            size_t alignedOffset = fifoDataOffset + skip * 2;
-            if (skip > 0 && alignedOffset + bytesPerSample <= pollResultData.size())
-            {
-                size_t k = alignedOffset;
-                int16_t gx = (int16_t)((pollResultData[k+1] << 8) | pollResultData[k]);
-                int16_t gy = (int16_t)((pollResultData[k+3] << 8) | pollResultData[k+2]);
-                int16_t gz = (int16_t)((pollResultData[k+5] << 8) | pollResultData[k+4]);
-                int16_t ax = (int16_t)((pollResultData[k+7] << 8) | pollResultData[k+6]);
-                int16_t ay = (int16_t)((pollResultData[k+9] << 8) | pollResultData[k+8]);
-                int16_t az = (int16_t)((pollResultData[k+11] << 8) | pollResultData[k+10]);
-                LOG_I(MODULE_PREFIX, "LSM6DS aligned(skip=%u) raw: gx=%d gy=%d gz=%d ax=%d ay=%d az=%d  (%.2f %.2f %.2f g, %.1f %.1f %.1f dps)",
-                      skip, gx, gy, gz, ax, ay, az,
-                      ax/8192.0, ay/8192.0, az/8192.0,
-                      gx/16.384, gy/16.384, gz/16.384);
-            }
-            else if (skip == 0)
-            {
-                LOG_I(MODULE_PREFIX, "LSM6DS pattern=%d => skip=0 (already aligned at gx)", pattern);
-            }
-        }
-#endif // DEBUG_LSM6DS_FIFO_DECODE
 
         // Check if this is a completed poll
         if (nextReqIdx == 0)
@@ -1069,7 +1058,7 @@ bool BusStatusMgr::setDevicePollIntervalUs(BusElemAddrType address, uint32_t pol
     BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     if (pAddrStatus)
     {
-        pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs = pollIntervalUs;
+        pAddrStatus->deviceStatus.setPollIntervalUs(pollIntervalUs, micros());
         updated = true;
     }
 
@@ -1345,6 +1334,7 @@ void BusStatusMgr::clearDeviceIdentification(BusElemAddrType address)
         // trust what we decided it was.
         pAddrStatus->deviceStatus.clear();
         pAddrStatus->isNewlyIdentified = false;
+        addForgottenAddr(address);
     }
     RaftMutex_unlock(_busElemStatusMutex);
 }
@@ -1373,6 +1363,70 @@ String BusStatusMgr::getPollTimingJson() const
     }
     json += "}";
     return json;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Record the bus time a device's poll (or poll step) took
+/// @param address address
+/// @param busTimeUs bus time in us
+void BusStatusMgr::recordPollBusTimeUs(BusElemAddrType address, uint64_t busTimeUs)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
+    if (pAddrStatus)
+        pAddrStatus->deviceStatus.pollTimingStats.recordBusTimeUs(busTimeUs > UINT32_MAX ? UINT32_MAX : (uint32_t)busTimeUs);
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Estimate the bus time one poll of a device takes
+/// @param pollInfo device polling info
+/// @param busHz bus frequency
+/// @return estimated time in us
+/// @note each byte is 9 bit times (8 data + ack), each transaction has an address byte for its write and another
+///       for its read, plus start, restart and stop and a fixed software overhead
+uint32_t BusStatusMgr::estimatePollTimeUs(const DevicePollingInfo& pollInfo, uint32_t busHz)
+{
+    if (busHz == 0)
+        return 0;
+    static const uint32_t BITS_PER_TRANSACTION_OVERHEAD = 3;
+    static const uint32_t SOFTWARE_OVERHEAD_US_PER_TRANSACTION = 100;
+    uint64_t totalUs = 0;
+    for (const BusRequestInfo& req : pollInfo.pollReqs)
+    {
+        uint32_t bytes = 1 + req.getWriteDataLen();
+        if (req.getReadReqLen() > 0)
+            bytes += 1 + req.getReadReqLen();
+        uint32_t bits = bytes * 9 + BITS_PER_TRANSACTION_OVERHEAD;
+        totalUs += (uint64_t)bits * 1000000 / busHz + SOFTWARE_OVERHEAD_US_PER_TRANSACTION;
+    }
+    return totalUs > UINT32_MAX ? UINT32_MAX : (uint32_t)totalUs;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Estimate the share of the bus time that polling online devices at their intervals needs
+/// @param defaultBusHz bus frequency for devices that don't set their own
+/// @return estimated load in percent (can exceed 100 when more polling is configured than the bus can do)
+uint32_t BusStatusMgr::getPollLoadPct(uint32_t defaultBusHz) const
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+    double load = 0;
+    for (const BusAddrRecord& addrStatus : _addrStatus)
+    {
+        const DevicePollingInfo& pollInfo = addrStatus.deviceStatus.deviceIdentPolling;
+        if ((addrStatus.onlineState != DeviceOnlineState::ONLINE) || (pollInfo.pollReqs.size() == 0))
+            continue;
+        uint32_t busHz = pollInfo.pollBusHz != 0 ? pollInfo.pollBusHz : defaultBusHz;
+        uint32_t intervalUs = DevicePollingInfo::clampPollIntervalUs(pollInfo.pollIntervalUs);
+        uint32_t pollTimeUs = addrStatus.deviceStatus.pollTimingStats.getMeanBusTimePerPollUs();
+        if (pollTimeUs == 0)
+            pollTimeUs = estimatePollTimeUs(pollInfo, busHz);
+        load += (double)pollTimeUs / intervalUs;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+    return (uint32_t)(load * 100 + 0.5);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

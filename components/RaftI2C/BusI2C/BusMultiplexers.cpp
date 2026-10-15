@@ -658,9 +658,7 @@ bool BusMultiplexers::attemptToClearBusStuck(bool failAfterSlotSet, uint32_t slo
 
         // Inform the bus status manager that a slot is powering down
         bool isSingleSlot = failAfterSlotSet && (_pBusPowerController ? _pBusPowerController->isSlotPowerControlled(slotNum) : true);
-        std::vector<BusElemAddrType> listOfAddr;
-        _busElemTracker.getAddrList(isSingleSlot ? slotNum : 0, listOfAddr);
-        _busStatusMgr.goingOffline(listOfAddr);
+        _busStatusMgr.goingOfflineOnSlot(isSingleSlot ? slotNum : 0);
 
         // Start power cycling the slot
         if(_pBusPowerController)
