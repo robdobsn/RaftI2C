@@ -259,8 +259,38 @@ public:
     /// @brief Get pending deletions and clear the queue
     /// @param deletions (out) vector to receive pending deletions
     void getPendingDeletions(std::vector<DeletionNotice>& deletions);
-    
+
+    /// @brief Get poll timing statistics for each polled device as JSON
+    /// @return JSON object keyed by element address (hex), e.g. {"68":{"dtIdx":5,"cfgUs":50000,...}}
+    String getPollTimingJson() const;
+
+    /// @brief Reset the poll timing statistics of all devices
+    void resetPollTiming();
+
+    /// @brief Get identification timing for each element seen since the bus started, as JSON
+    /// @return JSON array, e.g. [{"addr":"68","seenMs":120,"onlineMs":140,"identMs":152,"dtIdx":5}]. Times are
+    ///         ms since the bus status manager was set up; -1 means not (yet) reached
+    String getIdentTimingJson() const;
+
 private:
+    // Identification timing for an element: when it was first seen, came online and was identified
+    struct IdentTiming
+    {
+        BusElemAddrType address = 0;
+        static constexpr uint32_t NOT_REACHED = UINT32_MAX;
+        uint32_t seenMs = NOT_REACHED;
+        uint32_t onlineMs = NOT_REACHED;
+        uint32_t identMs = NOT_REACHED;
+        uint16_t deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
+    };
+    static const uint32_t MAX_IDENT_TIMING = 16;
+    IdentTiming _identTiming[MAX_IDENT_TIMING];
+    uint32_t _identTimingCount = 0;
+    uint32_t _setupTimeMs = 0;
+
+    // Find (or add) the identification timing entry for an element - assumes semaphore taken
+    IdentTiming* getIdentTiming(BusElemAddrType address, bool addIfMissing);
+
     // Bus element status change mutex
     mutable RaftMutex _busElemStatusMutex;
 

@@ -44,6 +44,9 @@ public:
     };
     const CrcStats& getCrcStats() const { return _crcStats; }
 
+    /// @brief Get the number of poll steps performed so far (a running count, for activity statistics)
+    uint32_t getPollStepCount() const { return _pollStepCount; }
+
 private:
 
     // Validate (and if necessary re-read) a poll response carrying a CRC trailer.
@@ -134,6 +137,9 @@ private:
     uint32_t _timingEntryCount = 0;
     PollTimingStats& getTimingStats(BusElemAddrType address);
 #endif
+
+    // Number of poll steps performed (running count)
+    uint32_t _pollStepCount = 0;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CDevPollMgr";    

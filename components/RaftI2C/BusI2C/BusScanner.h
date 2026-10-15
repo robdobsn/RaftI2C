@@ -39,6 +39,12 @@ public:
     /// @return true if a scan is pending
     bool isScanPending(uint32_t curTimeMs);
 
+    /// @brief Get the number of addresses probed so far (a running count, for activity statistics)
+    uint32_t getScanProbeCount() const
+    {
+        return _scanProbeCount;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service called from I2C task
     /// @param curTimeUs Current time in microseconds
@@ -172,6 +178,9 @@ private:
     // ample against events that happen when a human plugs something in.
     static const uint32_t UNIDENTIFIED_RETRY_INTERVAL_MS = 3000;
     uint32_t _lastUnidentRetryMs = 0;
+
+    // Number of addresses probed (running count)
+    uint32_t _scanProbeCount = 0;
 
 
     // Debug

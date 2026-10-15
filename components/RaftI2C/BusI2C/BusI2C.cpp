@@ -424,6 +424,9 @@ void BusI2C::i2cWorkerTask()
         if (!busOwnerLock.isLocked())
             continue;
 
+        // Activity statistics - time spent in each part of the pass
+        uint64_t passStartUs = micros();
+
 #ifdef DEBUG_LOOP_TIMING_WITH_GPIO_NUM
         digitalWrite(DEBUG_LOOP_TIMING_WITH_GPIO_NUM, 1);
         delayMicroseconds(1);
@@ -444,6 +447,9 @@ void BusI2C::i2cWorkerTask()
         bool busTaskHandlerBusy = false;
         if (!isPaused)
             busTaskHandlerBusy = _deviceIdentMgr.serviceBusTaskHandler();
+        uint64_t sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_HANDLER, sectionEndUs - passStartUs);
+        uint64_t sectionStartUs = sectionEndUs;
 
         // Handle bus scanning
 #ifndef DEBUG_NO_SCANNING
@@ -457,12 +463,22 @@ void BusI2C::i2cWorkerTask()
         }
 #endif
 
+        sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_SCAN, sectionEndUs - sectionStartUs);
+        sectionStartUs = sectionEndUs;
+
         // Handle requests
         _busAccessor.processRequestQueue(isPaused);
+        sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_REQUESTS, sectionEndUs - sectionStartUs);
+        sectionStartUs = sectionEndUs;
 
         // Don't do any polling when paused
         if (isPaused)
+        {
+            _activityStats.endPass(passStartUs, sectionEndUs, _busScanner.getScanProbeCount(), _devicePollingMgr.getPollStepCount());
             continue;
+        }
 
 #ifdef DEBUG_NO_POLLING
         continue;
@@ -498,6 +514,9 @@ void BusI2C::i2cWorkerTask()
 
         // Update IO expanders (if dirty)
         _busIOExpanders.syncI2CIOStateChanges(false, std::bind(&BusI2C::i2cSendSync, this, std::placeholders::_1, std::placeholders::_2));
+        sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_MUX_IO, sectionEndUs - sectionStartUs);
+        sectionStartUs = sectionEndUs;
 
         // Device polling - held off while the bus-task handler is mid-operation (see above).
         // Polling is pure bus load with no role in recovery, so unlike scanning it is safe to
@@ -519,6 +538,11 @@ void BusI2C::i2cWorkerTask()
 
         // Service bus stuck handler
         _busStuckHandler.loopSync();
+
+        // Activity statistics - polling section and end of pass
+        sectionEndUs = micros();
+        _activityStats.addSectionUs(BusI2CActivityStats::SECTION_POLL, sectionEndUs - sectionStartUs);
+        _activityStats.endPass(passStartUs, sectionEndUs, _busScanner.getScanProbeCount(), _devicePollingMgr.getPollStepCount());
 
 #ifdef DEBUG_RAFT_BUSI2C_MEASURE_I2C_LOOP_TIME
         // Debug

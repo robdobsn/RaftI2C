@@ -577,6 +577,7 @@ RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& fa
 
     // Handle the scan
     failedToEnableSlot = false;
+    _scanProbeCount++;
     BusRequestInfo reqRec(BUS_REQ_TYPE_SLOW_SCAN,
                 addr,
                 0, 0, 

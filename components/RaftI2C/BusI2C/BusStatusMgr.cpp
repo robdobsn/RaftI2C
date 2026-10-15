@@ -7,6 +7,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "BusStatusMgr.h"
+#include "BusI2CAddrAndSlot.h"
 #include "Logger.h"
 #include "RaftUtils.h"
 #include "DeviceIdentMgr.h"
@@ -50,6 +51,9 @@ BusStatusMgr::~BusStatusMgr()
 /// @param config configuration
 void BusStatusMgr::setup(const RaftJsonIF& config)
 {
+    // Time base for identification timing
+    _setupTimeMs = millis();
+
     // Get address to use for lockup detection
     _addrForLockupDetect = 0;
     _addrForLockupDetectValid = false;
@@ -264,6 +268,11 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
             BusAddrRecord newAddrStatus(address, DeviceOnlineState::INITIAL, true, false);
             _addrStatus.push_back(newAddrStatus);
             pAddrStatus = &_addrStatus.back();
+
+            // Identification timing - first seen
+            IdentTiming* pIdentTiming = getIdentTiming(address, true);
+            if (pIdentTiming && (pIdentTiming->seenMs == IdentTiming::NOT_REACHED))
+                pIdentTiming->seenMs = millis() - _setupTimeMs;
         }
 
         // Check if we found a record
@@ -277,6 +286,14 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
             // Handle element response
             isNewStatusChange = pAddrStatus->handleResponding(elemResponding, flagSpuriousRecord);
             isOnline = pAddrStatus->onlineState == DeviceOnlineState::ONLINE;
+
+            // Identification timing - first time online
+            if (isNewStatusChange && isOnline)
+            {
+                IdentTiming* pIdentTiming = getIdentTiming(address, false);
+                if (pIdentTiming && (pIdentTiming->onlineMs == IdentTiming::NOT_REACHED))
+                    pIdentTiming->onlineMs = millis() - _setupTimeMs;
+            }
 
 #ifdef DEBUG_BUS_ELEM_STATE_CHANGE
             // Debug
@@ -486,6 +503,14 @@ void BusStatusMgr::setBusElemDeviceStatus(BusElemAddrType address, const DeviceS
         {
             pAddrStatus->isNewlyIdentified = true;
             _busElemStatusChangeDetected = true;
+
+            // Identification timing - first identification
+            IdentTiming* pIdentTiming = getIdentTiming(address, false);
+            if (pIdentTiming && (pIdentTiming->identMs == IdentTiming::NOT_REACHED))
+            {
+                pIdentTiming->identMs = millis() - _setupTimeMs;
+                pIdentTiming->deviceTypeIndex = deviceStatus.getDeviceTypeIndex();
+            }
         }
     }
 
@@ -1322,4 +1347,86 @@ void BusStatusMgr::clearDeviceIdentification(BusElemAddrType address)
         pAddrStatus->isNewlyIdentified = false;
     }
     RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get poll timing statistics for each polled device as JSON
+/// @return JSON object keyed by element address (hex)
+String BusStatusMgr::getPollTimingJson() const
+{
+    String json = "{";
+    if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        bool first = true;
+        for (const BusAddrRecord& addrStatus : _addrStatus)
+        {
+            const DeviceStatus& deviceStatus = addrStatus.deviceStatus;
+            if (!deviceStatus.isValid() || (deviceStatus.getNumPollRequests() == 0))
+                continue;
+            if (!first)
+                json += ",";
+            first = false;
+            json += "\"" + BusI2CAddrAndSlot::toString(addrStatus.address) + "\":{\"dtIdx\":" +
+                    String(deviceStatus.getDeviceTypeIndex()) + "," + deviceStatus.pollTimingStats.getJson().substring(1);
+        }
+        RaftMutex_unlock(_busElemStatusMutex);
+    }
+    json += "}";
+    return json;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Reset the poll timing statistics of all devices
+void BusStatusMgr::resetPollTiming()
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    for (BusAddrRecord& addrStatus : _addrStatus)
+        addrStatus.deviceStatus.pollTimingStats.reset();
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get identification timing for each element seen since the bus started, as JSON
+/// @return JSON array
+String BusStatusMgr::getIdentTimingJson() const
+{
+    String json = "[";
+    if (RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        for (uint32_t i = 0; i < _identTimingCount; i++)
+        {
+            const IdentTiming& t = _identTiming[i];
+            char buf[120];
+            auto msOrNeg = [](uint32_t ms) { return (ms == IdentTiming::NOT_REACHED) ? -1L : (long)ms; };
+            snprintf(buf, sizeof(buf), R"(%s{"addr":"%s","seenMs":%ld,"onlineMs":%ld,"identMs":%ld,"dtIdx":%d})",
+                     i > 0 ? "," : "", BusI2CAddrAndSlot::toString(t.address).c_str(), msOrNeg(t.seenMs),
+                     msOrNeg(t.onlineMs), msOrNeg(t.identMs),
+                     t.deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)t.deviceTypeIndex);
+            json += buf;
+        }
+        RaftMutex_unlock(_busElemStatusMutex);
+    }
+    json += "]";
+    return json;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Find (or add) the identification timing entry for an element - assumes semaphore taken
+/// @param address element address
+/// @param addIfMissing true to add an entry if there is none (and there is room)
+/// @return entry or nullptr
+BusStatusMgr::IdentTiming* BusStatusMgr::getIdentTiming(BusElemAddrType address, bool addIfMissing)
+{
+    for (uint32_t i = 0; i < _identTimingCount; i++)
+    {
+        if (_identTiming[i].address == address)
+            return &_identTiming[i];
+    }
+    if (!addIfMissing || (_identTimingCount >= MAX_IDENT_TIMING))
+        return nullptr;
+    IdentTiming& entry = _identTiming[_identTimingCount++];
+    entry = IdentTiming();
+    entry.address = address;
+    return &entry;
 }

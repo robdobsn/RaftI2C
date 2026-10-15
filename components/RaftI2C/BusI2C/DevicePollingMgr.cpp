@@ -56,6 +56,9 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs)
     DevicePollingInfo pollInfo;
     if (_busStatusMgr.getPendingIdentPoll(timeNowUs, pollInfo))
     {
+        // Count poll steps (for activity statistics)
+        _pollStepCount++;
+
         // Get the address and slot
         if (pollInfo.pollReqs.size() == 0)
             return;

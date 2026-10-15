@@ -17,6 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
+#include "BusI2CActivityStats.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "SlotController.h"
@@ -364,15 +365,26 @@ public:
     /// first-read CRC failures, "recovered" those fixed by a re-read, and "dropped"
     /// those discarded (no correct data reached the decode). See
     /// devdocs/i2c-poll-data-integrity-crc-plan.md
+    /// Also reports: "activity" - where the worker task spent its time in the last complete ~1 s window;
+    /// "pollTiming" - per polled device, how closely polls keep to the configured interval; "identTiming" -
+    /// when each element was first seen, came online and was identified (ms since bus setup)
     virtual String getBusStatusJson() const override final
     {
         const DevicePollingMgr::CrcStats& s = _devicePollingMgr.getCrcStats();
         char buf[160];
         snprintf(buf, sizeof(buf),
-                 R"({"pollIntegrity":{"checked":%u,"failed":%u,"recovered":%u,"dropped":%u,"recoveries":%u}})",
+                 R"({"pollIntegrity":{"checked":%u,"failed":%u,"recovered":%u,"dropped":%u,"recoveries":%u})",
                  (unsigned)s.checked, (unsigned)s.failed, (unsigned)s.recovered, (unsigned)s.dropped,
                  (unsigned)s.recoveries);
-        return String(buf);
+        return String(buf) + ",\"activity\":" + _activityStats.getJson() +
+                ",\"pollTiming\":" + _busStatusMgr.getPollTimingJson() +
+                ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() + "}";
+    }
+
+    /// @brief Reset the bus status statistics that measure over a period (poll timing)
+    virtual void resetBusStatus() override final
+    {
+        _busStatusMgr.resetPollTiming();
     }
 
 private:
@@ -513,6 +525,9 @@ private:
 
     // Device polling manager
     DevicePollingMgr _devicePollingMgr;
+
+    // Where the worker task spends its time (reported in bus status)
+    BusI2CActivityStats _activityStats;
 
     // Bus accessor
     BusAccessor _busAccessor;
