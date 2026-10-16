@@ -243,6 +243,21 @@ public:
     void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set the addresses the new-device identification handler handles (empty: every address)
+    virtual void setNewDeviceIdentAddrRanges(const std::vector<std::pair<uint32_t, uint32_t>>& ranges) override final;
+
+    /// @brief Check whether the identification handler could claim a device at an address
+    /// @param i2cAddr 7-bit address
+    /// @return false if no handler is registered, true if it handles every address or this one
+    bool isAddrClaimedByHook(uint32_t i2cAddr) const;
+
+    /// @brief Changes each time the handler or its address ranges change (so the scanner rebuilds its lists)
+    uint32_t getHookClaimsEpoch() const
+    {
+        return _hookClaimsEpoch;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Ask for devices to be identified again (carried out on the bus task)
     /// @param request which devices
     /// @return true if accepted
@@ -342,6 +357,12 @@ private:
     // Incremented when an identification hook is registered (so NoMatch elements are offered to it at once)
     std::atomic<uint32_t> _hookEpoch{0};
 
+    // Addresses the hook handles (under _handlerMutex; empty: every address) and a count of changes to the hook or
+    // its addresses
+    std::vector<std::pair<uint32_t, uint32_t>> _hookAddrRanges;
+    std::atomic<uint32_t> _hookClaimsEpoch{0};
+    bool isAddrInHookRangesLocked(uint32_t i2cAddr) const;
+
     // Statistics
     uint32_t _hookCallCount = 0;
     uint32_t _initNackCount = 0;
@@ -371,7 +392,7 @@ private:
     // Optional new-device identification handler (device-agnostic delegation hook) and bus-task service handler
     // These are registered from another task (generally the main task) and called on the bus task so each
     // {fn, ctx} pair is only accessed under _handlerMutex - it is copied out under the mutex and called outside it
-    RaftMutex _handlerMutex;
+    mutable RaftMutex _handlerMutex;
     RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
     RaftBusTaskServiceFn _busTaskServiceFn = nullptr;
     void* _busTaskServiceCtx = nullptr;

@@ -329,6 +329,7 @@ void BusI2C::loop()
     {
         _pollLoadCheckLastMs = millis();
         uint32_t pollLoadPct = _busStatusMgr.getPollLoadPct(_freq);
+        _busScanner.setPollLoadPct(pollLoadPct);
         if ((pollLoadPct >= POLL_LOAD_WARN_PCT) && !_pollLoadWarned)
         {
             LOG_W(MODULE_PREFIX, "%s polling needs about %d%% of the bus time (warning above %d%%) - polls will be late "

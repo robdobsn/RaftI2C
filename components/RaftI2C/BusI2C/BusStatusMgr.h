@@ -81,6 +81,9 @@ public:
     /// @param deviceStatus device status to set
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
+    /// @brief Check whether an element has answered but isn't online yet (it needs another successful access)
+    bool isElemPendingOnline(BusElemAddrType address) const;
+
     /// @brief Get device type index by address
     /// @param address address of the bus element
     /// @return device type index (DEVICE_TYPE_INDEX_INVALID if not known)

@@ -331,7 +331,8 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType addres
     void* pNewDeviceIdentCtx = nullptr;
     if (deviceTypeRecords.isAddrHookBlocked(i2cAddr) || !RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
         return IdentOutcome::NoMatch;
-    newDeviceIdentFn = _newDeviceIdentFn;
+    // The handler is only offered addresses it handles
+    newDeviceIdentFn = isAddrInHookRangesLocked(i2cAddr) ? _newDeviceIdentFn : nullptr;
     pNewDeviceIdentCtx = _newDeviceIdentCtx;
     if (newDeviceIdentFn)
     {
@@ -1189,11 +1190,49 @@ void DeviceIdentMgr::registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDevic
     _newDeviceIdentCtx = pCtx;
     if (newDeviceIdentFn)
         _hookEpoch++;
+    _hookClaimsEpoch++;
     uint32_t callCountAtReg = _newDeviceIdentCallCount;
     RaftMutex_unlock(_handlerMutex);
 
     // Wait for any call to the previous handler to complete
     waitForHandlerQuiescence(_newDeviceIdentInProgress, _newDeviceIdentCallCount, callCountAtReg, "newDeviceIdent");
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set the addresses the new-device identification handler handles (empty: every address)
+void DeviceIdentMgr::setNewDeviceIdentAddrRanges(const std::vector<std::pair<uint32_t, uint32_t>>& ranges)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    _hookAddrRanges = ranges;
+    RaftMutex_unlock(_handlerMutex);
+    // Addresses now handled are offered to the handler at once, and the scanner rebuilds its lists
+    _hookEpoch++;
+    _hookClaimsEpoch++;
+    LOG_I(MODULE_PREFIX, "setNewDeviceIdentAddrRanges %d range(s)", (int)ranges.size());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether the identification handler could claim a device at an address
+bool DeviceIdentMgr::isAddrClaimedByHook(uint32_t i2cAddr) const
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return true;
+    bool claimed = (_newDeviceIdentFn != nullptr) && isAddrInHookRangesLocked(i2cAddr);
+    RaftMutex_unlock(_handlerMutex);
+    return claimed;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether an address is in the handler's ranges (all addresses if none are set) - mutex held
+bool DeviceIdentMgr::isAddrInHookRangesLocked(uint32_t i2cAddr) const
+{
+    if (_hookAddrRanges.empty())
+        return true;
+    for (const auto& range : _hookAddrRanges)
+        if ((i2cAddr >= range.first) && (i2cAddr <= range.second))
+            return true;
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

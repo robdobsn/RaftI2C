@@ -1722,3 +1722,15 @@ void BusStatusMgr::setReIdentOutcome(BusElemAddrType address, ReIdentResult resu
     RaftMutex_unlock(_busElemStatusMutex);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether an element has answered but isn't online yet (it needs another successful access)
+bool BusStatusMgr::isElemPendingOnline(BusElemAddrType address) const
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    const BusAddrRecord* pRec = findAddrStatusRecord(address);
+    bool pending = pRec && (pRec->onlineState == DeviceOnlineState::INITIAL) && (pRec->count > 0);
+    RaftMutex_unlock(_busElemStatusMutex);
+    return pending;
+}
+

@@ -371,7 +371,8 @@ public:
     /// devdocs/i2c-poll-data-integrity-crc-plan.md
     /// Also reports: "activity" - where the worker task spent its time in the last complete ~1 s window;
     /// "pollTiming" - per polled device, how closely polls keep to the configured interval; "identTiming" -
-    /// when each element was first seen, came online and was identified (ms since bus setup)
+    /// when each element was first seen, came online and was identified (ms since bus setup); "scan" - the scan
+    /// list sizes, background sweep addresses, scan share and probe counts
     virtual String getBusStatusJson() const override final
     {
         const DevicePollingMgr::CrcStats& s = _devicePollingMgr.getCrcStats();
@@ -383,7 +384,8 @@ public:
         return String(buf) + ",\"pollLoadPct\":" + String(_busStatusMgr.getPollLoadPct(_freq)) +
                 ",\"activity\":" + _activityStats.getJson() +
                 ",\"pollTiming\":" + _busStatusMgr.getPollTimingJson() +
-                ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() + "}";
+                ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() +
+                ",\"scan\":" + _busScanner.getScanStatsJson() + "}";
     }
 
     /// @brief Reset the bus status statistics that measure over a period (poll timing)

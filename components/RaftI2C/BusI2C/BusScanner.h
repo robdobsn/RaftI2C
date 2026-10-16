@@ -17,6 +17,7 @@
 #include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
 #include "DeviceIdentMgr.h"
+#include "BusScanSchedule.h"
 
 // #define DEBUG_SCANNING_SWEEP_TIME
 
@@ -56,6 +57,15 @@ public:
     // Scan period
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
 
+    /// @brief Set the share of the bus that polling needs (from the poll intervals), which sets the scan share
+    void setPollLoadPct(uint32_t pollLoadPct)
+    {
+        _pollLoadPct = pollLoadPct;
+    }
+
+    /// @brief Scanning status as JSON (list sizes, background addresses, share, probe counts)
+    String getScanStatsJson() const;
+
 private:
     // Scanning mode
     enum BusScanMode {
@@ -67,7 +77,7 @@ private:
     };
     BusScanMode _scanMode = SCAN_MODE_IDLE;
 
-    const char* getScanStateStr(BusScanMode scanState)
+    static const char* getScanStateStr(BusScanMode scanState)
     {
         switch (scanState)
         {
@@ -89,13 +99,50 @@ private:
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
     uint16_t _scanAddressesCurrentList = 0;
     
-    // Scan priority
-    std::vector<std::vector<BusElemAddrType>> _scanPriorityLists;
-
-    // Scan boost addresses (config "scanBoost") and the device type records generation the lists were built from
+    // Scan boost addresses (config "scanBoost") and the device type records generation and identification hook
+    // claims the lists were built from
     std::vector<uint32_t> _scanBoostAddrs;
     uint32_t _scanListsGeneration = 0;
+    uint32_t _scanClaimsEpoch = 0;
     void loadScanLists();
+
+    // Order of probes in the fast and slow modes: priority lists of addresses something can claim, and a slow
+    // background sweep of those nothing can (BusScanSchedule.h)
+    BusScanSchedule _schedule;
+    static const uint32_t BACKGROUND_SWEEP_DEFAULT_MS = 10000;
+    uint32_t _backgroundSweepMs = BACKGROUND_SWEEP_DEFAULT_MS;
+    bool isAddrClaimable(uint32_t addr) const;
+    uint32_t slotNumFromPos(uint32_t pos) const;
+    uint32_t _numListAddrs[3] = {};
+    uint32_t _numBackgroundAddrs = 0;
+
+    // Elements that have answered once: probed again on the next pass, so a new device comes online without
+    // waiting for the scan to come round again
+    std::vector<std::pair<uint8_t, uint8_t>> _confirmQueue;
+    static const uint32_t CONFIRM_QUEUE_MAX = 8;
+
+    // Share of bus time for scanning in the slow mode: scanShareMaxPct on a quiet bus, falling with the poll load to
+    // scanShareMinPct. Time is earned as a credit and spent by each pass
+    std::atomic<uint32_t> _pollLoadPct{0};
+    static const uint32_t SCAN_SHARE_MIN_DEFAULT_PCT = 10;
+    static const uint32_t SCAN_SHARE_MAX_DEFAULT_PCT = 30;
+    static constexpr int64_t SCAN_CREDIT_MAX_US = 20000;
+    uint32_t _scanShareMinPct = SCAN_SHARE_MIN_DEFAULT_PCT;
+    uint32_t _scanShareMaxPct = SCAN_SHARE_MAX_DEFAULT_PCT;
+    int64_t _scanCreditUs = 0;
+    uint64_t _scanCreditLastUs = 0;
+    uint32_t getScanSharePct() const;
+    void updateScanCredit(uint64_t timeNowUs);
+
+    // Fast mode (after requestScan(fast)) ends after its sweeps or this long, whichever is first
+    static const uint32_t FAST_SCAN_MAX_DEFAULT_MS = 2000;
+    uint32_t _fastScanMaxMs = FAST_SCAN_MAX_DEFAULT_MS;
+    uint32_t _fastScanStartMs = 0;
+
+    // Statistics
+    uint32_t _backgroundProbeCount = 0;
+    uint32_t _confirmProbeCount = 0;
+    uint32_t _mainBusCheckCount = 0;
     
     // Scanning priority state - three MUST be exactly the same number
     // of scan priority recs as there are scan priority lists
