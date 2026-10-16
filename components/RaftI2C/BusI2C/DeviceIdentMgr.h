@@ -233,16 +233,22 @@ public:
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check device type match (communicates with the device to check its type)
     /// @param address address
-    /// @param pDevTypeRec device type record
-    /// @return true if device type matches
-    bool checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
+    /// @param deviceTypeIndex device type index
+    /// @return Match, NoMatch (including the device NACKing a step), or BusError (any other bus failure)
+    enum class DetectionResult
+    {
+        Match,
+        NoMatch,
+        BusError,
+    };
+    DetectionResult checkDeviceTypeMatch(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Process device initialisation
     /// @param address address
-    /// @param pDevTypeRec device type record
+    /// @param deviceTypeIndex device type index
     /// @return true if device initialisation was successful
-    bool processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
+    bool processDeviceInit(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
 private:
     // Form a bus element request from a command JSON string

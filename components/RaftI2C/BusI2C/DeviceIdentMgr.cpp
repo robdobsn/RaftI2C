@@ -112,39 +112,50 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     bool anyDeviceIdentified = false;
 #endif
     bool identified = false;
+    bool busErrorDuringDetection = false;
     for (const auto& deviceTypeIndex : deviceTypesForAddr)
     {
         // Get JSON definition for device
-        DeviceTypeRecord devTypeRec;
-        if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
+        const DeviceTypeRecord* pDevTypeRec = deviceTypeRecords.getRecord(deviceTypeIndex);
+        if (!pDevTypeRec)
             continue;
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s address %s", 
-                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", BusI2CAddrAndSlot::toString(address).c_str());
+                    pDevTypeRec->deviceType ? pDevTypeRec->deviceType : "NO NAME", BusI2CAddrAndSlot::toString(address).c_str());
 #endif
 
-        // Check if the detection value(s) match responses from the device
-        // Generate a bus request to read the detection value
-        if (checkDeviceTypeMatch(address, &devTypeRec))
+        // Check if the detection value(s) match responses from the device. A bus error (other than a NACK, which
+        // is how many devices reject a command meant for another type) ends the attempt: trying weaker records,
+        // or the identification hook, on a device that couldn't be read would give a wrong or harmful result.
+        // The scanner tries again later
+        DetectionResult detectionResult = checkDeviceTypeMatch(address, deviceTypeIndex);
+        if (detectionResult == DetectionResult::BusError)
+        {
+            busErrorDuringDetection = true;
+            LOG_W(MODULE_PREFIX, "identifyDevice bus error detecting %s at %s - identification deferred",
+                        pDevTypeRec->deviceType ? pDevTypeRec->deviceType : "?", BusI2CAddrAndSlot::toString(address).c_str());
+            break;
+        }
+        if (detectionResult == DetectionResult::Match)
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
+            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", pDevTypeRec->devInfoJson ? pDevTypeRec->devInfoJson : "NO INFO");
 #endif
 #ifdef INFO_NEW_DEVICE_IDENTIFIED
             LOG_I(MODULE_PREFIX, "identifyDevice new device %s at address %s", 
-                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", 
+                    pDevTypeRec->deviceType ? pDevTypeRec->deviceType : "NO NAME", 
                     BusI2CAddrAndSlot::toString(address).c_str());
 #endif
 
             // Initialise the device if required
-            processDeviceInit(address, &devTypeRec);
+            processDeviceInit(address, deviceTypeIndex);
 
             // Set device type index
             deviceStatus.deviceTypeIndex = deviceTypeIndex;
 
             // Get polling info
-            deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
+            deviceTypeRecords.getPollInfo(address, deviceTypeIndex, deviceStatus.deviceIdentPolling);
 
             // Set polling results size
             auto pDataAggregator = std::make_shared<PollDataAggregator>(
@@ -168,7 +179,7 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         else
         {
 #ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
+            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", pDevTypeRec->devInfoJson ? pDevTypeRec->devInfoJson : "NO INFO");
 #endif
         }
     }
@@ -191,7 +202,7 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     // another task) and called outside it
     RaftNewDeviceIdentFn newDeviceIdentFn = nullptr;
     void* pNewDeviceIdentCtx = nullptr;
-    if (!identified && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    if (!identified && !busErrorDuringDetection && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         newDeviceIdentFn = _newDeviceIdentFn;
         pNewDeviceIdentCtx = _newDeviceIdentCtx;
@@ -224,8 +235,8 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
             DeviceTypeRecord devTypeRec;
             if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
             {
-                processDeviceInit(address, &devTypeRec);
-                deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
+                processDeviceInit(address, deviceStatus.deviceTypeIndex);
+                deviceTypeRecords.getPollInfo(address, deviceStatus.deviceTypeIndex, deviceStatus.deviceIdentPolling);
                 auto pDataAggregator = std::make_shared<PollDataAggregator>(
                         deviceStatus.deviceIdentPolling.numPollResultsToStore,
                         deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
@@ -268,32 +279,23 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
 // Access device and check response
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec)
+DeviceIdentMgr::DetectionResult DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
 {
     // Get the detection records - a record with an invalid detection value never matches
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
-    if (!deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs))
-        return false;
+    if (!deviceTypeRecords.getDetectionRecs(deviceTypeIndex, detectionRecs))
+        return DetectionResult::NoMatch;
 
-    // Check if all values match
-    bool detectionValuesMatch = true;
+    // Each step must match; detection stops at the first that doesn't
     for (const auto& detectionRec : detectionRecs)
     {
-
-        // Check there is a read data check
-        uint32_t readDataCheckBytes = 0;
-        if (detectionRec.checkValues.size() == 0)
-            continue;
-        readDataCheckBytes = detectionRec.checkValues[0].second.size();
-
-        // Create a bus request to read the detection value
-        // Create the poll request
+        // Write, then read the bytes to check (none for a step that only writes or pauses)
         BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
                 address,
                 0, 
                 detectionRec.writeData.size(), 
                 detectionRec.writeData.data(),
-                readDataCheckBytes,
+                detectionRec.readLen,
                 detectionRec.pauseAfterSendMs, 
                 nullptr, 
                 this);
@@ -313,79 +315,61 @@ bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceT
                     detectionRec.pauseAfterSendMs);
 #endif
 
-        // Check ok result
+        // A NACK means the device rejected this step (not this type); anything else is a bus problem
+        if (rslt == RAFT_BUS_ACK_ERROR)
+            return DetectionResult::NoMatch;
         if (rslt != RAFT_OK)
-            return false;
+            return DetectionResult::BusError;
 
-        // Iterate through check values to see if one of them matches
-        bool checkValueMatch = false;
+        // Any one check matching is a match (a step with no checks only writes or pauses)
+        bool checkValueMatch = detectionRec.checkValues.size() == 0;
         for (const auto& checkValue : detectionRec.checkValues)
         {
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            String readMaskStr;
-            Raft::getHexStrFromBytes(checkValue.first.data(), checkValue.first.size(), readMaskStr);
-            String readCheckStr;
-            Raft::getHexStrFromBytes(checkValue.second.data(), checkValue.second.size(), readCheckStr);
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readDataMask %s readDataCheck %s VS readData %s",
-                        readMaskStr.c_str(),
-                        readCheckStr.c_str(),
-                        readDataStr.c_str());
-#endif
-
-            // Check the read data
-            bool sizeMatch = readData.size() == checkValue.second.size();
-            if (sizeMatch)
+            if (readData.size() != checkValue.second.size())
+                continue;
+            bool checkByteMatch = true;
+            for (uint32_t i = 0; i < readData.size(); i++)
             {
-                bool checkByteMatch = true;
-                for (int i = 0; i < readData.size(); i++)
+                if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
                 {
-                    if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
-                    {
-                        checkByteMatch = false;
-                        break;
-                    }
-                }
-                if (checkByteMatch)
-                {
-                    checkValueMatch = true;
+                    checkByteMatch = false;
                     break;
                 }
             }
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readData %s sizeMatch %d checkValueMatch %d", 
-                        readDataStr.c_str(), sizeMatch, checkValueMatch);
-#endif
+            if (checkByteMatch)
+            {
+                checkValueMatch = true;
+                break;
+            }
         }
+
+        // Each 2-byte word must be followed by a valid CRC
+        if (checkValueMatch && detectionRec.crc8w)
+            checkValueMatch = DeviceTypeGrammar::checkCrc8Words(readData.data(), readData.size());
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %s %s", 
                     BusI2CAddrAndSlot::toString(address).c_str(),
                     checkValueMatch ? "MATCH" : "NO MATCH");
 #endif
-
-        // Check if all values match
         if (!checkValueMatch)
-            detectionValuesMatch = false;
+            return DetectionResult::NoMatch;
 
         if (detectionRec.pauseAfterSendMs > 0)
             delay(detectionRec.pauseAfterSendMs);
     }
-
-    // Access the device and check the response
-    return detectionValuesMatch;
+    return DetectionResult::Match;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Process initialisation of a device
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec)
+bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
 {
     // Get initialisation bus requests
     std::vector<BusRequestInfo> initBusRequests;
-    deviceTypeRecords.getInitBusRequests(address, pDevTypeRec, initBusRequests);
+    deviceTypeRecords.getInitBusRequests(address, deviceTypeIndex, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "processDeviceInit address %s numInitBusRequests %d", 
@@ -689,17 +673,11 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             void* pStructOut, uint32_t structOutSize, 
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
-    // Get device type info
-    DeviceTypeRecord devTypeRec;
-    if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
+    // Decode function of the device type (no copy of the record)
+    DeviceTypeRecordDecodeFn decodeFn = deviceTypeRecords.getPollDecodeFn(deviceTypeIndex);
+    if (!decodeFn)
         return 0;
-
-    // Check the decode method is present
-    if (!devTypeRec.pollResultDecodeFn)
-        return 0;
-
-    // Decode the poll response
-    return devTypeRec.pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
+    return decodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
