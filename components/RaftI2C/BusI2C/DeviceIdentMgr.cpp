@@ -99,6 +99,10 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
         return;
     }
 
+    // Identification has started: from now on a device may hold any device type index, so a record can no longer
+    // replace a base record at its index
+    deviceTypeRecords.markReady();
+
     // Get the raw I2C address (excluding slot number) and the device type records that can identify a
     // device there, in the order to try them
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
@@ -202,7 +206,9 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
     // another task) and called outside it
     RaftNewDeviceIdentFn newDeviceIdentFn = nullptr;
     void* pNewDeviceIdentCtx = nullptr;
-    if (!identified && !busErrorDuringDetection && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    // The hook isn't run at an address claimed by a record whose policy is DISABLED_CLAIM
+    bool hookBlocked = !identified && deviceTypeRecords.isAddrHookBlocked(i2cAddr);
+    if (!identified && !busErrorDuringDetection && !hookBlocked && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
     {
         newDeviceIdentFn = _newDeviceIdentFn;
         pNewDeviceIdentCtx = _newDeviceIdentCtx;
@@ -232,7 +238,16 @@ void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& devic
             // the device status here (init + polling + data aggregator) from that index using the
             // standard device-type records, so the handler stays device-agnostic and the existing
             // polling/decode pipeline is reused unchanged.
+            // A type that is disabled isn't used, whoever identified it
             DeviceTypeRecord devTypeRec;
+            if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec) &&
+                    (deviceTypeRecords.getPolicy(deviceStatus.deviceTypeIndex) != DeviceTypeRecord::POLICY_ENABLED))
+            {
+                LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s, which is disabled - not used",
+                        BusI2CAddrAndSlot::toString(address).c_str(), devTypeRec.deviceType ? devTypeRec.deviceType : "?");
+                deviceStatus.clear();
+                return;
+            }
             if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
             {
                 processDeviceInit(address, deviceStatus.deviceTypeIndex);
