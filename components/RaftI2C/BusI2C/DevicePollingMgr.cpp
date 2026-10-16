@@ -214,8 +214,12 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
 
         if (rslt != RAFT_OK)
         {
-            bool isOnline = false;
-            _busStatusMgr.updateBusElemState(address, false, isOnline);
+            // A barred address wasn't accessed (it is pausing after a command) - not a failure
+            if (rslt != RAFT_BUS_BARRED)
+            {
+                bool isOnline = false;
+                _busStatusMgr.updateBusElemState(address, false, isOnline);
+            }
             allResultsOkAndComplete = false;
             break;
         }

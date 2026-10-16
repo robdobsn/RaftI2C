@@ -93,6 +93,7 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     // registered new-device identification handler runs (a handler's synchronous bus probe may
     // reset the slot selection which the scanner had established and which identification relies on)
     _deviceIdentMgr.setReselectSlotFn([this](uint32_t slotNum) { return _busMultiplexers.enableOneSlot(slotNum); });
+    _deviceIdentMgr.setDeselectSlotsFn([this]() { _busMultiplexers.disableAllSlots(false); });
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -174,6 +175,7 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
     if (_loopYieldMs < 1)
         _loopYieldMs = 1;
     _pollBudgetUs = config.getLong("pollBudgetUs", I2C_BUS_POLL_BUDGET_DEFAULT_US);
+    _identBudgetUs = config.getLong("identBudgetUs", I2C_BUS_IDENT_BUDGET_DEFAULT_US);
     _loopFastUnyieldUs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS) * 1000;
     _loopSlowUnyieldUs = config.getLong("slowScanMaxUnyieldMs", I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS) * 1000;
 
@@ -555,6 +557,9 @@ void BusI2C::i2cWorkerTask()
         _activityStats.addSectionUs(BusI2CActivityStats::SECTION_POLL, sectionEndUs - sectionStartUs);
         sectionStartUs = sectionEndUs;
 
+        // Identification of elements that are due (each on its own schedule) - counted with scanning
+        _deviceIdentMgr.taskService(_identBudgetUs);
+
         // Bus scanning - after polling, so a scan doesn't delay polls that are due. It runs at most once per
         // loopYieldMs (from the end of the previous scan, less a tick as a wait of loopYieldMs can end up to a
         // tick early), however often the worker wakes for polls and requests, and stops in time for the next
@@ -661,8 +666,8 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
     uint16_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
 
     // Check address is within valid range
-    RaftRetCode rsltCode = RAFT_BUS_NOT_INIT;
-    bool addrOk = checkAddrValidAndNotBarred(address) == RAFT_OK;
+    RaftRetCode rsltCode = checkAddrValidAndNotBarred(address);
+    bool addrOk = rsltCode == RAFT_OK;
     if (addrOk)
     {
         // Buffer for read

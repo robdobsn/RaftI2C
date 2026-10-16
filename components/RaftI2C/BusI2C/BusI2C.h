@@ -400,6 +400,8 @@ private:
 
     // Time spent polling in each pass: no further poll is started once this is used
     static const uint32_t I2C_BUS_POLL_BUDGET_DEFAULT_US = 2000;
+    // Identification time per pass (beyond the first element serviced)
+    static const uint32_t I2C_BUS_IDENT_BUDGET_DEFAULT_US = 5000;
 
     // Least time a scan is given in a pass, even when a poll is due sooner
     static const uint32_t I2C_BUS_SCAN_MIN_BUDGET_US = 500;
@@ -435,6 +437,7 @@ private:
     uint32_t _loopSlowUnyieldUs = I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS * 1000;
     uint32_t _loopYieldMs = I2C_BUS_LOOP_YIELD_MS;
     uint32_t _pollBudgetUs = I2C_BUS_POLL_BUDGET_DEFAULT_US;
+    uint32_t _identBudgetUs = I2C_BUS_IDENT_BUDGET_DEFAULT_US;
     uint64_t _lastScanEndUs = 0;
 
     // Init ok

@@ -298,6 +298,43 @@ public:
 
     /// @brief Reset the poll timing statistics of all devices
     void resetPollTiming();
+    // An element to identify, or an identified element to re-verify
+    struct IdentWork
+    {
+        BusElemAddrType address = 0;
+        bool reverify = false;
+        DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
+    };
+
+    /// @brief Get the next element due for identification (round robin)
+    /// @param timeNowMs time now
+    /// @param generation device type records generation (a NoMatch element whose last attempt was made against
+    ///        another generation, or another hook epoch, is due at once)
+    /// @param hookEpoch identification hook epoch
+    /// @param work (out) the element
+    /// @return true if an element is due
+    /// @note only an element that is online and responded to its last access is due
+    bool getNextIdentWork(uint32_t timeNowMs, uint32_t generation, uint32_t hookEpoch, IdentWork& work);
+
+    /// @brief Set the outcome of identifying an element
+    /// @param address address
+    /// @param state outcome (Pending: in progress - resumed at resumeAtMs, with the state left as it was)
+    /// @param deviceStatus device status (used if Identified)
+    /// @param generation device type records generation it was identified against
+    /// @param hookEpoch identification hook epoch
+    /// @param resumeAtMs when to resume (Pending)
+    void setIdentOutcome(BusElemAddrType address, BusIdentState state, const DeviceStatus& deviceStatus,
+                uint32_t generation, uint32_t hookEpoch, uint32_t resumeAtMs);
+
+    /// @brief Set the outcome of re-verifying an element
+    enum class ReverifyResult : uint8_t
+    {
+        StillMatches,       // still that type (re-initialised)
+        Mismatch,           // not that type now - identify it again
+        BusError,           // re-verify again later
+    };
+    void setReverifyOutcome(BusElemAddrType address, ReverifyResult result);
+
 
     /// @brief Get identification timing for each element seen since the bus started, as JSON
     /// @return JSON array, e.g. [{"addr":"68","seenMs":120,"onlineMs":140,"identMs":152,"dtIdx":5}]. Times are
@@ -314,8 +351,12 @@ private:
         uint32_t onlineMs = NOT_REACHED;
         uint32_t identMs = NOT_REACHED;
         uint16_t deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
+        uint16_t identAttempts = 0;     // identification attempts (all outcomes)
     };
     static const uint32_t MAX_IDENT_TIMING = 16;
+
+    // Position of the identification scheduler's round robin
+    uint32_t _identCursor = 0;
     IdentTiming _identTiming[MAX_IDENT_TIMING];
     uint32_t _identTimingCount = 0;
     uint32_t _setupTimeMs = 0;

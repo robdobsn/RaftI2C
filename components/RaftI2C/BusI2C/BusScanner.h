@@ -177,20 +177,6 @@ private:
     /// @param addressesOnSlotDone addresses on slot done
     /// @return Slot number
     uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool addressesOnSlotDone);
-    // Retry interval for re-running identification on an element that is online but has
-    // never been identified (a handler deferred it). Throttled globally rather than per
-    // address: this is a recovery path, not a scan rate, and one retry every few seconds is
-    // ample against events that happen when a human plugs something in.
-    static const uint32_t UNIDENTIFIED_RETRY_INTERVAL_MS = 3000;
-    uint32_t _lastUnidentRetryMs = 0;
-
-    // Elements found while the device type records were incomplete (a record source such as the device type file
-    // not yet loaded): identified as soon as they are complete, without waiting for the retry interval
-    std::vector<BusElemAddrType> _awaitingRecords;
-
-    /// @brief Identify an element (or, if the device type records are incomplete, note it for later)
-    void identifyElem(BusElemAddrType address);
-
     // Number of addresses probed (running count)
     uint32_t _scanProbeCount = 0;
 

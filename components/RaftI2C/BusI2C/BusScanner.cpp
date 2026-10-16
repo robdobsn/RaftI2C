@@ -608,39 +608,18 @@ RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& fa
 /// @param accessResult Access result code
 void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode accessResult)
 {
+    // An address barred for a time (e.g. a device pausing after a command) wasn't accessed, so this says nothing
+    // about whether it is there
+    if (accessResult == RAFT_BUS_BARRED)
+        return;
+
     // Update bus element state
     BusElemAddrType address(BusI2CAddrAndSlot(i2cAddr, slot));
     bool isOnline = false;
     bool isChange = _busStatusMgr.updateBusElemState(address, accessResult == RAFT_OK, isOnline);
 
-    // Retry identification for an element that is online but was never identified.
-    //
-    // identifyDevice() otherwise runs ONLY on an offline->online transition, so anything a
-    // handler defers stays unidentified for as long as it remains present - there is no
-    // second edge to trigger on. That is how a device sitting on the RSAO default address
-    // could be left there indefinitely, and how a device that joined an address already
-    // occupied was never noticed.
-    //
-    // This costs no extra bus traffic: an unidentified element is not being polled, so the
-    // scan loop above already probes it every sweep. All that is added is re-running the
-    // identification probe, throttled so a permanently unidentifiable device cannot spin.
-    //
-    // An element found before the device type records were complete is identified as soon as they are.
-    bool awaitingRecords = isOnline && !_awaitingRecords.empty() &&
-                (std::find(_awaitingRecords.begin(), _awaitingRecords.end(), address) != _awaitingRecords.end());
-    if (isOnline && !isChange && !_busStatusMgr.isAddrBeingPolled(address) &&
-        (_busStatusMgr.getDeviceTypeIndexByAddr(address) == DEVICE_TYPE_INDEX_INVALID) &&
-        (awaitingRecords ? deviceTypeRecords.areRecordSourcesReady() :
-                    Raft::isTimeout(millis(), _lastUnidentRetryMs, UNIDENTIFIED_RETRY_INTERVAL_MS)))
-    {
-        if (!awaitingRecords)
-            _lastUnidentRetryMs = millis();
-#ifdef DEBUG_ELEM_STATUS_DEVICE_IDENT
-        LOG_I(MODULE_PREFIX, "updateBusElemState %s identification of unidentified online addr&slot %04x",
-                awaitingRecords ? "records complete -" : "retrying", address);
-#endif
-        identifyElem(address);
-    }
+    // Identification is done by the identification scheduler (DeviceIdentMgr::taskService), on each element's own
+    // schedule - a newly online element at once
 
     //If this is a change to online then update the bus element tracker
     if (isOnline && isChange)
@@ -651,36 +630,5 @@ void BusScanner::updateBusElemState(uint32_t i2cAddr, uint32_t slot, RaftRetCode
         LOG_I(MODULE_PREFIX, "updateBusElemState addr&slot %04x (addr %02x slot %d) accessResult %d isOnline %d isChange %d", 
                 address, i2cAddr, slot, accessResult, isOnline, isChange);
 #endif
-
-        // Attempt to identify the device
-        identifyElem(address);
     }
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Identify an element (or, if the device type records are incomplete, note it for later)
-/// @param address Address (including slot)
-/// @note Devices aren't identified until every record source (e.g. the device type file) has supplied its records,
-///       so that a device is never identified against an incomplete set of records. Meanwhile the element is
-///       online but unidentified
-void BusScanner::identifyElem(BusElemAddrType address)
-{
-    DeviceStatus deviceStatus;
-    auto it = std::find(_awaitingRecords.begin(), _awaitingRecords.end(), address);
-    if (deviceTypeRecords.areRecordSourcesReady())
-    {
-        if (it != _awaitingRecords.end())
-            _awaitingRecords.erase(it);
-        _deviceIdentMgr.identifyDevice(address, deviceStatus);
-    }
-    else if (it == _awaitingRecords.end())
-    {
-#ifdef DEBUG_ELEM_STATUS_DEVICE_IDENT
-        LOG_I(MODULE_PREFIX, "identifyElem addr&slot %04x waiting for device type records", address);
-#endif
-        _awaitingRecords.push_back(address);
-    }
-
-    // Set device status into bus status manager for this address
-    _busStatusMgr.setBusElemDeviceStatus(address, deviceStatus);
 }

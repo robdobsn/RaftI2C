@@ -225,10 +225,28 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Identify device
+    /// @brief Identification scheduler: identify the elements that are due (called from the bus task)
+    /// @param budgetUs time budget for this pass (at least one element is serviced if any is due)
+    void taskService(uint64_t budgetUs);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set a function that deselects all multiplexer slots (after identifying a device on a slot)
+    void setDeselectSlotsFn(std::function<void()> deselectSlotsFn)
+    {
+        _deselectSlotsFn = deselectSlotsFn;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Identify device (to completion, pausing inline - the scheduler is what identifies devices on the bus)
     /// @param address address
     /// @param deviceStatus (out) device status
     void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
+
+    /// @brief Identification statistics (hook calls, init steps NACKed, re-verifications and mismatches found)
+    uint32_t getHookCallCount() const { return _hookCallCount; }
+    uint32_t getInitNackCount() const { return _initNackCount; }
+    uint32_t getReverifyCount() const { return _reverifyCount; }
+    uint32_t getReverifyMismatchCount() const { return _reverifyMismatchCount; }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check device type match (communicates with the device to check its type)
@@ -240,6 +258,7 @@ public:
         Match,
         NoMatch,
         BusError,
+        Paused,     // (only when a pause is allowed) paused after a step - resume later
     };
     DetectionResult checkDeviceTypeMatch(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
@@ -251,6 +270,71 @@ public:
     bool processDeviceInit(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
 private:
+    // Identification job: detection of each candidate in turn, then the identification hook if none matched, then
+    // initialisation - resumable after a long pause
+    struct IdentJob
+    {
+        enum class Phase : uint8_t
+        {
+            Detect,
+            Init,
+        };
+        BusElemAddrType address = 0;
+        Phase phase = Phase::Detect;
+        std::vector<DeviceTypeIndexType> candidates;
+        uint32_t candPos = 0;
+        uint32_t stepIdx = 0;
+        uint32_t resumeAtMs = 0;
+        DeviceTypeIndexType matchedIdx = DEVICE_TYPE_INDEX_INVALID;
+        uint32_t initNacks = 0;
+        bool busError = false;
+        bool initRepeated = false;
+    };
+    std::vector<IdentJob> _jobs;
+    enum class IdentOutcome : uint8_t
+    {
+        Identified,
+        NoMatch,
+        Deferred,
+        BusError,
+        InitFailed,
+        InProgress,
+    };
+    enum class InitResult : uint8_t
+    {
+        Done,
+        Paused,
+        BusError,
+    };
+    IdentOutcome runIdentJob(IdentJob& job, DeviceStatus& deviceStatus, bool allowPause);
+    IdentOutcome runIdentHook(BusElemAddrType address, DeviceStatus& deviceStatus);
+    DetectionResult reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
+    DetectionResult runDetectionSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+                uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause);
+    InitResult runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+                uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause);
+    static void pauseUntil(uint32_t untilMs);
+    static BusIdentState outcomeToState(IdentOutcome outcome);
+
+    // A pause of at least this long after a detection or initialisation step ends the scheduler's work on that
+    // element until the pause is over (shorter pauses are made inline)
+    static constexpr uint32_t LONG_PAUSE_MS = 10;
+    // Most elements serviced in one scheduler pass, and how long a job waiting to resume is kept
+    static constexpr uint32_t MAX_IDENT_PER_PASS = 8;
+    static constexpr uint32_t IDENT_JOB_STALE_MS = 5000;
+
+    // Incremented when an identification hook is registered (so NoMatch elements are offered to it at once)
+    std::atomic<uint32_t> _hookEpoch{0};
+
+    // Statistics
+    uint32_t _hookCallCount = 0;
+    uint32_t _initNackCount = 0;
+    uint32_t _reverifyCount = 0;
+    uint32_t _reverifyMismatchCount = 0;
+
+    // Deselect all slots
+    std::function<void()> _deselectSlotsFn = nullptr;
+
     // Form a bus element request from a command JSON string
     static HWElemReq cmdJSONToHWElemReq(const char* cmdJSON);
 
