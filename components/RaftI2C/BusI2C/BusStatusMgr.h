@@ -81,6 +81,13 @@ public:
     /// @param deviceStatus device status to set
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
+    /// @brief Note a change on a slot (an element there came online or went, or its multiplexer changed)
+    void noteSlotChange(uint32_t slotNum);
+
+    /// @brief Activity per slot number (0 the main bus): when something last changed there (0 never) and how many
+    ///        elements are online there
+    void getSlotActivity(uint32_t numSlotNums, std::vector<uint32_t>& lastChangeMs, std::vector<uint8_t>& numOnline) const;
+
     /// @brief Check whether an element has answered but isn't online yet (it needs another successful access)
     bool isElemPendingOnline(BusElemAddrType address) const;
 
@@ -374,6 +381,11 @@ private:
         uint16_t identAttempts = 0;     // identification attempts (all outcomes)
     };
     static const uint32_t MAX_IDENT_TIMING = 16;
+
+    // Time of the last change on each slot number (0 never), under the mutex
+    std::vector<uint32_t> _slotChangeMs;
+    static const uint32_t SLOT_NUM_MAX = 256;
+    void noteSlotChangeLocked(uint32_t slotNum);
 
     // Position of the identification scheduler's round robin
     uint32_t _identCursor = 0;

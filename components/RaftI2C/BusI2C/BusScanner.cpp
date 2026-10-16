@@ -60,6 +60,10 @@ void BusScanner::setup(const RaftJsonIF& config)
     if (_scanShareMaxPct < _scanShareMinPct)
         _scanShareMaxPct = _scanShareMinPct;
     _fastScanMaxMs = config.getLong("fastScanMaxMs", FAST_SCAN_MAX_DEFAULT_MS);
+    _muxCheckMs = config.getLong("muxCheckMs", MUX_CHECK_DEFAULT_MS);
+    _slotKnownWeight = config.getLong("slotKnownWeight", SLOT_KNOWN_WEIGHT_DEFAULT);
+    _slotChangedWeight = config.getLong("slotChangedWeight", SLOT_CHANGED_WEIGHT_DEFAULT);
+    _slotChangedMs = config.getLong("slotChangedMs", SLOT_CHANGED_DEFAULT_MS);
 
     // Debug
     LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
@@ -141,13 +145,46 @@ bool BusScanner::isAddrClaimable(uint32_t addr) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Slot number for a schedule slot position (0 and 1 the main bus, then each slot)
+/// @brief Slot number for a schedule slot position (0 the main bus, 1 + n the nth slot)
 uint32_t BusScanner::slotNumFromPos(uint32_t pos) const
 {
     const auto& slotIndices = _busMultiplexers.getSlotIndices();
-    if ((pos < 2) || (pos - 2 >= slotIndices.size()))
+    if ((pos == 0) || (pos - 1 >= slotIndices.size()))
         return 0;
-    return slotIndices[pos - 2] + 1;
+    return slotIndices[pos - 1] + 1;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Weight each slot by its activity: a slot with an online device is scanned slotKnownWeight times as often
+///        as an empty one, and one where something changed in the last slotChangedMs slotChangedWeight times
+void BusScanner::updateSlotWeights()
+{
+    const auto& slotIndices = _busMultiplexers.getSlotIndices();
+    uint32_t maxSlotNum = 0;
+    for (uint8_t slotIdx : slotIndices)
+        maxSlotNum = std::max(maxSlotNum, (uint32_t)slotIdx + 1);
+    std::vector<uint32_t> lastChangeMs;
+    std::vector<uint8_t> numOnline;
+    _busStatusMgr.getSlotActivity(maxSlotNum + 1, lastChangeMs, numOnline);
+    std::vector<uint8_t> weights(slotIndices.size(), 1);
+    uint32_t timeNowMs = millis();
+    _numSlotsKnown = 0;
+    _numSlotsChanged = 0;
+    for (uint32_t i = 0; i < slotIndices.size(); i++)
+    {
+        uint32_t slotNum = slotIndices[i] + 1;
+        if (numOnline[slotNum] > 0)
+        {
+            weights[i] = std::max(weights[i], (uint8_t)_slotKnownWeight);
+            _numSlotsKnown++;
+        }
+        if ((lastChangeMs[slotNum] != 0) && !Raft::isTimeout(timeNowMs, lastChangeMs[slotNum], _slotChangedMs))
+        {
+            weights[i] = std::max(weights[i], (uint8_t)_slotChangedWeight);
+            _numSlotsChanged++;
+        }
+    }
+    _schedule.setSlotWeights(weights);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,11 +213,12 @@ void BusScanner::updateScanCredit(uint64_t timeNowUs)
 /// @brief Scanning status as JSON
 String BusScanner::getScanStatsJson() const
 {
-    char buf[200];
-    snprintf(buf, sizeof(buf), R"({"mode":"%s","lists":[%d,%d,%d],"background":%d,"sharePct":%d,"bgProbes":%d,"confirmProbes":%d,"mainBusChecks":%d})",
+    char buf[320];
+    snprintf(buf, sizeof(buf), R"({"mode":"%s","lists":[%d,%d,%d],"background":%d,"sharePct":%d,"bgProbes":%d,"confirmProbes":%d,"mainBusChecks":%d,"slots":%d,"slotsKnown":%d,"slotsChanged":%d,"slotCycle":%d,"muxRescans":%d,"muxChecks":%d})",
                 getScanStateStr(_scanMode), (int)_numListAddrs[0], (int)_numListAddrs[1], (int)_numListAddrs[2],
                 (int)_numBackgroundAddrs, (int)getScanSharePct(), (int)_backgroundProbeCount, (int)_confirmProbeCount,
-                (int)_mainBusCheckCount);
+                (int)_mainBusCheckCount, (int)_busMultiplexers.getSlotIndices().size(), (int)_numSlotsKnown,
+                (int)_numSlotsChanged, (int)_schedule.numSlotPositions(), (int)_muxRescanCount, (int)_muxCheckProbeCount);
     return buf;
 }
 
@@ -199,6 +237,11 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
     if ((deviceTypeRecords.getGeneration() != _scanListsGeneration) || (_deviceIdentMgr.getHookClaimsEpoch() != _scanClaimsEpoch))
         loadScanLists();
     _schedule.setNumSlots(_busMultiplexers.getSlotIndices().size());
+    if (Raft::isTimeout(millis(), _slotWeightsLastMs, SLOT_WEIGHTS_UPDATE_MS) || (_slotWeightsLastMs == 0))
+    {
+        _slotWeightsLastMs = millis();
+        updateSlotWeights();
+    }
 
     // Time of last scan
     uint32_t curTimeMs = curTimeUs / 1000;
@@ -263,12 +306,26 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                     _confirmProbeCount++;
                     addrIsValid = true;
                 }
+                else if ((_scanMode != SCAN_MODE_MAIN_BUS_MUX_ONLY) && (_muxCheckMs > 0) &&
+                            (_busMultiplexers.getMaxAddr() >= _busMultiplexers.getMinAddr()) &&
+                            Raft::isTimeout(millis(), _muxCheckLastMs, _muxCheckMs))
+                {
+                    // Multiplexer supervision: one multiplexer address in turn, on the slot it is reached through,
+                    // so a multiplexer that goes or comes (a hub unplugged) is noticed quickly
+                    _muxCheckLastMs = millis();
+                    uint32_t numMuxAddrs = _busMultiplexers.getMaxAddr() - _busMultiplexers.getMinAddr() + 1;
+                    _muxCheckIdx = (_muxCheckIdx + 1) % numMuxAddrs;
+                    addr = _busMultiplexers.getMinAddr() + _muxCheckIdx;
+                    slotNum = _busMultiplexers.getMuxConnSlotNum(_muxCheckIdx);
+                    _muxCheckProbeCount++;
+                    addrIsValid = true;
+                }
                 else
                 {
                     uint32_t bgPos = 0;
                     if ((_scanMode == SCAN_MODE_SCAN_SLOW) && _schedule.nextBackground(millis(), addr, bgPos))
                     {
-                        slotNum = (bgPos == 0) ? 0 : slotNumFromPos(bgPos + 1);
+                        slotNum = slotNumFromPos(bgPos);
                         _backgroundProbeCount++;
                         addrIsValid = true;
                     }
@@ -335,9 +392,31 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                 {
                     if (_busMultiplexers.elemStateChange(addr, slotNum, rslt == RAFT_OK))
                     {
-                        // We get here if there is a change to a mux state (new mux, online/offline, etc)
-                        // so we need to move back to scanning muliplexers
-                        setScanMode(SCAN_MODE_MAIN_BUS_MUX_ONLY);
+                        // A multiplexer has come or gone. During startup the multiplexers are scanned again from
+                        // the start; after that only this multiplexer's slots are favoured (as recently changed) in a
+                        // fast scan, rather than rescanning the whole bus
+                        if ((_scanMode == SCAN_MODE_MAIN_BUS_MUX_ONLY) || (_scanMode == SCAN_MODE_MAIN_BUS))
+                        {
+                            setScanMode(SCAN_MODE_MAIN_BUS_MUX_ONLY);
+                        }
+                        else
+                        {
+                            // A multiplexer that has gone takes the devices on its slots with it (a device that isn't polled
+                            // would otherwise stay online, as its slot is no longer scanned)
+                            uint32_t muxIdx = addr - _busMultiplexers.getMinAddr();
+                            const auto& slotIndices = _busMultiplexers.getSlotIndices();
+                            for (uint32_t slotIdx = 0; slotIdx < BusMultiplexers::getSlotsPerMux(); slotIdx++)
+                            {
+                                uint32_t muxSlotIdx = muxIdx * BusMultiplexers::getSlotsPerMux() + slotIdx;
+                                if (std::find(slotIndices.begin(), slotIndices.end(), muxSlotIdx) == slotIndices.end())
+                                    _busStatusMgr.goingOfflineOnSlot(muxSlotIdx + 1);
+                                _busStatusMgr.noteSlotChange(muxSlotIdx + 1);
+                            }
+                            _muxRescanCount++;
+                            _slotWeightsLastMs = 0;
+                            setScanMode(SCAN_MODE_SCAN_FAST);
+                            LOG_I(MODULE_PREFIX, "taskService multiplexer 0x%02x changed - fast scan favouring its slots", addr);
+                        }
                     }
                     // Only update bus element state for non-multiplexer devices
                     // Multiplexers are handled separately via elemStateChange()
@@ -358,15 +437,20 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                     break;
                 }
 
-                // Disable all slots
-                _busMultiplexers.disableAllSlots(false);
-
-                // Check sweepComplete or timeout
+                // Check sweepComplete or timeout (the slot stays selected for the next probe if it is on the same
+                // slot - slots are deselected when the next probe is on another, and at the end of the pass)
                 if (sweepCompleted || Raft::isTimeout(micros(), scanLoopStartTimeUs, _scanMode == SCAN_MODE_SCAN_FAST ? maxFastTimeInLoopUs : maxSlowTimeInLoopUs))
                     break;
             }
             break;
         }
+    }
+
+    // Deselect the slot left selected
+    if (_scanSlotSelected != 0)
+    {
+        _busMultiplexers.disableAllSlots(false);
+        _scanSlotSelected = 0;
     }
 
     // Spend the scanning time used
@@ -629,13 +713,19 @@ void BusScanner::handleScanRequest()
 /// @return Access result code
 RaftRetCode BusScanner::scanOneAddress(uint32_t addr, uint32_t slotNum, bool& failedToEnableSlot)
 {
-    // Enable the slot (if there is one)
+    // Select the slot (only one slot is ever selected: enabling a slot only writes its own multiplexer, so the
+    // slots of the one selected before are deselected first). The main bus is selected by deselecting every slot
+    if ((slotNum != _scanSlotSelected) && (_scanSlotSelected != 0))
+        _busMultiplexers.disableAllSlots(false);
+    _scanSlotSelected = 0;
     auto rslt = _busMultiplexers.enableOneSlot(slotNum);
     if (rslt != RAFT_OK)
     {
+        _busMultiplexers.disableAllSlots(false);
         failedToEnableSlot = true;
         return rslt;
     }
+    _scanSlotSelected = slotNum;
 
     // Handle the scan
     failedToEnableSlot = false;

@@ -139,7 +139,34 @@ private:
     uint32_t _fastScanMaxMs = FAST_SCAN_MAX_DEFAULT_MS;
     uint32_t _fastScanStartMs = 0;
 
+    // Slot weights (how often each multiplexer slot is scanned, relative to an empty slot's 1): slots with an
+    // online device, and slots where something changed recently, are scanned more often. Updated periodically
+    static const uint32_t SLOT_KNOWN_WEIGHT_DEFAULT = 2;
+    static const uint32_t SLOT_CHANGED_WEIGHT_DEFAULT = 3;
+    static const uint32_t SLOT_CHANGED_DEFAULT_MS = 10000;
+    static const uint32_t SLOT_WEIGHTS_UPDATE_MS = 500;
+    uint32_t _slotKnownWeight = SLOT_KNOWN_WEIGHT_DEFAULT;
+    uint32_t _slotChangedWeight = SLOT_CHANGED_WEIGHT_DEFAULT;
+    uint32_t _slotChangedMs = SLOT_CHANGED_DEFAULT_MS;
+    uint32_t _slotWeightsLastMs = 0;
+    uint32_t _numSlotsKnown = 0;
+    uint32_t _numSlotsChanged = 0;
+    void updateSlotWeights();
+
+    // Multiplexer supervision: a multiplexer address is probed every muxCheckMs (in turn, on the slot each is reached
+    // through) so a multiplexer coming or going is noticed in a few probes - otherwise its address is only probed
+    // when the scan comes round to it, which can take many seconds
+    static const uint32_t MUX_CHECK_DEFAULT_MS = 100;
+    uint32_t _muxCheckMs = MUX_CHECK_DEFAULT_MS;
+    uint32_t _muxCheckLastMs = 0;
+    uint32_t _muxCheckIdx = 0;
+    uint32_t _muxCheckProbeCount = 0;
+
+    // Slot left selected by the last probe (0 none), so consecutive probes on a slot don't rewrite the multiplexer
+    uint32_t _scanSlotSelected = 0;
+
     // Statistics
+    uint32_t _muxRescanCount = 0;
     uint32_t _backgroundProbeCount = 0;
     uint32_t _confirmProbeCount = 0;
     uint32_t _mainBusCheckCount = 0;

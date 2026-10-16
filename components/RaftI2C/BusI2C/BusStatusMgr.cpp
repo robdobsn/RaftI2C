@@ -322,6 +322,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
         // Update status change
         if (isNewStatusChange)
         {
+            noteSlotChangeLocked(BusI2CAddrAndSlot(address).getSlotNum());
             _busElemStatusChangeDetected = true;
             _lastBusElemOnlineStatusUpdateTimeMs = millis();
             _lastPollOrStatusUpdateTimeMs = millis();
@@ -637,6 +638,7 @@ void BusStatusMgr::markGoneOffline(BusAddrRecord& rec)
     {
         case DeviceOnlineState::ONLINE:
         case DeviceOnlineState::OFFLINE:
+            noteSlotChangeLocked(BusI2CAddrAndSlot(rec.address).getSlotNum());
             rec.onlineState = DeviceOnlineState::PENDING_DELETION;
             rec.isChange = true;
             rec.count = 0;
@@ -1732,5 +1734,45 @@ bool BusStatusMgr::isElemPendingOnline(BusElemAddrType address) const
     bool pending = pRec && (pRec->onlineState == DeviceOnlineState::INITIAL) && (pRec->count > 0);
     RaftMutex_unlock(_busElemStatusMutex);
     return pending;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Note a change on a slot
+void BusStatusMgr::noteSlotChange(uint32_t slotNum)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    noteSlotChangeLocked(slotNum);
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Note a change on a slot - mutex held
+void BusStatusMgr::noteSlotChangeLocked(uint32_t slotNum)
+{
+    if (slotNum > SLOT_NUM_MAX)
+        return;
+    if (_slotChangeMs.size() <= slotNum)
+        _slotChangeMs.resize(slotNum + 1, 0);
+    _slotChangeMs[slotNum] = millis() | 1;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Activity per slot number
+void BusStatusMgr::getSlotActivity(uint32_t numSlotNums, std::vector<uint32_t>& lastChangeMs, std::vector<uint8_t>& numOnline) const
+{
+    lastChangeMs.assign(numSlotNums, 0);
+    numOnline.assign(numSlotNums, 0);
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    for (uint32_t i = 0; (i < numSlotNums) && (i < _slotChangeMs.size()); i++)
+        lastChangeMs[i] = _slotChangeMs[i];
+    for (const BusAddrRecord& rec : _addrStatus)
+    {
+        uint32_t slotNum = BusI2CAddrAndSlot(rec.address).getSlotNum();
+        if ((rec.onlineState == DeviceOnlineState::ONLINE) && (slotNum < numSlotNums) && (numOnline[slotNum] < UINT8_MAX))
+            numOnline[slotNum]++;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
 }
 

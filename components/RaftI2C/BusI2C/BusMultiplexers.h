@@ -115,6 +115,19 @@ public:
 
     /// @brief Get bus multiplexer slot indices
     /// @return Valid indices of bus multiplexer slots
+    /// @brief Slot a multiplexer is reached through (0 the main bus, or a slot of another multiplexer)
+    /// @param muxIdx multiplexer index (address - getMinAddr())
+    uint32_t getMuxConnSlotNum(uint32_t muxIdx) const
+    {
+        return muxIdx < _busMuxRecs.size() ? _busMuxRecs[muxIdx].muxConnSlotNum : 0;
+    }
+
+    /// @brief Number of slots on each multiplexer (slot number = muxIdx * this + slotIdx + 1)
+    static uint32_t getSlotsPerMux()
+    {
+        return I2C_BUS_MUX_SLOT_COUNT;
+    }
+
     const std::vector<uint8_t>& getSlotIndices() const
     {
         return _busMuxSlotIndices;
