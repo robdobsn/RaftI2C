@@ -303,8 +303,25 @@ public:
     {
         BusElemAddrType address = 0;
         bool reverify = false;
+        bool reident = false;       // an identified device to identify again (keeping its type until the result)
         DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
     };
+
+    /// @brief Mark the devices in a re-identification request (identified devices are identified again keeping
+    ///        their type until the result is known; others are tried at once)
+    /// @return number of devices marked
+    uint32_t applyReIdentRequest(const BusReIdentRequest& request);
+
+    /// @brief Set the outcome of re-identifying an identified device
+    enum class ReIdentResult : uint8_t
+    {
+        SameType,       // the same type matched - nothing changes (not initialised again)
+        NewType,        // another type matched (deviceStatus is its status) - reported as TypeChanged
+        NoMatch,        // nothing matched - reported as Lost
+        TryAgain,       // a bus error, or the hook deferred - the device keeps its type and is tried again later
+    };
+    void setReIdentOutcome(BusElemAddrType address, ReIdentResult result, const DeviceStatus& deviceStatus,
+                uint32_t generation, uint32_t hookEpoch);
 
     /// @brief Get the next element due for identification (round robin)
     /// @param timeNowMs time now
@@ -357,6 +374,9 @@ private:
 
     // Position of the identification scheduler's round robin
     uint32_t _identCursor = 0;
+
+    // Attempts at re-identifying a device (bus errors, or the hook deferring) before it is left as it is
+    static const uint32_t REIDENT_MAX_ATTEMPTS = 3;
     IdentTiming _identTiming[MAX_IDENT_TIMING];
     uint32_t _identTimingCount = 0;
     uint32_t _setupTimeMs = 0;

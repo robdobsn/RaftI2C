@@ -12,6 +12,7 @@
 #include "RaftUtils.h"
 #include "DeviceIdentMgr.h"
 #include <algorithm>
+#include "DeviceTypeRecords.h"
 
 #define WARN_ON_FAILED_TO_GET_SEMAPHORE
 
@@ -1518,13 +1519,15 @@ bool BusStatusMgr::getNextIdentWork(uint32_t timeNowMs, uint32_t generation, uin
         // another address - isn't identified at its old address)
         if ((rec.onlineState != DeviceOnlineState::ONLINE) || (rec.count < 0))
             continue;
-        bool reverify = rec.reverifyRequested && (rec.identState == BusIdentState::Identified) &&
-                    BusIdentSchedule::timeReached(timeNowMs, rec.nextIdentMs);
+        bool identifiedDue = (rec.identState == BusIdentState::Identified) && BusIdentSchedule::timeReached(timeNowMs, rec.nextIdentMs);
+        bool reident = rec.reidentRequested && identifiedDue;
+        bool reverify = !reident && rec.reverifyRequested && identifiedDue;
         bool catalogueChanged = (rec.identGeneration != generation) || (rec.identHookEpoch != hookEpoch);
-        if (!reverify && !BusIdentSchedule::isDue(rec.identState, rec.nextIdentMs, timeNowMs, catalogueChanged))
+        if (!reident && !reverify && !BusIdentSchedule::isDue(rec.identState, rec.nextIdentMs, timeNowMs, catalogueChanged))
             continue;
         work.address = rec.address;
         work.reverify = reverify;
+        work.reident = reident;
         work.deviceTypeIndex = rec.deviceStatus.getDeviceTypeIndex();
         _identCursor = pos + 1;
         found = true;
@@ -1614,6 +1617,105 @@ void BusStatusMgr::setReverifyOutcome(BusElemAddrType address, ReverifyResult re
                 break;
             case ReverifyResult::BusError:
                 pRec->nextIdentMs = timeNowMs + BusIdentSchedule::RETRY_BUS_ERROR_MIN_MS;
+                break;
+        }
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Mark the devices in a re-identification request
+/// @param request which devices
+/// @return number of devices marked
+uint32_t BusStatusMgr::applyReIdentRequest(const BusReIdentRequest& request)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return 0;
+    uint32_t timeNowMs = millis();
+    uint32_t numMarked = 0;
+    for (BusAddrRecord& rec : _addrStatus)
+    {
+        if (rec.onlineState != DeviceOnlineState::ONLINE)
+            continue;
+        DeviceTypeIndexType currentTypeIndex = (rec.identState == BusIdentState::Identified) ?
+                    rec.deviceStatus.getDeviceTypeIndex() : DEVICE_TYPE_INDEX_INVALID;
+        std::vector<DeviceTypeIndexType> candidates;
+        if (request.scope == BusReIdentScope::Outranked)
+            candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(rec.address));
+        if (!BusIdentSchedule::reIdentScopeIncludes(request, rec.address, currentTypeIndex, candidates))
+            continue;
+        if (currentTypeIndex != DEVICE_TYPE_INDEX_INVALID)
+        {
+            // A device identified by a hook (probe-only type) is only re-identified when asked for by address
+            const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(currentTypeIndex);
+            if (pRec && pRec->isProbeOnly() && (request.scope != BusReIdentScope::Address))
+                continue;
+            rec.reidentRequested = true;
+            rec.reidentAttempts = 0;
+        }
+        else
+        {
+            rec.identAttempts = 0;
+        }
+        rec.nextIdentMs = timeNowMs;
+        numMarked++;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+    return numMarked;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set the outcome of re-identifying an identified device
+void BusStatusMgr::setReIdentOutcome(BusElemAddrType address, ReIdentResult result, const DeviceStatus& deviceStatus,
+            uint32_t generation, uint32_t hookEpoch)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    BusAddrRecord* pRec = findAddrStatusRecordEditable(address);
+    if (pRec)
+    {
+        uint32_t timeNowMs = millis();
+        IdentTiming* pIdentTiming = getIdentTiming(address, false);
+        if (pIdentTiming)
+            pIdentTiming->identAttempts++;
+        switch (result)
+        {
+            case ReIdentResult::SameType:
+                pRec->reidentRequested = false;
+                pRec->identGeneration = generation;
+                pRec->identHookEpoch = hookEpoch;
+                break;
+            case ReIdentResult::NewType:
+                pRec->reidentRequested = false;
+                pRec->reverifyRequested = false;
+                pRec->deviceStatus = deviceStatus;
+                pRec->isNewlyIdentified = true;
+                pRec->identChangePending = true;
+                pRec->identGeneration = generation;
+                pRec->identHookEpoch = hookEpoch;
+                _busElemStatusChangeDetected = true;
+                addForgottenAddr(address);
+                break;
+            case ReIdentResult::NoMatch:
+                pRec->reidentRequested = false;
+                pRec->reverifyRequested = false;
+                pRec->deviceStatus.clear();
+                pRec->identState = BusIdentState::NoMatch;
+                pRec->identAttempts = 1;
+                pRec->identGeneration = generation;
+                pRec->identHookEpoch = hookEpoch;
+                pRec->nextIdentMs = timeNowMs + BusIdentSchedule::retryDelayMs(BusIdentState::NoMatch, 1);
+                pRec->identChangePending = true;
+                _busElemStatusChangeDetected = true;
+                addForgottenAddr(address);
+                break;
+            case ReIdentResult::TryAgain:
+                // Keeps its type; tried a few more times, then left as it is
+                pRec->reidentAttempts++;
+                if (pRec->reidentAttempts >= REIDENT_MAX_ATTEMPTS)
+                    pRec->reidentRequested = false;
+                else
+                    pRec->nextIdentMs = timeNowMs + BusIdentSchedule::retryDelayMs(BusIdentState::BusError, pRec->reidentAttempts);
                 break;
         }
     }

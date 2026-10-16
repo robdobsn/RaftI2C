@@ -97,6 +97,22 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
     uint32_t generation = deviceTypeRecords.getGeneration();
     uint32_t hookEpoch = _hookEpoch.load();
 
+    // Re-identification requests (made on other tasks)
+    std::vector<BusReIdentRequest> requests;
+    if (_reidentRequestsPending && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        requests.swap(_reidentRequests);
+        _reidentRequestsPending = false;
+        RaftMutex_unlock(_handlerMutex);
+    }
+    for (const BusReIdentRequest& request : requests)
+    {
+        uint32_t numMarked = _busStatusMgr.applyReIdentRequest(request);
+        LOG_I(MODULE_PREFIX, "reIdentify scope %d addr %s typeIdx %d: %d device(s)", (int)request.scope,
+                    BusI2CAddrAndSlot::toString(request.address).c_str(),
+                    request.deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)request.deviceTypeIndex, (int)numMarked);
+    }
+
     // Jobs whose element was never handed back (it went offline) are dropped
     uint32_t nowMs = millis();
     _jobs.erase(std::remove_if(_jobs.begin(), _jobs.end(), [nowMs](const IdentJob& job) {
@@ -120,7 +136,14 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
             continue;
         }
 
-        if (work.reverify)
+        if (work.reident)
+        {
+            // An identified device identified again - it keeps its type (and is polled) until the result is known
+            DeviceStatus deviceStatus;
+            BusStatusMgr::ReIdentResult result = reIdentifyDevice(work.address, work.deviceTypeIndex, deviceStatus);
+            _busStatusMgr.setReIdentOutcome(work.address, result, deviceStatus, generation, hookEpoch);
+        }
+        else if (work.reverify)
         {
             // Re-verification of an identified device after a poll failure it recovered from
             DetectionResult result = reverifyDevice(work.address, work.deviceTypeIndex);
@@ -144,16 +167,22 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
             {
                 IdentJob job;
                 job.address = work.address;
+                job.generation = generation;
+                job.hookEpoch = hookEpoch;
                 job.candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(work.address));
                 _jobs.push_back(job);
                 jobIt = _jobs.end() - 1;
             }
             DeviceStatus deviceStatus;
             IdentOutcome outcome = runIdentJob(*jobIt, deviceStatus, true);
+            // The outcome is for the records (and hook) the job started with - if they have changed since, the
+            // element is tried again at once
             uint32_t resumeAtMs = jobIt->resumeAtMs;
+            uint32_t jobGeneration = jobIt->generation;
+            uint32_t jobHookEpoch = jobIt->hookEpoch;
             if (outcome != IdentOutcome::InProgress)
                 _jobs.erase(jobIt);
-            _busStatusMgr.setIdentOutcome(work.address, outcomeToState(outcome), deviceStatus, generation, hookEpoch, resumeAtMs);
+            _busStatusMgr.setIdentOutcome(work.address, outcomeToState(outcome), deviceStatus, jobGeneration, jobHookEpoch, resumeAtMs);
         }
         if (_deselectSlotsFn && (slotNum != 0))
             _deselectSlotsFn();
@@ -275,12 +304,7 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
     }
 
     // Identified: device type, polling info and poll results store
-    deviceStatus.deviceTypeIndex = job.matchedIdx;
-    deviceTypeRecords.getPollInfo(address, job.matchedIdx, deviceStatus.deviceIdentPolling);
-    auto pDataAggregator = std::make_shared<PollDataAggregator>(
-            deviceStatus.deviceIdentPolling.numPollResultsToStore,
-            deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
-    deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+    completeDeviceStatus(address, job.matchedIdx, deviceStatus);
 #ifdef INFO_NEW_DEVICE_IDENTIFIED
     const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(job.matchedIdx);
     LOG_I(MODULE_PREFIX, "identifyDevice new device %s at address %s",
@@ -410,6 +434,83 @@ DeviceIdentMgr::DetectionResult DeviceIdentMgr::reverifyDevice(BusElemAddrType a
                 result == DetectionResult::Match ? "still matches, re-initialised" :
                 result == DetectionResult::NoMatch ? "no longer matches - identifying again" : "bus error - tried again later");
     return result;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identify an identified device again (it is polled meanwhile, so pauses are made inline)
+/// @param address address
+/// @param currentTypeIndex the type it is identified as
+/// @param deviceStatus (out) the new device status (NewType)
+/// @return SameType (not initialised again), NewType (initialised), NoMatch or TryAgain (bus error or deferred)
+BusStatusMgr::ReIdentResult DeviceIdentMgr::reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
+            DeviceStatus& deviceStatus)
+{
+    deviceStatus.clear();
+    DeviceTypeIndexType matchedIdx = DEVICE_TYPE_INDEX_INVALID;
+    std::vector<DeviceTypeIndexType> candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(address));
+    for (DeviceTypeIndexType deviceTypeIndex : candidates)
+    {
+        uint32_t stepIdx = 0;
+        uint32_t resumeAtMs = 0;
+        DetectionResult result = runDetectionSteps(address, deviceTypeIndex, stepIdx, resumeAtMs, false);
+        if (result == DetectionResult::BusError)
+            return BusStatusMgr::ReIdentResult::TryAgain;
+        if (result == DetectionResult::Match)
+        {
+            matchedIdx = deviceTypeIndex;
+            break;
+        }
+    }
+    if (matchedIdx == DEVICE_TYPE_INDEX_INVALID)
+    {
+        IdentOutcome hookOutcome = runIdentHook(address, deviceStatus);
+        if (hookOutcome == IdentOutcome::Deferred)
+            return BusStatusMgr::ReIdentResult::TryAgain;
+        if (hookOutcome != IdentOutcome::Identified)
+            return BusStatusMgr::ReIdentResult::NoMatch;
+        matchedIdx = deviceStatus.deviceTypeIndex;
+        deviceStatus.clear();
+    }
+    if (matchedIdx == currentTypeIndex)
+        return BusStatusMgr::ReIdentResult::SameType;
+
+    // Another type: initialise it
+    uint32_t stepIdx = 0;
+    uint32_t initNacks = 0;
+    uint32_t resumeAtMs = 0;
+    if (runInitSteps(address, matchedIdx, stepIdx, initNacks, resumeAtMs, false) == InitResult::BusError)
+        return BusStatusMgr::ReIdentResult::TryAgain;
+    completeDeviceStatus(address, matchedIdx, deviceStatus);
+    const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(matchedIdx);
+    LOG_I(MODULE_PREFIX, "reIdentify %s now %s (typeIdx %d, was %d)", BusI2CAddrAndSlot::toString(address).c_str(),
+                pRec && pRec->deviceType ? pRec->deviceType : "?", matchedIdx, currentTypeIndex);
+    return BusStatusMgr::ReIdentResult::NewType;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Fill in a device status for a type: the type, polling info and poll results store
+void DeviceIdentMgr::completeDeviceStatus(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, DeviceStatus& deviceStatus)
+{
+    deviceStatus.deviceTypeIndex = deviceTypeIndex;
+    deviceTypeRecords.getPollInfo(address, deviceTypeIndex, deviceStatus.deviceIdentPolling);
+    auto pDataAggregator = std::make_shared<PollDataAggregator>(
+            deviceStatus.deviceIdentPolling.numPollResultsToStore,
+            deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+    deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Ask for devices to be identified again (carried out on the bus task)
+bool DeviceIdentMgr::requestReIdentify(const BusReIdentRequest& request)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    bool accepted = _reidentRequests.size() < MAX_REIDENT_REQUESTS;
+    if (accepted)
+        _reidentRequests.push_back(request);
+    _reidentRequestsPending = true;
+    RaftMutex_unlock(_handlerMutex);
+    return accepted;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

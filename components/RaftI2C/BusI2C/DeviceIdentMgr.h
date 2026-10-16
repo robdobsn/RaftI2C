@@ -242,6 +242,12 @@ public:
     /// @param deviceStatus (out) device status
     void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Ask for devices to be identified again (carried out on the bus task)
+    /// @param request which devices
+    /// @return true if accepted
+    virtual bool requestReIdentify(const BusReIdentRequest& request) override final;
+
     /// @brief Identification statistics (hook calls, init steps NACKed, re-verifications and mismatches found)
     uint32_t getHookCallCount() const { return _hookCallCount; }
     uint32_t getInitNackCount() const { return _initNackCount; }
@@ -280,6 +286,8 @@ private:
             Init,
         };
         BusElemAddrType address = 0;
+        uint32_t generation = 0;    // device type records generation and hook epoch the candidates are from
+        uint32_t hookEpoch = 0;
         Phase phase = Phase::Detect;
         std::vector<DeviceTypeIndexType> candidates;
         uint32_t candPos = 0;
@@ -314,6 +322,14 @@ private:
     InitResult runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
                 uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause);
     static void pauseUntil(uint32_t untilMs);
+    BusStatusMgr::ReIdentResult reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
+                DeviceStatus& deviceStatus);
+    void completeDeviceStatus(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, DeviceStatus& deviceStatus);
+
+    // Re-identification requests from other tasks (under _handlerMutex), applied at the start of a scheduler pass
+    std::vector<BusReIdentRequest> _reidentRequests;
+    std::atomic<bool> _reidentRequestsPending{false};
+    static constexpr uint32_t MAX_REIDENT_REQUESTS = 16;
     static BusIdentState outcomeToState(IdentOutcome outcome);
 
     // A pause of at least this long after a detection or initialisation step ends the scheduler's work on that
