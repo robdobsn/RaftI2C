@@ -113,6 +113,10 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
                     request.deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)request.deviceTypeIndex, (int)numMarked);
     }
 
+    // Re-initialisation requests
+    if (_reinitRequestsPending)
+        serviceReInitRequests();
+
     // Jobs whose element was never handed back (it went offline) are dropped
     uint32_t nowMs = millis();
     _jobs.erase(std::remove_if(_jobs.begin(), _jobs.end(), [nowMs](const IdentJob& job) {
@@ -486,6 +490,76 @@ BusStatusMgr::ReIdentResult DeviceIdentMgr::reIdentifyDevice(BusElemAddrType add
     LOG_I(MODULE_PREFIX, "reIdentify %s now %s (typeIdx %d, was %d)", BusI2CAddrAndSlot::toString(address).c_str(),
                 pRec && pRec->deviceType ? pRec->deviceType : "?", matchedIdx, currentTypeIndex);
     return BusStatusMgr::ReIdentResult::NewType;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Run an identified device's initialisation again (carried out on the bus task)
+bool DeviceIdentMgr::requestReInit(BusElemAddrType address, std::function<void(bool ok)> doneFn)
+{
+    if (_busStatusMgr.getDeviceTypeIndexByAddr(address) == DEVICE_TYPE_INDEX_INVALID)
+        return false;
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    bool accepted = _reinitRequests.size() < MAX_REIDENT_REQUESTS;
+    if (accepted)
+        _reinitRequests.push_back({address, doneFn});
+    _reinitRequestsPending = true;
+    RaftMutex_unlock(_handlerMutex);
+    return accepted;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Do the re-initialisations requested (bus task). A device that is re-initialised is reported as Identified
+///        (with the same type) so that settings made since it was first initialised are applied again
+void DeviceIdentMgr::serviceReInitRequests()
+{
+    std::vector<ReInitRequest> requests;
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    requests.swap(_reinitRequests);
+    _reinitRequestsPending = false;
+    RaftMutex_unlock(_handlerMutex);
+    for (const ReInitRequest& request : requests)
+    {
+        bool ok = false;
+        DeviceTypeIndexType deviceTypeIndex = _busStatusMgr.getDeviceTypeIndexByAddr(request.address);
+        uint32_t slotNum = BusI2CAddrAndSlot::getSlotNum(request.address);
+        if ((deviceTypeIndex != DEVICE_TYPE_INDEX_INVALID) && (!_reselectSlotFn || (_reselectSlotFn(slotNum) == RAFT_OK)))
+        {
+            uint32_t stepIdx = 0, initNacks = 0, resumeAtMs = 0;
+            ok = runInitSteps(request.address, deviceTypeIndex, stepIdx, initNacks, resumeAtMs, false) != InitResult::BusError;
+            if (ok)
+                _busStatusMgr.setReverifyOutcome(request.address, BusStatusMgr::ReverifyResult::StillMatches);
+            if (_deselectSlotsFn && (slotNum != 0))
+                _deselectSlotsFn();
+        }
+        LOG_I(MODULE_PREFIX, "reInit %s typeIdx %d: %s", BusI2CAddrAndSlot::toString(request.address).c_str(),
+                    deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)deviceTypeIndex, ok ? "done" : "failed");
+        if (request.doneFn)
+            request.doneFn(ok);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identification information for a device
+String DeviceIdentMgr::getIdentInfoJson(BusElemAddrType address) const
+{
+    String stateFields = _busStatusMgr.getIdentStateJsonFields(address);
+    if (stateFields.length() == 0)
+        return "{}";
+    uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+    String candidates = "[";
+    for (DeviceTypeIndexType idx : deviceTypeRecords.getIdentCandidates(i2cAddr))
+    {
+        const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(idx);
+        String cand = "{\"dtIdx\":" + String((int)idx);
+        RaftJson::appendStringField(cand, "key", pRec && pRec->deviceType ? pRec->deviceType : "");
+        cand += "}";
+        candidates += String(candidates.length() > 1 ? "," : "") + cand;
+    }
+    candidates += "]";
+    bool hookOffered = isAddrClaimedByHook(i2cAddr) && !deviceTypeRecords.isAddrHookBlocked(i2cAddr);
+    return "{" + stateFields + ",\"candidates\":" + candidates + ",\"hook\":" + (hookOffered ? "true" : "false") + "}";
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

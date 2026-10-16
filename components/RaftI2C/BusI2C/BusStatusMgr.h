@@ -81,6 +81,13 @@ public:
     /// @param deviceStatus device status to set
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
 
+    /// @brief Stop or resume polling an element (it stays identified)
+    /// @return false if the element isn't known
+    bool setDevicePollingEnabled(BusElemAddrType address, bool enabled);
+
+    /// @brief Identification state of an element as JSON fields (without braces; empty if not known)
+    String getIdentStateJsonFields(BusElemAddrType address) const;
+
     /// @brief Note a change on a slot (an element there came online or went, or its multiplexer changed)
     void noteSlotChange(uint32_t slotNum);
 
@@ -413,7 +420,7 @@ private:
     DevicePollScheduler _pollScheduler;
     static DeviceStatus* getRecordDeviceStatusIfOnline(BusAddrRecord& rec)
     {
-        return (rec.onlineState == DeviceOnlineState::ONLINE) ? &rec.deviceStatus : nullptr;
+        return ((rec.onlineState == DeviceOnlineState::ONLINE) && !rec.pollingDisabled) ? &rec.deviceStatus : nullptr;
     }
 
     // A device that was online, or found and not yet online, has gone (e.g. its slot lost power): an online

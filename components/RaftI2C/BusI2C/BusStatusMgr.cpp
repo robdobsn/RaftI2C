@@ -580,8 +580,8 @@ bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
     const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
-        // Check if the address is being polled
-        isBeingPolled = pAddrStatus->deviceStatus.getNumPollRequests() > 0;
+        // Check if the address is being polled (a device whose polling is stopped is scanned for presence instead)
+        isBeingPolled = (pAddrStatus->deviceStatus.getNumPollRequests() > 0) && !pAddrStatus->pollingDisabled;
     }
 
     // Return semaphore
@@ -1774,5 +1774,46 @@ void BusStatusMgr::getSlotActivity(uint32_t numSlotNums, std::vector<uint32_t>& 
             numOnline[slotNum]++;
     }
     RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Stop or resume polling an element
+bool BusStatusMgr::setDevicePollingEnabled(BusElemAddrType address, bool enabled)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    BusAddrRecord* pRec = findAddrStatusRecordEditable(address);
+    if (pRec)
+    {
+        // (When polling resumes the schedule restarts from then - a missed due time isn't caught up)
+        pRec->pollingDisabled = !enabled;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+    return pRec != nullptr;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identification state of an element as JSON fields
+String BusStatusMgr::getIdentStateJsonFields(BusElemAddrType address) const
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return "";
+    String json;
+    const BusAddrRecord* pRec = findAddrStatusRecord(address);
+    if (pRec)
+    {
+        int32_t nextInMs = (int32_t)(pRec->nextIdentMs - millis());
+        DeviceTypeIndexType typeIdx = pRec->deviceStatus.getDeviceTypeIndex();
+        char buf[260];
+        snprintf(buf, sizeof(buf), R"("online":"%s","state":"%s","attempts":%d,"nextInMs":%d,"dtIdx":%d,"polled":%s,"reverify":%s,"reident":%s)",
+                    BusAddrStatus::getOnlineStateStr(pRec->onlineState), BusIdentSchedule::getStateStr(pRec->identState),
+                    (int)pRec->identAttempts, (pRec->identState == BusIdentState::Identified) ? 0 : (nextInMs > 0 ? (int)nextInMs : 0),
+                    typeIdx == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)typeIdx,
+                    pRec->pollingDisabled ? "false" : "true", pRec->reverifyRequested ? "true" : "false",
+                    pRec->reidentRequested ? "true" : "false");
+        json = buf;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+    return json;
 }
 

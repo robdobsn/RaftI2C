@@ -263,6 +263,18 @@ public:
     /// @return true if accepted
     virtual bool requestReIdentify(const BusReIdentRequest& request) override final;
 
+    /// @brief Identification information for a device (state, attempts, candidates in the order tried, ...)
+    virtual String getIdentInfoJson(BusElemAddrType address) const override final;
+
+    /// @brief Run an identified device's initialisation again (carried out on the bus task)
+    virtual bool requestReInit(BusElemAddrType address, std::function<void(bool ok)> doneFn) override final;
+
+    /// @brief Stop or resume polling a device
+    virtual bool setDevicePollingEnabled(BusElemAddrType address, bool enabled) override final
+    {
+        return _busStatusMgr.setDevicePollingEnabled(address, enabled);
+    }
+
     /// @brief Identification statistics (hook calls, init steps NACKed, re-verifications and mismatches found)
     uint32_t getHookCallCount() const { return _hookCallCount; }
     uint32_t getInitNackCount() const { return _initNackCount; }
@@ -340,6 +352,16 @@ private:
     BusStatusMgr::ReIdentResult reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
                 DeviceStatus& deviceStatus);
     void completeDeviceStatus(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, DeviceStatus& deviceStatus);
+
+    // Re-initialisation requests from other tasks (under _handlerMutex), done at the start of a scheduler pass
+    struct ReInitRequest
+    {
+        BusElemAddrType address;
+        std::function<void(bool ok)> doneFn;
+    };
+    std::vector<ReInitRequest> _reinitRequests;
+    std::atomic<bool> _reinitRequestsPending{false};
+    void serviceReInitRequests();
 
     // Re-identification requests from other tasks (under _handlerMutex), applied at the start of a scheduler pass
     std::vector<BusReIdentRequest> _reidentRequests;
