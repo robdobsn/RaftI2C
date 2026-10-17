@@ -192,5 +192,7 @@ cat TestWebUI/build/<systype>/raft/SysTypes.json.merged
 
 This file shows the actual runtime configuration compiled into the firmware.
 
+If a device is not identified, or is identified as the wrong type, `devman/identinfo?deviceid=<busNum>_<addr>` reports its identification state, attempts and the candidate types in the order they are tried, and `devman/busstatus` reports identification and poll timing for each bus. See [I2C Device Identification and Polling](https://github.com/robdobsn/RaftCore/wiki/I2CDeviceIdentificationAndPolling#debugging).
+
 If a device is detected but does not show live values in the WebUI, check the device type's `devInfoJson.resp` metadata. Simple responses are decoded automatically from the attribute list, but records with a custom `resp.c.n` handler, such as `lsm6ds_fifo`, must also be implemented in [TestWebUI/systypes/Common/WebUI/src/CustomAttrHandler.ts](TestWebUI/systypes/Common/WebUI/src/CustomAttrHandler.ts).
 
