@@ -572,6 +572,9 @@ void DeviceIdentMgr::completeDeviceStatus(BusElemAddrType address, DeviceTypeInd
             deviceStatus.deviceIdentPolling.numPollResultsToStore,
             deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
     deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+
+    // What a poll sends, made once and shared by every poll
+    deviceStatus.buildPollPlan();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -98,23 +98,24 @@ void DevicePollingMgr::taskService(uint64_t timeNowUs, uint32_t pollBudgetUs)
 
 bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& polledAddress)
 {
-    // See if any devices need polling
-    DevicePollingInfo pollInfo;
-    if (!_busStatusMgr.getPendingIdentPoll(timeNowUs, pollInfo))
+    // See if any devices need polling (the job shares the device's poll plan - nothing is copied)
+    DevicePollJob job;
+    if (!_busStatusMgr.getPendingPollJob(timeNowUs, job))
         return false;
 
     // Count poll steps (for activity statistics)
     _pollStepCount++;
 
     // Get the address and slot
-    if (pollInfo.pollReqs.size() == 0)
+    if (!job.pPlan || (job.pPlan->pollReqs.size() == 0))
         return true;
-    BusElemAddrType address = pollInfo.pollReqs[0].getAddress();
+    const PollPlan& plan = *job.pPlan;
+    BusElemAddrType address = plan.pollReqs[0].getAddress();
     BusI2CAddrAndSlot addrAndSlot(address);
     polledAddress = address;
 
     // Get the next request index
-    uint32_t nextReqIdx = pollInfo.partialPollNextReqIdx;
+    uint32_t nextReqIdx = job.nextReqIdx;
 
 #ifdef DEBUG_POLL_REQUEST
     LOG_I(MODULE_PREFIX, "taskService pollreq %s (%04x)", addrAndSlot.toString().c_str(), address);
@@ -135,12 +136,12 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
     // and (no slot mask set OR this device's slot is in the mask)
     bool speedChanged = false;
     uint32_t savedBusFreqHz = 0;
-    if (pollInfo.pollBusHz != 0 && _pI2CCentral &&
-        (pollInfo.pollBusHzSlotMask == 0 || (pollInfo.pollBusHzSlotMask & (1ULL << addrAndSlot.getSlotNum()))))
+    if (job.pollBusHz != 0 && _pI2CCentral &&
+        (job.pollBusHzSlotMask == 0 || (job.pollBusHzSlotMask & (1ULL << addrAndSlot.getSlotNum()))))
     {
         savedBusFreqHz = _pI2CCentral->getBusFrequency();
-        if (pollInfo.pollBusHz != savedBusFreqHz)
-            speedChanged = _pI2CCentral->setBusFrequency(pollInfo.pollBusHz);
+        if (job.pollBusHz != savedBusFreqHz)
+            speedChanged = _pI2CCentral->setBusFrequency(job.pollBusHz);
     }
 
 #ifdef DEBUG_POLL_TIMING
@@ -169,16 +170,20 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
 
     // Loop through the requests starting at the next request index
     bool allResultsOkAndComplete = true;
-    for (uint32_t i = nextReqIdx; i < pollInfo.pollReqs.size(); i++)
+    for (uint32_t i = nextReqIdx; i < plan.pollReqs.size(); i++)
     {
-        // Get the request record
-        BusRequestInfo& busReqRec = pollInfo.pollReqs[i];
+        // Get the request record (shared by every poll, so not changed here)
+        const BusRequestInfo* pBusReqRec = &plan.pollReqs[i];
 
-        // If this request has a dynamic read length, evaluate it now
-        if (busReqRec.hasDynamicReadLen())
+        // If this request has a dynamic read length, evaluate it now - into a copy of the request, as the plan's
+        // request is shared
+        BusRequestInfo dynamicLenReq;
+        if (pBusReqRec->hasDynamicReadLen())
         {
-            uint16_t computedLen = busReqRec.getReadReqLen(perOpResults);
-            busReqRec.setReadReqLen(computedLen);
+            uint16_t computedLen = pBusReqRec->getReadReqLen(perOpResults);
+            dynamicLenReq = *pBusReqRec;
+            dynamicLenReq.setReadReqLen(computedLen);
+            pBusReqRec = &dynamicLenReq;
 #ifdef DEBUG_DYNAMIC_READ_LEN
             LOG_I(MODULE_PREFIX, "dynReadLen addr %04x op %d computedLen %d", address, i, computedLen);
 #endif
@@ -191,6 +196,7 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
         }
 
         // Perform the request
+        const BusRequestInfo& busReqRec = *pBusReqRec;
         std::vector<uint8_t> readData;
         auto rslt = _busReqSyncFn(&busReqRec, &readData);
 
@@ -228,7 +234,7 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
         // response that cannot be validated is discarded rather than decoded -
         // dropping a sample is always better than reporting a wrong measurement.
         // The device stays online: this is data corruption, not absence.
-        if (!validatePollResponse(pollInfo, busReqRec, address, readData))
+        if (!validatePollResponse(plan, busReqRec, address, readData))
         {
             allResultsOkAndComplete = false;
             break;
@@ -242,10 +248,10 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
 
         // Check if the request contains a pause after send and this is not the last request
         uint32_t pauseAfterSendMs = busReqRec.getBarAccessForMsAfterSend();
-        if (pauseAfterSendMs > 0 && i < pollInfo.pollReqs.size() - 1)
+        if (pauseAfterSendMs > 0 && i < plan.pollReqs.size() - 1)
         {
             // Update the ident poll info with the pause after send and received data
-            _busStatusMgr.handlePollResult(i+1, timeNowUs, address, pollDataResult, &pollInfo, pauseAfterSendMs);
+            _busStatusMgr.handlePollResult(i+1, timeNowUs, address, pollDataResult, nullptr, pauseAfterSendMs);
             allResultsOkAndComplete = false;
             break;
         }
@@ -254,7 +260,7 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
     // Store the poll result if all requests succeeded
     if (allResultsOkAndComplete)
     {
-        _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, &pollInfo, 0);
+        _busStatusMgr.handlePollResult(0, timeNowUs, address, pollDataResult, nullptr, 0);
     }
 
 #ifdef DEBUG_POLL_TIMING
@@ -294,7 +300,7 @@ bool DevicePollingMgr::pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& po
 // Validate a poll response carrying a CRC trailer, re-reading if the device supports it
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool DevicePollingMgr::validatePollResponse(const DevicePollingInfo& pollInfo, BusRequestInfo& busReqRec,
+bool DevicePollingMgr::validatePollResponse(const PollPlan& pollInfo, const BusRequestInfo& busReqRec,
                                             BusElemAddrType address, std::vector<uint8_t>& readData)
 {
     // Nothing to do unless this device declares a CRC

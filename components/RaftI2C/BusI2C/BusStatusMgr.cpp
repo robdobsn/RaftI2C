@@ -710,7 +710,7 @@ bool BusStatusMgr::getForgottenAddresses(std::vector<BusElemAddrType>& addrs)
 // Get pending ident poll requests for a single device
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo)
+bool BusStatusMgr::getPendingPollJob(uint64_t timeNowUs, DevicePollJob& job)
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
@@ -721,7 +721,7 @@ bool BusStatusMgr::getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& po
     int32_t recIdx = _pollScheduler.findEarliestDue(_addrStatus, getRecordDeviceStatusIfOnline, timeNowUs);
     if (recIdx != DevicePollScheduler::NONE_DUE)
     {
-        pollPending = _addrStatus[recIdx].deviceStatus.getPendingIdentPollInfo(timeNowUs, pollInfo);
+        pollPending = _addrStatus[recIdx].deviceStatus.getPendingPollJob(timeNowUs, job);
         _pollScheduler.markPolled(recIdx);
     }
 
@@ -1398,14 +1398,14 @@ void BusStatusMgr::recordPollBusTimeUs(BusElemAddrType address, uint64_t busTime
 /// @return estimated time in us
 /// @note each byte is 9 bit times (8 data + ack), each transaction has an address byte for its write and another
 ///       for its read, plus start, restart and stop and a fixed software overhead
-uint32_t BusStatusMgr::estimatePollTimeUs(const DevicePollingInfo& pollInfo, uint32_t busHz)
+uint32_t BusStatusMgr::estimatePollTimeUs(const std::vector<BusRequestInfo>& pollReqs, uint32_t busHz)
 {
     if (busHz == 0)
         return 0;
     static const uint32_t BITS_PER_TRANSACTION_OVERHEAD = 3;
     static const uint32_t SOFTWARE_OVERHEAD_US_PER_TRANSACTION = 100;
     uint64_t totalUs = 0;
-    for (const BusRequestInfo& req : pollInfo.pollReqs)
+    for (const BusRequestInfo& req : pollReqs)
     {
         uint32_t bytes = 1 + req.getWriteDataLen();
         if (req.getReadReqLen() > 0)
@@ -1428,13 +1428,14 @@ uint32_t BusStatusMgr::getPollLoadPct(uint32_t defaultBusHz) const
     for (const BusAddrRecord& addrStatus : _addrStatus)
     {
         const DevicePollingInfo& pollInfo = addrStatus.deviceStatus.deviceIdentPolling;
-        if ((addrStatus.onlineState != DeviceOnlineState::ONLINE) || (pollInfo.pollReqs.size() == 0))
+        const std::vector<BusRequestInfo>& pollReqs = addrStatus.deviceStatus.getPollReqs();
+        if ((addrStatus.onlineState != DeviceOnlineState::ONLINE) || (pollReqs.size() == 0))
             continue;
         uint32_t busHz = pollInfo.pollBusHz != 0 ? pollInfo.pollBusHz : defaultBusHz;
         uint32_t intervalUs = DevicePollingInfo::clampPollIntervalUs(pollInfo.pollIntervalUs);
         uint32_t pollTimeUs = addrStatus.deviceStatus.pollTimingStats.getMeanBusTimePerPollUs();
         if (pollTimeUs == 0)
-            pollTimeUs = estimatePollTimeUs(pollInfo, busHz);
+            pollTimeUs = estimatePollTimeUs(pollReqs, busHz);
         load += (double)pollTimeUs / intervalUs;
     }
     RaftMutex_unlock(_busElemStatusMutex);

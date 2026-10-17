@@ -114,12 +114,12 @@ public:
     ///       devices of the same type.
     void clearDeviceIdentification(BusElemAddrType address);
 
-    /// @brief Get pending ident poll (this is the poll of the device based on its identified type)
+    /// @brief Get the poll that is due (the poll of the device based on its identified type)
     /// @param timeNowUs current time in us
-    /// @param pollInfo (out) device polling info
+    /// @param job (out) the device's poll plan (shared, not copied), the first request to send and the bus speed
     /// @return true if there is a pending ident poll
     /// @note of the devices that are due, the one with the earliest due time is returned (on a tie, round robin)
-    bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
+    bool getPendingPollJob(uint64_t timeNowUs, DevicePollJob& job);
 
     /// @brief Get the earliest time any device poll (or poll step) is due
     /// @param timeNowUs current time in us
@@ -308,10 +308,10 @@ public:
     uint32_t getPollLoadPct(uint32_t defaultBusHz) const;
 
     /// @brief Estimate the bus time one poll of a device takes
-    /// @param pollInfo device polling info
+    /// @param pollReqs the device's poll requests
     /// @param busHz bus frequency
     /// @return estimated time in us
-    static uint32_t estimatePollTimeUs(const DevicePollingInfo& pollInfo, uint32_t busHz);
+    static uint32_t estimatePollTimeUs(const std::vector<BusRequestInfo>& pollReqs, uint32_t busHz);
 
     /// @brief Reset the poll timing statistics of all devices
     void resetPollTiming();

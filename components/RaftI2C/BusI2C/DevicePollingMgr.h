@@ -58,7 +58,7 @@ private:
     // On success readData is truncated to the declared length, i.e. the trailer is
     // stripped, so the decode and the record's resp.b are unaffected by the CRC.
     // Returns false if the response could not be validated and must be discarded.
-    bool validatePollResponse(const DevicePollingInfo& pollInfo, BusRequestInfo& busReqRec,
+    bool validatePollResponse(const PollPlan& pollInfo, const BusRequestInfo& busReqRec,
                               BusElemAddrType address, std::vector<uint8_t>& readData);
 
     // Poll-response integrity counters
