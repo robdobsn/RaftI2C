@@ -72,9 +72,10 @@ public:
     uint32_t getAddrStatusCount() const;
 
     /// @brief Check if an address is being polled
-    /// @param address address of the bus element
-    /// @return true if the address is being polled
-    bool isAddrBeingPolled(BusElemAddrType address) const;
+    /// @param address address
+    /// @param maxPollIntervalUs only count it if it is polled at least this often (default: any interval)
+    /// @return true if the address is being polled (with a poll interval no longer than maxPollIntervalUs)
+    bool isAddrBeingPolled(BusElemAddrType address, uint32_t maxPollIntervalUs = UINT32_MAX) const;
 
     /// @brief Set bus element device status (which includes device type and can be empty) for an address
     /// @param address address of the bus element

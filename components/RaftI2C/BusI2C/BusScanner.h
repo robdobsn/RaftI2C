@@ -110,6 +110,10 @@ private:
     // background sweep of those nothing can (BusScanSchedule.h)
     BusScanSchedule _schedule;
     static const uint32_t BACKGROUND_SWEEP_DEFAULT_MS = 10000;
+
+    // An online device polled at this interval or faster isn't scanned (its polls show it is there); one polled less
+    // often is scanned as well, so that its removal is seen quickly
+    static const uint32_t PRESENCE_FROM_POLLS_MAX_INTERVAL_US = 1000000;
     uint32_t _backgroundSweepMs = BACKGROUND_SWEEP_DEFAULT_MS;
     bool isAddrClaimable(uint32_t addr) const;
     uint32_t slotNumFromPos(uint32_t pos) const;

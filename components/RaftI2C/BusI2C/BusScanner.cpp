@@ -377,9 +377,10 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
                         continue;
                 }
 
-                // Check if the address is being polled and is online
-                // If offline, continue scanning to detect when it comes back online
-                if (_busStatusMgr.isAddrBeingPolled(BusI2CAddrAndSlot(addr, slotNum)))
+                // An online device polled often enough isn't scanned: its polls show whether it is there. One polled
+                // less often (e.g. a temperature sensor every 5 s) is scanned too, so its removal is seen at the scan
+                // rate rather than after several failed polls. An offline device is scanned to see it come back
+                if (_busStatusMgr.isAddrBeingPolled(BusI2CAddrAndSlot(addr, slotNum), PRESENCE_FROM_POLLS_MAX_INTERVAL_US))
                 {
                     if (_busStatusMgr.isElemOnline(BusI2CAddrAndSlot(addr, slotNum)) == BUS_OPERATION_OK)
                         continue;

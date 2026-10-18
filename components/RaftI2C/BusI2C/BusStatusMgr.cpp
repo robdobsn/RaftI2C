@@ -568,8 +568,9 @@ DeviceTypeIndexType BusStatusMgr::getDeviceTypeIndexByAddr(BusElemAddrType addre
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check if an address is being polled
 /// @param address address
-/// @return true if the address is being polled
-bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
+/// @param maxPollIntervalUs only count it if it is polled at least this often
+/// @return true if the address is being polled (with a poll interval no longer than maxPollIntervalUs)
+bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address, uint32_t maxPollIntervalUs) const
 {
     // Obtain semaphore
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
@@ -581,7 +582,8 @@ bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address) const
     if (pAddrStatus)
     {
         // Check if the address is being polled (a device whose polling is stopped is scanned for presence instead)
-        isBeingPolled = (pAddrStatus->deviceStatus.getNumPollRequests() > 0) && !pAddrStatus->pollingDisabled;
+        isBeingPolled = (pAddrStatus->deviceStatus.getNumPollRequests() > 0) && !pAddrStatus->pollingDisabled &&
+                    (pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs <= maxPollIntervalUs);
     }
 
     // Return semaphore
