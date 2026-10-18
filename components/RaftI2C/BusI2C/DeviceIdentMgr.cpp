@@ -244,6 +244,7 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
             job.matchedIdx = deviceStatus.deviceTypeIndex;
             deviceStatus.clear();
             job.phase = IdentJob::Phase::Init;
+            job.initValues = DeviceTypeRecords::InitValueState();
             job.stepIdx = 0;
             break;
         }
@@ -266,6 +267,7 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
         {
             job.matchedIdx = deviceTypeIndex;
             job.phase = IdentJob::Phase::Init;
+            job.initValues = DeviceTypeRecords::InitValueState();
             job.stepIdx = 0;
             break;
         }
@@ -279,7 +281,8 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
     // Initialise the device. A NACK during initialisation is reported (and initialisation repeated once) but the
     // device is still identified - a command such as a soft reset is often NACKed. Any other bus error means the
     // device wasn't initialised, so identification is repeated later
-    InitResult initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause);
+    InitResult initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause,
+                &job.initValues);
     if (initResult == InitResult::Paused)
         return IdentOutcome::InProgress;
     if ((initResult == InitResult::Done) && (job.initNacks > 0) && !job.initRepeated)
@@ -288,7 +291,9 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
         job.stepIdx = 0;
         uint32_t firstNacks = job.initNacks;
         job.initNacks = 0;
-        initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause);
+        job.initValues = DeviceTypeRecords::InitValueState();
+        initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause,
+                    &job.initValues);
         if (initResult == InitResult::Paused)
             return IdentOutcome::InProgress;
         if (job.initNacks > 0)
@@ -729,8 +734,13 @@ bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, DeviceTypeIndexT
 /// @param allowPause true to return Paused after a step followed by a long pause
 /// @return Done (NACKed steps are counted in initNacks), Paused or BusError (a bus error other than a NACK)
 DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
-            uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause)
+            uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause,
+            DeviceTypeRecords::InitValueState* pInitValues)
 {
+    // Init values ({name} value slots computed from bytes earlier steps read) - kept by the caller across pauses
+    DeviceTypeRecords::InitValueState localInitValues;
+    DeviceTypeRecords::InitValueState& initValues = pInitValues ? *pInitValues : localInitValues;
+
     std::vector<BusRequestInfo> initBusRequests;
     deviceTypeRecords.getInitBusRequests(address, deviceTypeIndex, initBusRequests);
 
@@ -744,12 +754,26 @@ DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address,
         const BusRequestInfo& initBusRequest = initBusRequests[stepIdx];
         std::vector<uint8_t> readData;
         BusRequestInfo reqRec(initBusRequest);
+
+        // A step with value slots is written with the values filled in (computed from the bytes read so far). If they
+        // can't be computed (e.g. a read step was NACKed) init failed - identification is repeated later
+        std::vector<uint8_t> slotWriteData;
+        if (deviceTypeRecords.initStepHasValueSlots(deviceTypeIndex, stepIdx))
+        {
+            if (!deviceTypeRecords.getInitStepWrite(deviceTypeIndex, stepIdx, initValues, slotWriteData))
+                return InitResult::BusError;
+            reqRec = BusRequestInfo(BUS_REQ_TYPE_FAST_SCAN, address, 0, slotWriteData.size(), slotWriteData.data(),
+                        initBusRequest.getReadReqLen(), initBusRequest.getBarAccessForMsAfterSend(), nullptr, this);
+        }
+
         RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
         uint32_t sentMs = millis();
         if (rslt == RAFT_BUS_ACK_ERROR)
             initNacks++;
         else if (rslt != RAFT_OK)
             return InitResult::BusError;
+        else if (!readData.empty())
+            DeviceTypeRecords::noteInitStepRead(initValues, readData);
 
         // Pause after the step (the address is barred for that time): a long pause ends this part of the job
         stepIdx++;

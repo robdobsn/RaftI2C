@@ -10,6 +10,7 @@
 
 #include "RaftBusDevicesIF.h"
 #include "DeviceTypeRecord.h"
+#include "DeviceTypeRecords.h"
 #include "BusStatusMgr.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
@@ -322,6 +323,7 @@ private:
         uint32_t resumeAtMs = 0;
         DeviceTypeIndexType matchedIdx = DEVICE_TYPE_INDEX_INVALID;
         uint32_t initNacks = 0;
+        DeviceTypeRecords::InitValueState initValues;   // bytes read and values computed for init value slots
         bool busError = false;
         bool initRepeated = false;
     };
@@ -347,7 +349,8 @@ private:
     DetectionResult runDetectionSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
                 uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause);
     InitResult runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
-                uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause);
+                uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause,
+                DeviceTypeRecords::InitValueState* pInitValues = nullptr);
     static void pauseUntil(uint32_t untilMs);
     BusStatusMgr::ReIdentResult reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
                 DeviceStatus& deviceStatus);
