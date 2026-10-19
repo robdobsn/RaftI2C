@@ -581,9 +581,11 @@ bool BusStatusMgr::isAddrBeingPolled(BusElemAddrType address, uint32_t maxPollIn
     const BusAddrRecord* pAddrStatus = findAddrStatusRecord(address);
     if (pAddrStatus)
     {
-        // Check if the address is being polled (a device whose polling is stopped is scanned for presence instead)
+        // Check if the address is being polled (a device whose polling is stopped is scanned for presence instead).
+        // A device whose record says it isn't scanned while polled counts however slowly it's polled
+        const DevicePollingInfo& polling = pAddrStatus->deviceStatus.deviceIdentPolling;
         isBeingPolled = (pAddrStatus->deviceStatus.getNumPollRequests() > 0) && !pAddrStatus->pollingDisabled &&
-                    (pAddrStatus->deviceStatus.deviceIdentPolling.pollIntervalUs <= maxPollIntervalUs);
+                    ((polling.pollIntervalUs <= maxPollIntervalUs) || !polling.scanWhilePolled);
     }
 
     // Return semaphore

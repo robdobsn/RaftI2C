@@ -73,7 +73,8 @@ public:
 
     /// @brief Check if an address is being polled
     /// @param address address
-    /// @param maxPollIntervalUs only count it if it is polled at least this often (default: any interval)
+    /// @param maxPollIntervalUs only count it if it is polled at least this often (default: any interval), unless its
+    ///        record says it isn't scanned while polled ("scanWhilePolled": false)
     /// @return true if the address is being polled (with a poll interval no longer than maxPollIntervalUs)
     bool isAddrBeingPolled(BusElemAddrType address, uint32_t maxPollIntervalUs = UINT32_MAX) const;
 
