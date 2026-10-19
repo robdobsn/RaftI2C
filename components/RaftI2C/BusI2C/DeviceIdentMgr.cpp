@@ -737,7 +737,7 @@ DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address,
             uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause,
             DeviceTypeRecords::InitValueState* pInitValues)
 {
-    // Init values ({name} value slots computed from bytes earlier steps read) - kept by the caller across pauses
+    // Init values ({name} value slots and {?name} guards, computed from bytes earlier steps read) - kept by the caller across pauses
     DeviceTypeRecords::InitValueState localInitValues;
     DeviceTypeRecords::InitValueState& initValues = pInitValues ? *pInitValues : localInitValues;
 
@@ -755,13 +755,20 @@ DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address,
         std::vector<uint8_t> readData;
         BusRequestInfo reqRec(initBusRequest);
 
-        // A step with value slots is written with the values filled in (computed from the bytes read so far). If they
-        // can't be computed (e.g. a read step was NACKed) init failed - identification is repeated later
+        // A step with value slots is written with the values filled in, and a step with a guard is only done if its
+        // value isn't 0 (values computed from the bytes read so far). If they can't be computed (e.g. a read step was
+        // NACKed) init failed - identification is repeated later
         std::vector<uint8_t> slotWriteData;
-        if (deviceTypeRecords.initStepHasValueSlots(deviceTypeIndex, stepIdx))
+        if (deviceTypeRecords.initStepUsesInitValues(deviceTypeIndex, stepIdx))
         {
-            if (!deviceTypeRecords.getInitStepWrite(deviceTypeIndex, stepIdx, initValues, slotWriteData))
+            bool doStep = true;
+            if (!deviceTypeRecords.getInitStepWrite(deviceTypeIndex, stepIdx, initValues, slotWriteData, doStep))
                 return InitResult::BusError;
+            if (!doStep)
+            {
+                stepIdx++;
+                continue;
+            }
             reqRec = BusRequestInfo(BUS_REQ_TYPE_FAST_SCAN, address, 0, slotWriteData.size(), slotWriteData.data(),
                         initBusRequest.getReadReqLen(), initBusRequest.getBarAccessForMsAfterSend(), nullptr, this);
         }
