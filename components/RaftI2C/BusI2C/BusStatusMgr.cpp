@@ -775,10 +775,13 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     // Find address record
     BusAddrRecord* pAddrStatus = findAddrStatusRecordEditable(address);
     bool putResult = false;
+    // The whole poll result (a poll with pauses is completed in parts - pollResultData is then only the last part)
+    std::vector<uint8_t> completePollResult;
     if (pAddrStatus)
     {
         // Add result to aggregator
-        putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs);
+        putResult = pAddrStatus->deviceStatus.storePollResults(nextReqIdx, timeNowUs, pollResultData, pPollInfo, pauseAfterSendMs,
+                    &completePollResult);
 
         // Check if this is a completed poll
         if (nextReqIdx == 0)
@@ -835,8 +838,8 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
     // Check if a callback is required
     if (pCallback)
     {
-        // Call the callback
-        pCallback(deviceTypeIndex, pollResultData, pCallbackInfo);
+        // Call the callback with the whole poll result
+        pCallback(deviceTypeIndex, completePollResult, pCallbackInfo);
 
         // Callback no longer in progress
         _dataChangeCBInProgress = false;
