@@ -1,2 +1,4 @@
 linux_unit_tests
 RaftCore
+obj
+gen

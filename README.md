@@ -165,11 +165,11 @@ Console settings are intentionally target-specific. ESP32-S3 boards that expose 
 
 ## Tests
 
-Host-side tests can be built from [linux_unit_tests](linux_unit_tests):
+Host-side tests can be built and run from [linux_unit_tests](linux_unit_tests). They build against the RaftCore checkout next to this one (`../../RaftCore`; `make check RAFTCORE=<path>` for another):
 
 ```bash
 cd linux_unit_tests
-make all
+make check
 ```
 
 ESP-IDF unit tests live under [unit_tests](unit_tests) and use the normal ESP-IDF/Raft build flow for the `unittest` systype.
