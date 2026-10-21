@@ -13,7 +13,7 @@ CC = g++
 RAFTCORE ?= ../../RaftCore
 CORE = $(RAFTCORE)/components/core
 
-CFLAGS = -Wall -std=c++20 -g -DRAFT_CORE
+CFLAGS = -Wall -std=c++20 -g -ffp-contract=off -DRAFT_CORE
 
 GEN_DIR = gen
 CATALOGUE = $(GEN_DIR)/DeviceTypeRecords.json
