@@ -169,6 +169,7 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
     UBaseType_t taskCore = config.getLong("taskCore", DEFAULT_TASK_CORE);
     BaseType_t taskPriority = config.getLong("taskPriority", DEFAULT_TASK_PRIORITY);
     int taskStackSize = config.getLong("taskStack", DEFAULT_TASK_STACK_SIZE_BYTES);
+    _taskStackSize = taskStackSize;
 
     // Yield values
     _loopYieldMs = config.getLong("loopYieldMs", I2C_BUS_LOOP_YIELD_MS);

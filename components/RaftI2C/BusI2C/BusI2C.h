@@ -372,7 +372,8 @@ public:
     /// Also reports: "activity" - where the worker task spent its time in the last complete ~1 s window;
     /// "pollTiming" - per polled device, how closely polls keep to the configured interval; "identTiming" -
     /// when each element was first seen, came online and was identified (ms since bus setup); "scan" - the scan
-    /// list sizes, background sweep addresses, scan share and probe counts
+    /// list sizes, background sweep addresses, scan share and probe counts; "workerStack" - the worker task's stack
+    /// size and the least it has had free (its high water mark: poll result subscribers' decodes run on it)
     virtual String getBusStatusJson() const override final
     {
         const DevicePollingMgr::CrcStats& s = _devicePollingMgr.getCrcStats();
@@ -385,7 +386,17 @@ public:
                 ",\"activity\":" + _activityStats.getJson() +
                 ",\"pollTiming\":" + _busStatusMgr.getPollTimingJson() +
                 ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() +
-                ",\"scan\":" + _busScanner.getScanStatsJson() + "}";
+                ",\"scan\":" + _busScanner.getScanStatsJson() + getWorkerStackJson() + "}";
+    }
+
+    /// @brief The worker task's stack size and least free (a JSON field with a leading comma, or empty)
+    String getWorkerStackJson() const
+    {
+        TaskHandle_t workerTaskHandle = _i2cWorkerTaskHandle;
+        if (workerTaskHandle == nullptr)
+            return "";
+        return ",\"workerStack\":{\"size\":" + String(_taskStackSize) + ",\"minFree\":" +
+                    String((uint32_t)uxTaskGetStackHighWaterMark(workerTaskHandle)) + "}";
     }
 
     /// @brief Reset the bus status statistics that measure over a period (poll timing)
@@ -447,6 +458,7 @@ private:
 
     // Task that operates the bus
     volatile TaskHandle_t _i2cWorkerTaskHandle = nullptr;
+    uint32_t _taskStackSize = 0;
     volatile bool _workerExitRequested = false;
     static const int DEFAULT_TASK_CORE = 0;
     static const int DEFAULT_TASK_PRIORITY = 5;
