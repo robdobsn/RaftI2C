@@ -30,6 +30,12 @@
 #include "hal/gpio_hal.h"
 #include "esp_private/esp_clk.h"
 #include "esp_private/periph_ctrl.h"
+#include "esp_heap_caps.h"
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#include "esp_memory_utils.h"
+#else
+#include "soc/soc_memory_layout.h"
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Consts
@@ -89,6 +95,22 @@ RaftI2CCentral::~RaftI2CCentral()
 {
     // De-init
     deinit();
+    heap_caps_free(_pBounceBuf);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Allocate in internal RAM (the ISR uses this object's members)
+void* RaftI2CCentral::operator new(size_t size)
+{
+    void* p = heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!p)
+        abort();
+    return p;
+}
+
+void RaftI2CCentral::operator delete(void* p)
+{
+    heap_caps_free(p);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -306,8 +328,7 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
 
     // Clamp read size to avoid exceeding a single 255-byte READ command in the ESP32
     // I2C engine command queue. 240 is used instead of 255 because it is divisible by
-    // common sensor record sizes (1,2,3,4,6,8,12,etc) to avoid mid-record splits
-    static const uint32_t MAX_I2C_READ_BYTES = 240;
+    // common sensor record sizes (1,2,3,4,6,8,12,etc) to avoid mid-record splits (MAX_I2C_READ_BYTES)
     if (numToRead > MAX_I2C_READ_BYTES)
         numToRead = MAX_I2C_READ_BYTES;
 
@@ -325,6 +346,33 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     uint32_t rstartAndSecondAddrCommands = (i2cOpType == ACCESS_READ_ONLY ? 1 : ((i2cOpType == ACCESS_WRITE_RESTART_READ) ? 2 : 0));
     if (writeCommands + readCommands + rstartAndSecondAddrCommands > (I2C_ENGINE_CMD_QUEUE_SIZE - 2))
         return RAFT_BUS_INVALID;
+
+    // The ISR runs while a flash write has the cache disabled (ESP_INTR_FLAG_IRAM), when PSRAM can't be accessed:
+    // a caller's buffer that isn't in internal RAM is used through the bounce buffer (write data copied in, read
+    // data copied out once the access is over)
+    uint8_t* pReadBufCaller = pReadBuf;
+    bool readBounced = (numToRead > 0) && !esp_ptr_internal(pReadBuf);
+    bool writeBounced = (numToWrite > 0) && !esp_ptr_internal(pWriteBuf);
+    if (readBounced || writeBounced)
+    {
+        if (!_pBounceBuf)
+            _pBounceBuf = (uint8_t*)heap_caps_malloc(BOUNCE_BUF_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!_pBounceBuf || (numToWrite > BOUNCE_WRITE_BYTES))
+            return RAFT_BUS_INVALID;
+        if (!_bounceLogged)
+        {
+            _bounceLogged = true;
+            LOG_I(MODULE_PREFIX, "access buffer not in internal RAM (write %d read %d): copied through an internal buffer",
+                        writeBounced, readBounced);
+        }
+        if (writeBounced)
+        {
+            memcpy(_pBounceBuf, pWriteBuf, numToWrite);
+            pWriteBuf = _pBounceBuf;
+        }
+        if (readBounced)
+            pReadBuf = _pBounceBuf + BOUNCE_WRITE_BYTES;
+    }
 
     // Prepare I2C engine for access
     prepareI2CAccess();
@@ -512,6 +560,10 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
     _writeBufStartPtr = nullptr;
     _accessInProgress = false;
     portEXIT_CRITICAL(&_i2cAccessMutex);
+
+    // Read data received in the bounce buffer to the caller's
+    if (readBounced && (numRead > 0))
+        memcpy(pReadBufCaller, pReadBuf, (numRead < numToRead) ? numRead : numToRead);
 
     // Check for software time-out (the ISR can no longer change the result code at this point)
     if (_accessResultCode == RAFT_BUS_PENDING)

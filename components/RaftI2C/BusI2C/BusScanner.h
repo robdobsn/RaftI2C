@@ -17,6 +17,7 @@
 #include "BusMultiplexers.h"
 #include "RaftI2CCentralIF.h"
 #include "DeviceIdentMgr.h"
+#include "BusScanSchedule.h"
 
 // #define DEBUG_SCANNING_SWEEP_TIME
 
@@ -39,6 +40,12 @@ public:
     /// @return true if a scan is pending
     bool isScanPending(uint32_t curTimeMs);
 
+    /// @brief Get the number of addresses probed so far (a running count, for activity statistics)
+    uint32_t getScanProbeCount() const
+    {
+        return _scanProbeCount;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Service called from I2C task
     /// @param curTimeUs Current time in microseconds
@@ -49,6 +56,15 @@ public:
 
     // Scan period
     static const uint32_t I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS = 5;
+
+    /// @brief Set the share of the bus that polling needs (from the poll intervals), which sets the scan share
+    void setPollLoadPct(uint32_t pollLoadPct)
+    {
+        _pollLoadPct = pollLoadPct;
+    }
+
+    /// @brief Scanning status as JSON (list sizes, background addresses, share, probe counts)
+    String getScanStatsJson() const;
 
 private:
     // Scanning mode
@@ -61,7 +77,7 @@ private:
     };
     BusScanMode _scanMode = SCAN_MODE_IDLE;
 
-    const char* getScanStateStr(BusScanMode scanState)
+    static const char* getScanStateStr(BusScanMode scanState)
     {
         switch (scanState)
         {
@@ -83,8 +99,81 @@ private:
     uint32_t _slowScanPeriodMs = I2C_BUS_SLOW_SCAN_DEFAULT_PERIOD_MS;
     uint16_t _scanAddressesCurrentList = 0;
     
-    // Scan priority
-    std::vector<std::vector<BusElemAddrType>> _scanPriorityLists;
+    // Scan boost addresses (config "scanBoost") and the device type records generation and identification hook
+    // claims the lists were built from
+    std::vector<uint32_t> _scanBoostAddrs;
+    uint32_t _scanListsGeneration = 0;
+    uint32_t _scanClaimsEpoch = 0;
+    void loadScanLists();
+
+    // Order of probes in the fast and slow modes: priority lists of addresses something can claim, and a slow
+    // background sweep of those nothing can (BusScanSchedule.h)
+    BusScanSchedule _schedule;
+    static const uint32_t BACKGROUND_SWEEP_DEFAULT_MS = 10000;
+
+    // An online device polled at this interval or faster isn't scanned (its polls show it is there); one polled less
+    // often is scanned as well, so that its removal is seen quickly
+    static const uint32_t PRESENCE_FROM_POLLS_MAX_INTERVAL_US = 1000000;
+    uint32_t _backgroundSweepMs = BACKGROUND_SWEEP_DEFAULT_MS;
+    bool isAddrClaimable(uint32_t addr) const;
+    uint32_t slotNumFromPos(uint32_t pos) const;
+    uint32_t _numListAddrs[3] = {};
+    uint32_t _numBackgroundAddrs = 0;
+
+    // Elements that have answered once: probed again on the next pass, so a new device comes online without
+    // waiting for the scan to come round again
+    std::vector<std::pair<uint8_t, uint8_t>> _confirmQueue;
+    static const uint32_t CONFIRM_QUEUE_MAX = 8;
+
+    // Share of bus time for scanning in the slow mode: scanShareMaxPct on a quiet bus, falling with the poll load to
+    // scanShareMinPct. Time is earned as a credit and spent by each pass
+    std::atomic<uint32_t> _pollLoadPct{0};
+    static const uint32_t SCAN_SHARE_MIN_DEFAULT_PCT = 10;
+    static const uint32_t SCAN_SHARE_MAX_DEFAULT_PCT = 30;
+    static constexpr int64_t SCAN_CREDIT_MAX_US = 20000;
+    uint32_t _scanShareMinPct = SCAN_SHARE_MIN_DEFAULT_PCT;
+    uint32_t _scanShareMaxPct = SCAN_SHARE_MAX_DEFAULT_PCT;
+    int64_t _scanCreditUs = 0;
+    uint64_t _scanCreditLastUs = 0;
+    uint32_t getScanSharePct() const;
+    void updateScanCredit(uint64_t timeNowUs);
+
+    // Fast mode (after requestScan(fast)) ends after its sweeps or this long, whichever is first
+    static const uint32_t FAST_SCAN_MAX_DEFAULT_MS = 2000;
+    uint32_t _fastScanMaxMs = FAST_SCAN_MAX_DEFAULT_MS;
+    uint32_t _fastScanStartMs = 0;
+
+    // Slot weights (how often each multiplexer slot is scanned, relative to an empty slot's 1): slots with an
+    // online device, and slots where something changed recently, are scanned more often. Updated periodically
+    static const uint32_t SLOT_KNOWN_WEIGHT_DEFAULT = 2;
+    static const uint32_t SLOT_CHANGED_WEIGHT_DEFAULT = 3;
+    static const uint32_t SLOT_CHANGED_DEFAULT_MS = 10000;
+    static const uint32_t SLOT_WEIGHTS_UPDATE_MS = 500;
+    uint32_t _slotKnownWeight = SLOT_KNOWN_WEIGHT_DEFAULT;
+    uint32_t _slotChangedWeight = SLOT_CHANGED_WEIGHT_DEFAULT;
+    uint32_t _slotChangedMs = SLOT_CHANGED_DEFAULT_MS;
+    uint32_t _slotWeightsLastMs = 0;
+    uint32_t _numSlotsKnown = 0;
+    uint32_t _numSlotsChanged = 0;
+    void updateSlotWeights();
+
+    // Multiplexer supervision: a multiplexer address is probed every muxCheckMs (in turn, on the slot each is reached
+    // through) so a multiplexer coming or going is noticed in a few probes - otherwise its address is only probed
+    // when the scan comes round to it, which can take many seconds
+    static const uint32_t MUX_CHECK_DEFAULT_MS = 100;
+    uint32_t _muxCheckMs = MUX_CHECK_DEFAULT_MS;
+    uint32_t _muxCheckLastMs = 0;
+    uint32_t _muxCheckIdx = 0;
+    uint32_t _muxCheckProbeCount = 0;
+
+    // Slot left selected by the last probe (0 none), so consecutive probes on a slot don't rewrite the multiplexer
+    uint32_t _scanSlotSelected = 0;
+
+    // Statistics
+    uint32_t _muxRescanCount = 0;
+    uint32_t _backgroundProbeCount = 0;
+    uint32_t _confirmProbeCount = 0;
+    uint32_t _mainBusCheckCount = 0;
     
     // Scanning priority state - three MUST be exactly the same number
     // of scan priority recs as there are scan priority lists
@@ -166,12 +255,8 @@ private:
     /// @param addressesOnSlotDone addresses on slot done
     /// @return Slot number
     uint32_t getSlotNumFromSlotIdx(ScanPriorityRec& scanRec, bool& sweepCompleted, bool addressesOnSlotDone);
-    // Retry interval for re-running identification on an element that is online but has
-    // never been identified (a handler deferred it). Throttled globally rather than per
-    // address: this is a recovery path, not a scan rate, and one retry every few seconds is
-    // ample against events that happen when a human plugs something in.
-    static const uint32_t UNIDENTIFIED_RETRY_INTERVAL_MS = 3000;
-    uint32_t _lastUnidentRetryMs = 0;
+    // Number of addresses probed (running count)
+    uint32_t _scanProbeCount = 0;
 
 
     // Debug

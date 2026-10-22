@@ -165,11 +165,11 @@ Console settings are intentionally target-specific. ESP32-S3 boards that expose 
 
 ## Tests
 
-Host-side tests can be built from [linux_unit_tests](linux_unit_tests):
+Host-side tests can be built and run from [linux_unit_tests](linux_unit_tests). They build against the RaftCore checkout next to this one (`../../RaftCore`; `make check RAFTCORE=<path>` for another):
 
 ```bash
 cd linux_unit_tests
-make all
+make check
 ```
 
 ESP-IDF unit tests live under [unit_tests](unit_tests) and use the normal ESP-IDF/Raft build flow for the `unittest` systype.
@@ -191,6 +191,8 @@ cat TestWebUI/build/<systype>/raft/SysTypes.json.merged
 ```
 
 This file shows the actual runtime configuration compiled into the firmware.
+
+If a device is not identified, or is identified as the wrong type, `devman/identinfo?deviceid=<busNum>_<addr>` reports its identification state, attempts and the candidate types in the order they are tried, and `devman/busstatus` reports identification and poll timing for each bus. See [I2C Device Identification and Polling](https://github.com/robdobsn/RaftCore/wiki/I2CDeviceIdentificationAndPolling#debugging).
 
 If a device is detected but does not show live values in the WebUI, check the device type's `devInfoJson.resp` metadata. Simple responses are decoded automatically from the attribute list, but records with a custom `resp.c.n` handler, such as `lsm6ds_fifo`, must also be implemented in [TestWebUI/systypes/Common/WebUI/src/CustomAttrHandler.ts](TestWebUI/systypes/Common/WebUI/src/CustomAttrHandler.ts).
 

@@ -10,7 +10,7 @@
 #define INFO_NEW_DEVICE_IDENTIFIED
 
 // Debug
-#define DEBUG_DEVICE_IDENT_MGR
+// #define DEBUG_DEVICE_IDENT_MGR
 // #define DEBUG_DEVICE_IDENT_MGR_DETAIL
 // #define DEBUG_HANDLE_BUS_DEVICE_INFO
 // #define DEBUG_GET_DECODED_POLL_RESPONSES
@@ -29,6 +29,7 @@
 #include "Logger.h"
 #include <memory>
 #include <atomic>
+#include <algorithm>
 #include "RaftThreading.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -81,331 +82,744 @@ void DeviceIdentMgr::getDeviceAddresses(std::vector<BusElemAddrType>& addresses,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Identify device
-/// @param address address of device
-/// @param deviceStatus (out) device status
-/// @note This is called from within the scanning code so the device should already be selected if it is on a bus extender, etc.
-void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus)
+/// @brief Identification scheduler: identify the elements that are due (called from the bus task)
+/// @param budgetUs time budget for this pass (at least one element is serviced if any is due)
+/// @note Each element is identified on its own schedule (BusIdentState.h): a new element at once, then by the
+///       outcome. Identification is a job that can pause: a detection or initialisation step followed by a long
+///       pause ends the pass for that element, and the job resumes when the pause is over, so a sensor that needs
+///       hundreds of ms after a command doesn't hold up the bus. Nothing is identified until the device type
+///       records are complete (every record source - e.g. the device type file - is ready)
+void DeviceIdentMgr::taskService(uint64_t budgetUs)
 {
-    // Clear device status
-    deviceStatus.clear();
-
-    // Check if enabled
-    if (!_isEnabled)
-    {
-#ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice disabled");
-#endif
+    if (!_isEnabled || !deviceTypeRecords.areRecordSourcesReady())
         return;
+    uint64_t startUs = micros();
+    uint32_t generation = deviceTypeRecords.getGeneration();
+    uint32_t hookEpoch = _hookEpoch.load();
+
+    // Re-identification requests (made on other tasks)
+    std::vector<BusReIdentRequest> requests;
+    if (_reidentRequestsPending && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+    {
+        requests.swap(_reidentRequests);
+        _reidentRequestsPending = false;
+        RaftMutex_unlock(_handlerMutex);
+    }
+    for (const BusReIdentRequest& request : requests)
+    {
+        uint32_t numMarked = _busStatusMgr.applyReIdentRequest(request);
+        LOG_I(MODULE_PREFIX, "reIdentify scope %d addr %s typeIdx %d: %d device(s)", (int)request.scope,
+                    BusI2CAddrAndSlot::toString(request.address).c_str(),
+                    request.deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)request.deviceTypeIndex, (int)numMarked);
     }
 
-    // Get the raw I2C address (excluding slot number) and the list of standard device-type
-    // records registered for it.
-    uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
-    std::vector<uint16_t> deviceTypesForAddr = deviceTypeRecords.getDeviceTypeIdxsForAddr(i2cAddr);
+    // Re-initialisation requests
+    if (_reinitRequestsPending)
+        serviceReInitRequests();
 
-    // Address-based identification runs FIRST. Detection is a non-destructive read/compare, so a
-    // device with a matching device-type record is identified without disturbing it. Only if
-    // nothing here matches do we fall back to the delegated new-device hook below (which probes
-    // with a framed vendor command that can be destructive to third-party sensors).
-#ifdef DEBUG_DEVICE_IDENT_MGR
-    bool anyDeviceIdentified = false;
-#endif
-    bool identified = false;
-    for (const auto& deviceTypeIdx : deviceTypesForAddr)
+    // Jobs whose element was never handed back (it went offline) are dropped
+    uint32_t nowMs = millis();
+    _jobs.erase(std::remove_if(_jobs.begin(), _jobs.end(), [nowMs](const IdentJob& job) {
+                return (int32_t)(nowMs - job.resumeAtMs) > (int32_t)IDENT_JOB_STALE_MS;
+            }), _jobs.end());
+
+    for (uint32_t numDone = 0; numDone < MAX_IDENT_PER_PASS; numDone++)
     {
-        // Get JSON definition for device
-        DeviceTypeRecord devTypeRec;
-        if (!deviceTypeRecords.getDeviceInfo(deviceTypeIdx, devTypeRec))
-            continue;
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice potential deviceType %s address %s", 
-                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", BusI2CAddrAndSlot::toString(address).c_str());
-#endif
-
-        // Check if the detection value(s) match responses from the device
-        // Generate a bus request to read the detection value
-        if (checkDeviceTypeMatch(address, &devTypeRec))
-        {
-#ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice FOUND %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
-#endif
-#ifdef INFO_NEW_DEVICE_IDENTIFIED
-            LOG_I(MODULE_PREFIX, "identifyDevice new device %s at address %s", 
-                    devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME", 
-                    BusI2CAddrAndSlot::toString(address).c_str());
-#endif
-
-            // Initialise the device if required
-            processDeviceInit(address, &devTypeRec);
-
-            // Set device type index
-            deviceStatus.deviceTypeIndex = deviceTypeIdx;
-
-            // Get polling info
-            deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
-
-            // Set polling results size
-            auto pDataAggregator = std::make_shared<PollDataAggregator>(
-                    deviceStatus.deviceIdentPolling.numPollResultsToStore,
-                    deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
-            deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
-
-#ifdef DEBUG_HANDLE_BUS_DEVICE_INFO
-            LOG_I(MODULE_PREFIX, "setBusElemDevInfo address %s numPollResToStore %d pollResSizeIncTimestamp %d", 
-                    BusI2CAddrAndSlot::toString(address).c_str(),
-                    deviceStatus.deviceIdentPolling.numPollResultsToStore,
-                    deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
-#endif
-            // Identified - stop searching
-            identified = true;
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            anyDeviceIdentified = true;
-#endif
+        if ((numDone > 0) && (micros() - startUs >= budgetUs))
             break;
+        BusStatusMgr::IdentWork work;
+        if (!_busStatusMgr.getNextIdentWork(millis(), generation, hookEpoch, work))
+            break;
+
+        // Select the element's slot
+        uint32_t slotNum = BusI2CAddrAndSlot::getSlotNum(work.address);
+        if (_reselectSlotFn && (_reselectSlotFn(slotNum) != RAFT_OK))
+        {
+            DeviceStatus noStatus;
+            _busStatusMgr.setIdentOutcome(work.address, BusIdentState::BusError, noStatus, generation, hookEpoch, 0);
+            continue;
+        }
+
+        if (work.reident)
+        {
+            // An identified device identified again - it keeps its type (and is polled) until the result is known
+            DeviceStatus deviceStatus;
+            BusStatusMgr::ReIdentResult result = reIdentifyDevice(work.address, work.deviceTypeIndex, deviceStatus);
+            _busStatusMgr.setReIdentOutcome(work.address, result, deviceStatus, generation, hookEpoch);
+        }
+        else if (work.reverify)
+        {
+            // Re-verification of an identified device after a poll failure it recovered from
+            DetectionResult result = reverifyDevice(work.address, work.deviceTypeIndex);
+            _busStatusMgr.setReverifyOutcome(work.address,
+                        result == DetectionResult::Match ? BusStatusMgr::ReverifyResult::StillMatches :
+                        result == DetectionResult::NoMatch ? BusStatusMgr::ReverifyResult::Mismatch :
+                        BusStatusMgr::ReverifyResult::BusError);
         }
         else
         {
-#ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
-            LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED %s", devTypeRec.devInfoJson ? devTypeRec.devInfoJson : "NO INFO");
-#endif
-        }
-    }
-#ifdef DEBUG_DEVICE_IDENT_MGR
-    if (!anyDeviceIdentified)
-    {
-        LOG_I(MODULE_PREFIX, "identifyDevice NO MATCH for address %s numDeviceTypesForAddr %d", 
-                    BusI2CAddrAndSlot::toString(address).c_str(), deviceTypesForAddr.size());
-    }
-#endif
-
-    // Fallback: give a registered new-device identification handler (device-agnostic delegation
-    // hook, e.g. the RSAO WHOAMI probe) a chance to claim the device, but ONLY when no standard
-    // device-type record matched above. The handler probes with a framed vendor command that can
-    // be destructive to third-party sensors (e.g. Sensirion devices interpret the probe bytes as
-    // commands and stop measuring), so it must run last - after all non-destructive address-based
-    // identification. Dynamically-addressed RSAO devices are excludeFromAddrMap so they never match
-    // above and are correctly handled here.
-    // The handler {fn, ctx} pair is copied out under the handler mutex (it may be registered/cleared from
-    // another task) and called outside it
-    RaftNewDeviceIdentFn newDeviceIdentFn = nullptr;
-    void* pNewDeviceIdentCtx = nullptr;
-    if (!identified && RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
-    {
-        newDeviceIdentFn = _newDeviceIdentFn;
-        pNewDeviceIdentCtx = _newDeviceIdentCtx;
-        if (newDeviceIdentFn)
-        {
-            _handlerCallingTask = (void*)xTaskGetCurrentTaskHandle();
-            _newDeviceIdentCallCount++;
-            _newDeviceIdentInProgress = true;
-        }
-        RaftMutex_unlock(_handlerMutex);
-    }
-    if (!identified && newDeviceIdentFn)
-    {
-        RaftDeviceIdentVerdict verdict = newDeviceIdentFn(address, deviceStatus, pNewDeviceIdentCtx);
-        _newDeviceIdentInProgress = false;
-
-        // The handler may have performed bus transactions (e.g. a synchronous probe) that reset
-        // the multiplexer slot selection. The scanner selected this device's slot before calling
-        // identifyDevice and device init relies on it remaining selected, so re-select it here
-        // before continuing.
-        if (_reselectSlotFn)
-            _reselectSlotFn(BusI2CAddrAndSlot::getSlotNum(address));
-
-        if (verdict == RaftDeviceIdentVerdict::Handled)
-        {
-            // The handler has identified the device and set deviceStatus.deviceTypeIndex. Complete
-            // the device status here (init + polling + data aggregator) from that index using the
-            // standard device-type records, so the handler stays device-agnostic and the existing
-            // polling/decode pipeline is reused unchanged.
-            DeviceTypeRecord devTypeRec;
-            if (deviceTypeRecords.getDeviceInfo(deviceStatus.deviceTypeIndex, devTypeRec))
+            // Identification (a new job, or one resuming after a pause)
+            auto jobIt = std::find_if(_jobs.begin(), _jobs.end(), [&work](const IdentJob& job) { return job.address == work.address; });
+            if ((jobIt != _jobs.end()) && ((int32_t)(millis() - jobIt->resumeAtMs) < 0))
             {
-                processDeviceInit(address, &devTypeRec);
-                deviceTypeRecords.getPollInfo(address, &devTypeRec, deviceStatus.deviceIdentPolling);
-                auto pDataAggregator = std::make_shared<PollDataAggregator>(
-                        deviceStatus.deviceIdentPolling.numPollResultsToStore,
-                        deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
-                deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
-#ifdef INFO_NEW_DEVICE_IDENTIFIED
-                LOG_I(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s (typeIdx %d)",
-                        BusI2CAddrAndSlot::toString(address).c_str(),
-                        devTypeRec.deviceType ? devTypeRec.deviceType : "NO NAME",
-                        deviceStatus.deviceTypeIndex);
-#endif
-                return;
+                // Paused (it became due early, e.g. the records changed) - not resumed until the pause is over
+                if (_deselectSlotsFn && (slotNum != 0))
+                    _deselectSlotsFn();
+                continue;
             }
-            // Handler returned Handled but the device-type index is not valid: treat as unidentified.
-            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s but device-type index %d invalid",
-                    BusI2CAddrAndSlot::toString(address).c_str(), deviceStatus.deviceTypeIndex);
-            deviceStatus.clear();
-            return;
+            if (jobIt == _jobs.end())
+            {
+                IdentJob job;
+                job.address = work.address;
+                job.generation = generation;
+                job.hookEpoch = hookEpoch;
+                job.candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(work.address));
+                _jobs.push_back(job);
+                jobIt = _jobs.end() - 1;
+            }
+            DeviceStatus deviceStatus;
+            IdentOutcome outcome = runIdentJob(*jobIt, deviceStatus, true);
+            // The outcome is for the records (and hook) the job started with - if they have changed since, the
+            // element is tried again at once
+            uint32_t resumeAtMs = jobIt->resumeAtMs;
+            uint32_t jobGeneration = jobIt->generation;
+            uint32_t jobHookEpoch = jobIt->hookEpoch;
+            if (outcome != IdentOutcome::InProgress)
+                _jobs.erase(jobIt);
+            _busStatusMgr.setIdentOutcome(work.address, outcomeToState(outcome), deviceStatus, jobGeneration, jobHookEpoch, resumeAtMs);
         }
-        if (verdict == RaftDeviceIdentVerdict::Deferred)
-        {
-            // Not ready to identify yet; leave unidentified and unpolled. identifyDevice is
-            // called on an offline->online transition and also periodically (BusScanner retry)
-            // for online devices that are still unidentified, so this will be retried.
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "identifyDevice handler DEFERRED address %s - left unidentified and unpolled",
-                    BusI2CAddrAndSlot::toString(address).c_str());
-#endif
-            deviceStatus.clear();
-            return;
-        }
-        // NotMine -> device remains unidentified
-#ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s - remains unidentified",
-                BusI2CAddrAndSlot::toString(address).c_str());
-#endif
+        if (_deselectSlotsFn && (slotNum != 0))
+            _deselectSlotsFn();
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Access device and check response
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identify device (to completion, pausing inline)
+/// @param address address of device
+/// @param deviceStatus (out) device status
+/// @note The device's slot must be selected. The identification scheduler (taskService) is what identifies
+///       devices on the bus; this is kept for callers that need an answer at once
+void DeviceIdentMgr::identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus)
+{
+    deviceStatus.clear();
+    if (!_isEnabled)
+        return;
+    IdentJob job;
+    job.address = address;
+    job.candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(address));
+    runIdentJob(job, deviceStatus, false);
+}
 
-bool DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Run an identification job until it completes or (if allowed) pauses
+/// @param job job (its position is kept between calls)
+/// @param deviceStatus (out) device status when Identified
+/// @param allowPause true to return InProgress at a long pause (resume when job.resumeAtMs is reached); false to
+///        pause inline
+/// @return outcome
+DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceStatus& deviceStatus, bool allowPause)
+{
+    deviceStatus.clear();
+    BusElemAddrType address = job.address;
+
+    // Identification has started: from now on a device may hold any device type index, so a record can no longer
+    // replace a base record at its index
+    deviceTypeRecords.markReady();
+
+    // Detection: address-based identification runs FIRST. Detection is a non-destructive read/compare, so a device
+    // with a matching device-type record is identified without disturbing it. Only if nothing here matches do we
+    // fall back to the delegated new-device hook (which probes with a framed vendor command that can be destructive
+    // to third-party sensors)
+    while (job.phase == IdentJob::Phase::Detect)
+    {
+        if (job.candPos >= job.candidates.size())
+        {
+            // No record matched. A bus error (other than a NACK) ended detection: trying the identification hook on a
+            // device that couldn't be read would give a wrong or harmful result
+            if (job.busError)
+                return IdentOutcome::BusError;
+            IdentOutcome hookOutcome = runIdentHook(address, deviceStatus);
+            if (hookOutcome != IdentOutcome::Identified)
+                return hookOutcome;
+            job.matchedIdx = deviceStatus.deviceTypeIndex;
+            deviceStatus.clear();
+            job.phase = IdentJob::Phase::Init;
+            job.initValues = DeviceTypeRecords::InitValueState();
+            job.stepIdx = 0;
+            break;
+        }
+        DeviceTypeIndexType deviceTypeIndex = job.candidates[job.candPos];
+        DetectionResult detectionResult = runDetectionSteps(address, deviceTypeIndex, job.stepIdx, job.resumeAtMs, allowPause);
+        if (detectionResult == DetectionResult::Paused)
+            return IdentOutcome::InProgress;
+        if (detectionResult == DetectionResult::BusError)
+        {
+            // A bus error (other than a NACK, which is how many devices reject a command meant for another type)
+            // ends the attempt - it is tried again later
+            const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(deviceTypeIndex);
+            LOG_W(MODULE_PREFIX, "identifyDevice bus error detecting %s at %s - identification deferred",
+                        pRec && pRec->deviceType ? pRec->deviceType : "?", BusI2CAddrAndSlot::toString(address).c_str());
+            job.busError = true;
+            job.candPos = job.candidates.size();
+            continue;
+        }
+        if (detectionResult == DetectionResult::Match)
+        {
+            job.matchedIdx = deviceTypeIndex;
+            job.phase = IdentJob::Phase::Init;
+            job.initValues = DeviceTypeRecords::InitValueState();
+            job.stepIdx = 0;
+            break;
+        }
+#ifdef DEBUG_DEVICE_IDENT_MGR_DETAIL
+        LOG_I(MODULE_PREFIX, "identifyDevice CHECK FAILED typeIdx %d at %s", deviceTypeIndex, BusI2CAddrAndSlot::toString(address).c_str());
+#endif
+        job.candPos++;
+        job.stepIdx = 0;
+    }
+
+    // Initialise the device. A NACK during initialisation is reported (and initialisation repeated once) but the
+    // device is still identified - a command such as a soft reset is often NACKed. Any other bus error means the
+    // device wasn't initialised, so identification is repeated later
+    InitResult initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause,
+                &job.initValues);
+    if (initResult == InitResult::Paused)
+        return IdentOutcome::InProgress;
+    if ((initResult == InitResult::Done) && (job.initNacks > 0) && !job.initRepeated)
+    {
+        job.initRepeated = true;
+        job.stepIdx = 0;
+        uint32_t firstNacks = job.initNacks;
+        job.initNacks = 0;
+        job.initValues = DeviceTypeRecords::InitValueState();
+        initResult = runInitSteps(address, job.matchedIdx, job.stepIdx, job.initNacks, job.resumeAtMs, allowPause,
+                    &job.initValues);
+        if (initResult == InitResult::Paused)
+            return IdentOutcome::InProgress;
+        if (job.initNacks > 0)
+        {
+            const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(job.matchedIdx);
+            LOG_W(MODULE_PREFIX, "identifyDevice %s at %s: %d init step(s) NACKed (repeated: %d) - device used anyway",
+                        pRec && pRec->deviceType ? pRec->deviceType : "?", BusI2CAddrAndSlot::toString(address).c_str(),
+                        (int)firstNacks, (int)job.initNacks);
+            _initNackCount++;
+        }
+    }
+    if (initResult == InitResult::BusError)
+    {
+        LOG_W(MODULE_PREFIX, "identifyDevice bus error initialising typeIdx %d at %s - identification repeated later",
+                    job.matchedIdx, BusI2CAddrAndSlot::toString(address).c_str());
+        return IdentOutcome::InitFailed;
+    }
+
+    // Identified: device type, polling info and poll results store
+    completeDeviceStatus(address, job.matchedIdx, deviceStatus);
+#ifdef INFO_NEW_DEVICE_IDENTIFIED
+    const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(job.matchedIdx);
+    LOG_I(MODULE_PREFIX, "identifyDevice new device %s at address %s",
+            pRec && pRec->deviceType ? pRec->deviceType : "NO NAME", BusI2CAddrAndSlot::toString(address).c_str());
+#endif
+    return IdentOutcome::Identified;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Offer a device that no record matched to the identification hook
+/// @param address address
+/// @param deviceStatus (out) device status - its deviceTypeIndex is set if Identified
+/// @return Identified (the hook claimed it, with a usable type), Deferred or NoMatch
+DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType address, DeviceStatus& deviceStatus)
+{
+    // The handler probes with a framed vendor command that can be destructive to third-party sensors (e.g. Sensirion
+    // devices interpret the probe bytes as commands and stop measuring), so it runs last - after all non-destructive
+    // address-based identification. Dynamically-addressed RSAO devices are probe-only so they never match by address
+    // and are handled here. The hook isn't run at an address claimed by a record whose policy is DISABLED_CLAIM.
+    // The handler {fn, ctx} pair is copied out under the handler mutex (it may be registered/cleared from another
+    // task) and called outside it
+    uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+    RaftNewDeviceIdentFn newDeviceIdentFn = nullptr;
+    void* pNewDeviceIdentCtx = nullptr;
+    if (deviceTypeRecords.isAddrHookBlocked(i2cAddr) || !RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return IdentOutcome::NoMatch;
+    // The handler is only offered addresses it handles
+    newDeviceIdentFn = isAddrInHookRangesLocked(i2cAddr) ? _newDeviceIdentFn : nullptr;
+    pNewDeviceIdentCtx = _newDeviceIdentCtx;
+    if (newDeviceIdentFn)
+    {
+        _handlerCallingTask = (void*)xTaskGetCurrentTaskHandle();
+        _newDeviceIdentCallCount++;
+        _newDeviceIdentInProgress = true;
+    }
+    RaftMutex_unlock(_handlerMutex);
+    if (!newDeviceIdentFn)
+        return IdentOutcome::NoMatch;
+
+    RaftDeviceIdentVerdict verdict = newDeviceIdentFn(address, deviceStatus, pNewDeviceIdentCtx);
+    _newDeviceIdentInProgress = false;
+    _hookCallCount++;
+
+    // The handler may have performed bus transactions (e.g. a synchronous probe) that reset the multiplexer slot
+    // selection, which initialisation relies on - so re-select it
+    if (_reselectSlotFn)
+        _reselectSlotFn(BusI2CAddrAndSlot::getSlotNum(address));
+
+    if (verdict == RaftDeviceIdentVerdict::Handled)
+    {
+        // The handler set deviceStatus.deviceTypeIndex; the device status is completed from that index using the
+        // standard device type records, so the handler stays device-agnostic. A type that is disabled isn't used,
+        // whoever identified it
+        DeviceTypeIndexType deviceTypeIndex = deviceStatus.deviceTypeIndex;
+        const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(deviceTypeIndex);
+        deviceStatus.clear();
+        if (!pRec)
+        {
+            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s but device-type index %d invalid",
+                    BusI2CAddrAndSlot::toString(address).c_str(), deviceTypeIndex);
+            return IdentOutcome::NoMatch;
+        }
+        if (deviceTypeRecords.getPolicy(deviceTypeIndex) != DeviceTypeRecord::POLICY_ENABLED)
+        {
+            LOG_W(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s, which is disabled - not used",
+                    BusI2CAddrAndSlot::toString(address).c_str(), pRec->deviceType ? pRec->deviceType : "?");
+            return IdentOutcome::NoMatch;
+        }
+#ifdef INFO_NEW_DEVICE_IDENTIFIED
+        LOG_I(MODULE_PREFIX, "identifyDevice handler claimed address %s as %s (typeIdx %d)",
+                BusI2CAddrAndSlot::toString(address).c_str(), pRec->deviceType ? pRec->deviceType : "NO NAME", deviceTypeIndex);
+#endif
+        deviceStatus.deviceTypeIndex = deviceTypeIndex;
+        return IdentOutcome::Identified;
+    }
+    deviceStatus.clear();
+    if (verdict == RaftDeviceIdentVerdict::Deferred)
+    {
+        // Not ready to identify yet: asked again after the Deferred interval
+#ifdef DEBUG_DEVICE_IDENT_MGR
+        LOG_I(MODULE_PREFIX, "identifyDevice handler DEFERRED address %s", BusI2CAddrAndSlot::toString(address).c_str());
+#endif
+        return IdentOutcome::Deferred;
+    }
+#ifdef DEBUG_DEVICE_IDENT_MGR
+    LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s", BusI2CAddrAndSlot::toString(address).c_str());
+#endif
+    return IdentOutcome::NoMatch;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Re-verify an identified device after a poll failure it recovered from: run its type's detection again;
+///        re-initialise it if it still matches
+/// @param address address
+/// @param deviceTypeIndex the device's type
+/// @return Match (re-initialised), NoMatch (it isn't that type now - it is identified again) or BusError (tried again
+///         later)
+/// @note A probe-only type (identified by a hook) isn't re-verified, nor one whose detection has a long pause (the
+///       device is being polled); these are treated as a match without re-initialising
+DeviceIdentMgr::DetectionResult DeviceIdentMgr::reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
+{
+    const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(deviceTypeIndex);
+    if (!pRec)
+        return DetectionResult::NoMatch;
+    std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
+    if (pRec->isProbeOnly() || !deviceTypeRecords.getDetectionRecs(deviceTypeIndex, detectionRecs))
+        return DetectionResult::Match;
+    for (const auto& detectionRec : detectionRecs)
+        if (detectionRec.pauseAfterSendMs >= LONG_PAUSE_MS)
+            return DetectionResult::Match;
+    _reverifyCount++;
+    uint32_t stepIdx = 0;
+    uint32_t resumeAtMs = 0;
+    DetectionResult result = runDetectionSteps(address, deviceTypeIndex, stepIdx, resumeAtMs, false);
+    if (result == DetectionResult::Match)
+    {
+        uint32_t initNacks = 0;
+        stepIdx = 0;
+        if (runInitSteps(address, deviceTypeIndex, stepIdx, initNacks, resumeAtMs, false) == InitResult::BusError)
+            result = DetectionResult::BusError;
+    }
+    else if (result == DetectionResult::NoMatch)
+    {
+        _reverifyMismatchCount++;
+    }
+    LOG_I(MODULE_PREFIX, "reverify %s at %s after a poll failure: %s", pRec->deviceType ? pRec->deviceType : "?",
+                BusI2CAddrAndSlot::toString(address).c_str(),
+                result == DetectionResult::Match ? "still matches, re-initialised" :
+                result == DetectionResult::NoMatch ? "no longer matches - identifying again" : "bus error - tried again later");
+    return result;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identify an identified device again (it is polled meanwhile, so pauses are made inline)
+/// @param address address
+/// @param currentTypeIndex the type it is identified as
+/// @param deviceStatus (out) the new device status (NewType)
+/// @return SameType (not initialised again), NewType (initialised), NoMatch or TryAgain (bus error or deferred)
+BusStatusMgr::ReIdentResult DeviceIdentMgr::reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
+            DeviceStatus& deviceStatus)
+{
+    deviceStatus.clear();
+    DeviceTypeIndexType matchedIdx = DEVICE_TYPE_INDEX_INVALID;
+    std::vector<DeviceTypeIndexType> candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(address));
+    for (DeviceTypeIndexType deviceTypeIndex : candidates)
+    {
+        uint32_t stepIdx = 0;
+        uint32_t resumeAtMs = 0;
+        DetectionResult result = runDetectionSteps(address, deviceTypeIndex, stepIdx, resumeAtMs, false);
+        if (result == DetectionResult::BusError)
+            return BusStatusMgr::ReIdentResult::TryAgain;
+        if (result == DetectionResult::Match)
+        {
+            matchedIdx = deviceTypeIndex;
+            break;
+        }
+    }
+    if (matchedIdx == DEVICE_TYPE_INDEX_INVALID)
+    {
+        IdentOutcome hookOutcome = runIdentHook(address, deviceStatus);
+        if (hookOutcome == IdentOutcome::Deferred)
+            return BusStatusMgr::ReIdentResult::TryAgain;
+        if (hookOutcome != IdentOutcome::Identified)
+            return BusStatusMgr::ReIdentResult::NoMatch;
+        matchedIdx = deviceStatus.deviceTypeIndex;
+        deviceStatus.clear();
+    }
+    if (matchedIdx == currentTypeIndex)
+        return BusStatusMgr::ReIdentResult::SameType;
+
+    // Another type: initialise it
+    uint32_t stepIdx = 0;
+    uint32_t initNacks = 0;
+    uint32_t resumeAtMs = 0;
+    if (runInitSteps(address, matchedIdx, stepIdx, initNacks, resumeAtMs, false) == InitResult::BusError)
+        return BusStatusMgr::ReIdentResult::TryAgain;
+    completeDeviceStatus(address, matchedIdx, deviceStatus);
+    const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(matchedIdx);
+    LOG_I(MODULE_PREFIX, "reIdentify %s now %s (typeIdx %d, was %d)", BusI2CAddrAndSlot::toString(address).c_str(),
+                pRec && pRec->deviceType ? pRec->deviceType : "?", matchedIdx, currentTypeIndex);
+    return BusStatusMgr::ReIdentResult::NewType;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Run an identified device's initialisation again (carried out on the bus task)
+bool DeviceIdentMgr::requestReInit(BusElemAddrType address, std::function<void(bool ok)> doneFn)
+{
+    if (_busStatusMgr.getDeviceTypeIndexByAddr(address) == DEVICE_TYPE_INDEX_INVALID)
+        return false;
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    bool accepted = _reinitRequests.size() < MAX_REIDENT_REQUESTS;
+    if (accepted)
+        _reinitRequests.push_back({address, doneFn});
+    _reinitRequestsPending = true;
+    RaftMutex_unlock(_handlerMutex);
+    return accepted;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Do the re-initialisations requested (bus task). A device that is re-initialised is reported as Identified
+///        (with the same type) so that settings made since it was first initialised are applied again
+void DeviceIdentMgr::serviceReInitRequests()
+{
+    std::vector<ReInitRequest> requests;
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    requests.swap(_reinitRequests);
+    _reinitRequestsPending = false;
+    RaftMutex_unlock(_handlerMutex);
+    for (const ReInitRequest& request : requests)
+    {
+        bool ok = false;
+        DeviceTypeIndexType deviceTypeIndex = _busStatusMgr.getDeviceTypeIndexByAddr(request.address);
+        uint32_t slotNum = BusI2CAddrAndSlot::getSlotNum(request.address);
+        if ((deviceTypeIndex != DEVICE_TYPE_INDEX_INVALID) && (!_reselectSlotFn || (_reselectSlotFn(slotNum) == RAFT_OK)))
+        {
+            uint32_t stepIdx = 0, initNacks = 0, resumeAtMs = 0;
+            ok = runInitSteps(request.address, deviceTypeIndex, stepIdx, initNacks, resumeAtMs, false) != InitResult::BusError;
+            if (ok)
+                _busStatusMgr.setReverifyOutcome(request.address, BusStatusMgr::ReverifyResult::StillMatches);
+            if (_deselectSlotsFn && (slotNum != 0))
+                _deselectSlotsFn();
+        }
+        LOG_I(MODULE_PREFIX, "reInit %s typeIdx %d: %s", BusI2CAddrAndSlot::toString(request.address).c_str(),
+                    deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)deviceTypeIndex, ok ? "done" : "failed");
+        if (request.doneFn)
+            request.doneFn(ok);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identification information for a device
+String DeviceIdentMgr::getIdentInfoJson(BusElemAddrType address) const
+{
+    String stateFields = _busStatusMgr.getIdentStateJsonFields(address);
+    if (stateFields.length() == 0)
+        return "{}";
+    uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
+    String candidates = "[";
+    for (DeviceTypeIndexType idx : deviceTypeRecords.getIdentCandidates(i2cAddr))
+    {
+        const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(idx);
+        String cand = "{\"dtIdx\":" + String((int)idx);
+        RaftJson::appendStringField(cand, "key", pRec && pRec->deviceType ? pRec->deviceType : "");
+        cand += "}";
+        candidates += String(candidates.length() > 1 ? "," : "") + cand;
+    }
+    candidates += "]";
+    bool hookOffered = isAddrClaimedByHook(i2cAddr) && !deviceTypeRecords.isAddrHookBlocked(i2cAddr);
+    return "{" + stateFields + ",\"candidates\":" + candidates + ",\"hook\":" + (hookOffered ? "true" : "false") + "}";
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Fill in a device status for a type: the type, polling info and poll results store
+void DeviceIdentMgr::completeDeviceStatus(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, DeviceStatus& deviceStatus)
+{
+    deviceStatus.deviceTypeIndex = deviceTypeIndex;
+    deviceTypeRecords.getPollInfo(address, deviceTypeIndex, deviceStatus.deviceIdentPolling);
+    auto pDataAggregator = std::make_shared<PollDataAggregator>(
+            deviceStatus.deviceIdentPolling.numPollResultsToStore,
+            deviceStatus.deviceIdentPolling.pollResultSizeIncTimestamp);
+    deviceStatus.setAndOwnPollDataAggregator(pDataAggregator);
+
+    // What a poll sends, made once and shared by every poll
+    deviceStatus.buildPollPlan();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Ask for devices to be identified again (carried out on the bus task)
+bool DeviceIdentMgr::requestReIdentify(const BusReIdentRequest& request)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    bool accepted = _reidentRequests.size() < MAX_REIDENT_REQUESTS;
+    if (accepted)
+        _reidentRequests.push_back(request);
+    _reidentRequestsPending = true;
+    RaftMutex_unlock(_handlerMutex);
+    return accepted;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check device type match (communicates with the device to check its type)
+/// @param address address
+/// @param deviceTypeIndex device type index
+/// @return Match, NoMatch (including the device NACKing a step), or BusError (any other bus failure)
+DeviceIdentMgr::DetectionResult DeviceIdentMgr::checkDeviceTypeMatch(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
+{
+    uint32_t stepIdx = 0;
+    uint32_t resumeAtMs = 0;
+    return runDetectionSteps(address, deviceTypeIndex, stepIdx, resumeAtMs, false);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Run a type's detection steps from stepIdx
+/// @param address address
+/// @param deviceTypeIndex device type index
+/// @param stepIdx (in/out) next step
+/// @param resumeAtMs (out) when to resume (if Paused)
+/// @param allowPause true to return Paused after a step followed by a long pause
+/// @return Match, NoMatch (including the device NACKing a step), BusError (any other bus failure) or Paused
+DeviceIdentMgr::DetectionResult DeviceIdentMgr::runDetectionSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+            uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause)
 {
     // Get the detection records - a record with an invalid detection value never matches
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
-    if (!deviceTypeRecords.getDetectionRecs(pDevTypeRec, detectionRecs))
-        return false;
+    if (!deviceTypeRecords.getDetectionRecs(deviceTypeIndex, detectionRecs))
+        return DetectionResult::NoMatch;
 
-    // Check if all values match
-    bool detectionValuesMatch = true;
-    for (const auto& detectionRec : detectionRecs)
+    // Each step must match; detection stops at the first that doesn't
+    for (; stepIdx < detectionRecs.size(); )
     {
+        const auto& detectionRec = detectionRecs[stepIdx];
 
-        // Check there is a read data check
-        uint32_t readDataCheckBytes = 0;
-        if (detectionRec.checkValues.size() == 0)
-            continue;
-        readDataCheckBytes = detectionRec.checkValues[0].second.size();
-
-        // Create a bus request to read the detection value
-        // Create the poll request
-        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN, 
+        // Write, then read the bytes to check (none for a step that only writes or pauses)
+        BusRequestInfo reqRec(BUS_REQ_TYPE_FAST_SCAN,
                 address,
-                0, 
-                detectionRec.writeData.size(), 
+                0,
+                detectionRec.writeData.size(),
                 detectionRec.writeData.data(),
-                readDataCheckBytes,
-                detectionRec.pauseAfterSendMs, 
-                nullptr, 
+                detectionRec.readLen,
+                detectionRec.pauseAfterSendMs,
+                nullptr,
                 this);
         std::vector<uint8_t> readData;
         RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
+        uint32_t sentMs = millis();
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
         String writeStr;
         Raft::getHexStrFromBytes(detectionRec.writeData.data(), detectionRec.writeData.size(), writeStr);
         String readDataStr;
         Raft::getHexStrFromBytes(readData.data(), readData.size(), readDataStr);
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch %s addr %s writeData %s rslt %d readData %s readSize %d pauseAfterMs %d",
                     rslt == RAFT_OK ? "OK" : "BUS ACCESS FAILED",
-                    BusI2CAddrAndSlot::toString(address).c_str(), 
-                    writeStr.c_str(), rslt, 
-                    readDataStr.c_str(), readData.size(), 
+                    BusI2CAddrAndSlot::toString(address).c_str(),
+                    writeStr.c_str(), rslt,
+                    readDataStr.c_str(), readData.size(),
                     detectionRec.pauseAfterSendMs);
 #endif
 
-        // Check ok result
+        // A NACK means the device rejected this step (not this type); anything else is a bus problem
+        if (rslt == RAFT_BUS_ACK_ERROR)
+            return DetectionResult::NoMatch;
         if (rslt != RAFT_OK)
-            return false;
+            return DetectionResult::BusError;
 
-        // Iterate through check values to see if one of them matches
-        bool checkValueMatch = false;
+        // Any one check matching is a match (a step with no checks only writes or pauses)
+        bool checkValueMatch = detectionRec.checkValues.size() == 0;
         for (const auto& checkValue : detectionRec.checkValues)
         {
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            String readMaskStr;
-            Raft::getHexStrFromBytes(checkValue.first.data(), checkValue.first.size(), readMaskStr);
-            String readCheckStr;
-            Raft::getHexStrFromBytes(checkValue.second.data(), checkValue.second.size(), readCheckStr);
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readDataMask %s readDataCheck %s VS readData %s",
-                        readMaskStr.c_str(),
-                        readCheckStr.c_str(),
-                        readDataStr.c_str());
-#endif
-
-            // Check the read data
-            bool sizeMatch = readData.size() == checkValue.second.size();
-            if (sizeMatch)
+            if (readData.size() != checkValue.second.size())
+                continue;
+            bool checkByteMatch = true;
+            for (uint32_t i = 0; i < readData.size(); i++)
             {
-                bool checkByteMatch = true;
-                for (int i = 0; i < readData.size(); i++)
+                if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
                 {
-                    if ((readData[i] & checkValue.first[i]) != checkValue.second[i])
-                    {
-                        checkByteMatch = false;
-                        break;
-                    }
-                }
-                if (checkByteMatch)
-                {
-                    checkValueMatch = true;
+                    checkByteMatch = false;
                     break;
                 }
             }
-
-#ifdef DEBUG_DEVICE_IDENT_MGR
-            LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch readData %s sizeMatch %d checkValueMatch %d", 
-                        readDataStr.c_str(), sizeMatch, checkValueMatch);
-#endif
+            if (checkByteMatch)
+            {
+                checkValueMatch = true;
+                break;
+            }
         }
 
+        // Each 2-byte word must be followed by a valid CRC
+        if (checkValueMatch && detectionRec.crc8w)
+            checkValueMatch = DeviceTypeGrammar::checkCrc8Words(readData.data(), readData.size());
+
 #ifdef DEBUG_DEVICE_IDENT_MGR
-        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %s %s", 
+        LOG_I(MODULE_PREFIX, "checkDeviceTypeMatch address %s %s",
                     BusI2CAddrAndSlot::toString(address).c_str(),
                     checkValueMatch ? "MATCH" : "NO MATCH");
 #endif
-
-        // Check if all values match
         if (!checkValueMatch)
-            detectionValuesMatch = false;
+            return DetectionResult::NoMatch;
 
+        // Pause (the address is barred for that time): a long pause ends this part of the job
+        stepIdx++;
         if (detectionRec.pauseAfterSendMs > 0)
-            delay(detectionRec.pauseAfterSendMs);
+        {
+            if (allowPause && (detectionRec.pauseAfterSendMs >= LONG_PAUSE_MS))
+            {
+                resumeAtMs = sentMs + detectionRec.pauseAfterSendMs;
+                return DetectionResult::Paused;
+            }
+            pauseUntil(sentMs + detectionRec.pauseAfterSendMs);
+        }
     }
-
-    // Access the device and check the response
-    return detectionValuesMatch;
+    return DetectionResult::Match;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Process initialisation of a device
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Process device initialisation
+/// @param address address
+/// @param deviceTypeIndex device type index
+/// @return true if every step succeeded (a NACKed step is still reported as success, as before)
+bool DeviceIdentMgr::processDeviceInit(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
 {
-    // Get initialisation bus requests
+    uint32_t stepIdx = 0;
+    uint32_t initNacks = 0;
+    uint32_t resumeAtMs = 0;
+    return runInitSteps(address, deviceTypeIndex, stepIdx, initNacks, resumeAtMs, false) == InitResult::Done;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Run a type's initialisation steps from stepIdx
+/// @param address address
+/// @param deviceTypeIndex device type index
+/// @param stepIdx (in/out) next step
+/// @param initNacks (in/out) number of steps NACKed
+/// @param resumeAtMs (out) when to resume (if Paused)
+/// @param allowPause true to return Paused after a step followed by a long pause
+/// @return Done (NACKed steps are counted in initNacks), Paused or BusError (a bus error other than a NACK)
+DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+            uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause,
+            DeviceTypeRecords::InitValueState* pInitValues)
+{
+    // Init values ({name} value slots and {?name} guards, computed from bytes earlier steps read) - kept by the caller across pauses
+    DeviceTypeRecords::InitValueState localInitValues;
+    DeviceTypeRecords::InitValueState& initValues = pInitValues ? *pInitValues : localInitValues;
+
     std::vector<BusRequestInfo> initBusRequests;
-    deviceTypeRecords.getInitBusRequests(address, pDevTypeRec, initBusRequests);
+    deviceTypeRecords.getInitBusRequests(address, deviceTypeIndex, initBusRequests);
 
 #ifdef DEBUG_DEVICE_IDENT_MGR
-    LOG_I(MODULE_PREFIX, "processDeviceInit address %s numInitBusRequests %d", 
-                BusI2CAddrAndSlot::toString(address).c_str(), initBusRequests.size());
+    LOG_I(MODULE_PREFIX, "processDeviceInit address %s numInitBusRequests %d from step %d",
+                BusI2CAddrAndSlot::toString(address).c_str(), initBusRequests.size(), (int)stepIdx);
 #endif
 
-    // Initialise the device
-    for (auto& initBusRequest : initBusRequests)
+    for (; stepIdx < initBusRequests.size(); )
     {
+        const BusRequestInfo& initBusRequest = initBusRequests[stepIdx];
         std::vector<uint8_t> readData;
         BusRequestInfo reqRec(initBusRequest);
-        if (_busReqSyncFn != nullptr)
-            _busReqSyncFn(&reqRec, &readData);
 
-        // Check for bar-access time after each request
-        if (initBusRequest.getBarAccessForMsAfterSend() > 0)
-            delay(initBusRequest.getBarAccessForMsAfterSend());
+        // A step with value slots is written with the values filled in, and a step with a guard is only done if its
+        // value isn't 0 (values computed from the bytes read so far). If they can't be computed (e.g. a read step was
+        // NACKed) init failed - identification is repeated later
+        std::vector<uint8_t> slotWriteData;
+        if (deviceTypeRecords.initStepUsesInitValues(deviceTypeIndex, stepIdx))
+        {
+            bool doStep = true;
+            if (!deviceTypeRecords.getInitStepWrite(deviceTypeIndex, stepIdx, initValues, slotWriteData, doStep))
+                return InitResult::BusError;
+            if (!doStep)
+            {
+                stepIdx++;
+                continue;
+            }
+            reqRec = BusRequestInfo(BUS_REQ_TYPE_FAST_SCAN, address, 0, slotWriteData.size(), slotWriteData.data(),
+                        initBusRequest.getReadReqLen(), initBusRequest.getBarAccessForMsAfterSend(), nullptr, this);
+        }
+
+        RaftRetCode rslt = _busReqSyncFn != nullptr ? _busReqSyncFn(&reqRec, &readData) : RAFT_BUS_NOT_INIT;
+        uint32_t sentMs = millis();
+        if (rslt == RAFT_BUS_ACK_ERROR)
+            initNacks++;
+        else if (rslt != RAFT_OK)
+            return InitResult::BusError;
+        else if (!readData.empty())
+            DeviceTypeRecords::noteInitStepRead(initValues, readData);
+
+        // Pause after the step (the address is barred for that time): a long pause ends this part of the job
+        stepIdx++;
+        uint32_t pauseMs = initBusRequest.getBarAccessForMsAfterSend();
+        if (pauseMs > 0)
+        {
+            if (allowPause && (pauseMs >= LONG_PAUSE_MS))
+            {
+                resumeAtMs = sentMs + pauseMs;
+                return InitResult::Paused;
+            }
+            pauseUntil(sentMs + pauseMs);
+        }
     }
+    return InitResult::Done;
+}
 
-    return true;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Pause until a time (inline)
+void DeviceIdentMgr::pauseUntil(uint32_t untilMs)
+{
+    while ((int32_t)(millis() - untilMs) < 0)
+        delay(1);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identification state for an outcome
+BusIdentState DeviceIdentMgr::outcomeToState(IdentOutcome outcome)
+{
+    switch (outcome)
+    {
+        case IdentOutcome::Identified: return BusIdentState::Identified;
+        case IdentOutcome::NoMatch: return BusIdentState::NoMatch;
+        case IdentOutcome::Deferred: return BusIdentState::Deferred;
+        case IdentOutcome::BusError: return BusIdentState::BusError;
+        case IdentOutcome::InitFailed: return BusIdentState::InitFailed;
+        case IdentOutcome::InProgress: return BusIdentState::Pending;
+    }
+    return BusIdentState::Pending;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -438,25 +852,25 @@ String DeviceIdentMgr::getDevTypeInfoJsonByAddr(BusElemAddrType address, bool in
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get JSON for device type info
-/// @param deviceType Device type
+/// @param deviceTypeKey device type key
 /// @param includePlugAndPlayInfo true to include plug and play information
 /// @param deviceTypeIndex (out) device type index
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeName(const String& deviceTypeKey, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const
 {
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceType, includePlugAndPlayInfo, deviceTypeIndex);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeName(deviceTypeKey, includePlugAndPlayInfo, deviceTypeIndex);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Get device type info JSON by device type index
-/// @param deviceTypeIdx device type index
+/// @param deviceTypeIndex device type index
 /// @param includePlugAndPlayInfo include plug and play info
 /// @return JSON string
-String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIdx, bool includePlugAndPlayInfo) const
+String DeviceIdentMgr::getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIndex, bool includePlugAndPlayInfo) const
 {
     // Get device type info
-    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIdx, includePlugAndPlayInfo);
+    return deviceTypeRecords.getDevTypeInfoJsonByTypeIdx(deviceTypeIndex, includePlugAndPlayInfo);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -689,17 +1103,11 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             void* pStructOut, uint32_t structOutSize, 
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
-    // Get device type info
-    DeviceTypeRecord devTypeRec;
-    if (!deviceTypeRecords.getDeviceInfo(deviceTypeIndex, devTypeRec))
+    // Decode function of the device type (no copy of the record)
+    DeviceTypeRecordDecodeFn decodeFn = deviceTypeRecords.getPollDecodeFn(deviceTypeIndex);
+    if (!decodeFn)
         return 0;
-
-    // Check the decode method is present
-    if (!devTypeRec.pollResultDecodeFn)
-        return 0;
-
-    // Decode the poll response
-    return devTypeRec.pollResultDecodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
+    return decodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -888,11 +1296,51 @@ void DeviceIdentMgr::registerNewDeviceIdentHandler(RaftNewDeviceIdentFn newDevic
     }
     _newDeviceIdentFn = newDeviceIdentFn;
     _newDeviceIdentCtx = pCtx;
+    if (newDeviceIdentFn)
+        _hookEpoch++;
+    _hookClaimsEpoch++;
     uint32_t callCountAtReg = _newDeviceIdentCallCount;
     RaftMutex_unlock(_handlerMutex);
 
     // Wait for any call to the previous handler to complete
     waitForHandlerQuiescence(_newDeviceIdentInProgress, _newDeviceIdentCallCount, callCountAtReg, "newDeviceIdent");
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set the addresses the new-device identification handler handles (empty: every address)
+void DeviceIdentMgr::setNewDeviceIdentAddrRanges(const std::vector<std::pair<uint32_t, uint32_t>>& ranges)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    _hookAddrRanges = ranges;
+    RaftMutex_unlock(_handlerMutex);
+    // Addresses now handled are offered to the handler at once, and the scanner rebuilds its lists
+    _hookEpoch++;
+    _hookClaimsEpoch++;
+    LOG_I(MODULE_PREFIX, "setNewDeviceIdentAddrRanges %d range(s)", (int)ranges.size());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether the identification handler could claim a device at an address
+bool DeviceIdentMgr::isAddrClaimedByHook(uint32_t i2cAddr) const
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return true;
+    bool claimed = (_newDeviceIdentFn != nullptr) && isAddrInHookRangesLocked(i2cAddr);
+    RaftMutex_unlock(_handlerMutex);
+    return claimed;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether an address is in the handler's ranges (all addresses if none are set) - mutex held
+bool DeviceIdentMgr::isAddrInHookRangesLocked(uint32_t i2cAddr) const
+{
+    if (_hookAddrRanges.empty())
+        return true;
+    for (const auto& range : _hookAddrRanges)
+        if ((i2cAddr >= range.first) && (i2cAddr <= range.second))
+            return true;
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

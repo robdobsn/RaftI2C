@@ -10,6 +10,7 @@
 
 #include "RaftBusDevicesIF.h"
 #include "DeviceTypeRecord.h"
+#include "DeviceTypeRecords.h"
 #include "BusStatusMgr.h"
 #include "DeviceStatus.h"
 #include "RaftJson.h"
@@ -59,19 +60,19 @@ public:
     virtual String getDevTypeInfoJsonByAddr(BusElemAddrType address, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Get device type information by device type name
-    /// @param deviceType device type name
+    /// @brief Get device type information by device type key
+    /// @param deviceTypeKey device type key
     /// @param includePlugAndPlayInfo true to include plug and play information
     /// @param deviceTypeIndex (out) device type index
     /// @return JSON string
-    virtual String getDevTypeInfoJsonByTypeName(const String& deviceType, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
+    virtual String getDevTypeInfoJsonByTypeName(const String& deviceTypeKey, bool includePlugAndPlayInfo, DeviceTypeIndexType& deviceTypeIndex) const override final;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get device type info JSON by device type index
-    /// @param deviceTypeIdx device type index
+    /// @param deviceTypeIndex device type index
     /// @param includePlugAndPlayInfo include plug and play info
     /// @return JSON string
-    virtual String getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIdx, bool includePlugAndPlayInfo) const override final;
+    virtual String getDevTypeInfoJsonByTypeIdx(DeviceTypeIndexType deviceTypeIndex, bool includePlugAndPlayInfo) const override final;
      
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Get queued device data in JSON format
@@ -225,26 +226,177 @@ public:
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Identify device
+    /// @brief Identification scheduler: identify the elements that are due (called from the bus task)
+    /// @param budgetUs time budget for this pass (at least one element is serviced if any is due)
+    void taskService(uint64_t budgetUs);
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set a function that deselects all multiplexer slots (after identifying a device on a slot)
+    void setDeselectSlotsFn(std::function<void()> deselectSlotsFn)
+    {
+        _deselectSlotsFn = deselectSlotsFn;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Identify device (to completion, pausing inline - the scheduler is what identifies devices on the bus)
     /// @param address address
     /// @param deviceStatus (out) device status
     void identifyDevice(BusElemAddrType address, DeviceStatus& deviceStatus);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Set the addresses the new-device identification handler handles (empty: every address)
+    virtual void setNewDeviceIdentAddrRanges(const std::vector<std::pair<uint32_t, uint32_t>>& ranges) override final;
+
+    /// @brief Check whether the identification handler could claim a device at an address
+    /// @param i2cAddr 7-bit address
+    /// @return false if no handler is registered, true if it handles every address or this one
+    bool isAddrClaimedByHook(uint32_t i2cAddr) const;
+
+    /// @brief Changes each time the handler or its address ranges change (so the scanner rebuilds its lists)
+    uint32_t getHookClaimsEpoch() const
+    {
+        return _hookClaimsEpoch;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Ask for devices to be identified again (carried out on the bus task)
+    /// @param request which devices
+    /// @return true if accepted
+    virtual bool requestReIdentify(const BusReIdentRequest& request) override final;
+
+    /// @brief Identification information for a device (state, attempts, candidates in the order tried, ...)
+    virtual String getIdentInfoJson(BusElemAddrType address) const override final;
+
+    /// @brief Run an identified device's initialisation again (carried out on the bus task)
+    virtual bool requestReInit(BusElemAddrType address, std::function<void(bool ok)> doneFn) override final;
+
+    /// @brief Stop or resume polling a device
+    virtual bool setDevicePollingEnabled(BusElemAddrType address, bool enabled) override final
+    {
+        return _busStatusMgr.setDevicePollingEnabled(address, enabled);
+    }
+
+    /// @brief Identification statistics (hook calls, init steps NACKed, re-verifications and mismatches found)
+    uint32_t getHookCallCount() const { return _hookCallCount; }
+    uint32_t getInitNackCount() const { return _initNackCount; }
+    uint32_t getReverifyCount() const { return _reverifyCount; }
+    uint32_t getReverifyMismatchCount() const { return _reverifyMismatchCount; }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Check device type match (communicates with the device to check its type)
     /// @param address address
-    /// @param pDevTypeRec device type record
-    /// @return true if device type matches
-    bool checkDeviceTypeMatch(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
+    /// @param deviceTypeIndex device type index
+    /// @return Match, NoMatch (including the device NACKing a step), or BusError (any other bus failure)
+    enum class DetectionResult
+    {
+        Match,
+        NoMatch,
+        BusError,
+        Paused,     // (only when a pause is allowed) paused after a step - resume later
+    };
+    DetectionResult checkDeviceTypeMatch(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Process device initialisation
     /// @param address address
-    /// @param pDevTypeRec device type record
+    /// @param deviceTypeIndex device type index
     /// @return true if device initialisation was successful
-    bool processDeviceInit(BusElemAddrType address, const DeviceTypeRecord* pDevTypeRec);
+    bool processDeviceInit(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
 
 private:
+    // Identification job: detection of each candidate in turn, then the identification hook if none matched, then
+    // initialisation - resumable after a long pause
+    struct IdentJob
+    {
+        enum class Phase : uint8_t
+        {
+            Detect,
+            Init,
+        };
+        BusElemAddrType address = 0;
+        uint32_t generation = 0;    // device type records generation and hook epoch the candidates are from
+        uint32_t hookEpoch = 0;
+        Phase phase = Phase::Detect;
+        std::vector<DeviceTypeIndexType> candidates;
+        uint32_t candPos = 0;
+        uint32_t stepIdx = 0;
+        uint32_t resumeAtMs = 0;
+        DeviceTypeIndexType matchedIdx = DEVICE_TYPE_INDEX_INVALID;
+        uint32_t initNacks = 0;
+        DeviceTypeRecords::InitValueState initValues;   // bytes read and values computed for init value slots
+        bool busError = false;
+        bool initRepeated = false;
+    };
+    std::vector<IdentJob> _jobs;
+    enum class IdentOutcome : uint8_t
+    {
+        Identified,
+        NoMatch,
+        Deferred,
+        BusError,
+        InitFailed,
+        InProgress,
+    };
+    enum class InitResult : uint8_t
+    {
+        Done,
+        Paused,
+        BusError,
+    };
+    IdentOutcome runIdentJob(IdentJob& job, DeviceStatus& deviceStatus, bool allowPause);
+    IdentOutcome runIdentHook(BusElemAddrType address, DeviceStatus& deviceStatus);
+    DetectionResult reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
+    DetectionResult runDetectionSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+                uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause);
+    InitResult runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+                uint32_t& stepIdx, uint32_t& initNacks, uint32_t& resumeAtMs, bool allowPause,
+                DeviceTypeRecords::InitValueState* pInitValues = nullptr);
+    static void pauseUntil(uint32_t untilMs);
+    BusStatusMgr::ReIdentResult reIdentifyDevice(BusElemAddrType address, DeviceTypeIndexType currentTypeIndex,
+                DeviceStatus& deviceStatus);
+    void completeDeviceStatus(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, DeviceStatus& deviceStatus);
+
+    // Re-initialisation requests from other tasks (under _handlerMutex), done at the start of a scheduler pass
+    struct ReInitRequest
+    {
+        BusElemAddrType address;
+        std::function<void(bool ok)> doneFn;
+    };
+    std::vector<ReInitRequest> _reinitRequests;
+    std::atomic<bool> _reinitRequestsPending{false};
+    void serviceReInitRequests();
+
+    // Re-identification requests from other tasks (under _handlerMutex), applied at the start of a scheduler pass
+    std::vector<BusReIdentRequest> _reidentRequests;
+    std::atomic<bool> _reidentRequestsPending{false};
+    static constexpr uint32_t MAX_REIDENT_REQUESTS = 16;
+    static BusIdentState outcomeToState(IdentOutcome outcome);
+
+    // A pause of at least this long after a detection or initialisation step ends the scheduler's work on that
+    // element until the pause is over (shorter pauses are made inline)
+    static constexpr uint32_t LONG_PAUSE_MS = 10;
+    // Most elements serviced in one scheduler pass, and how long a job waiting to resume is kept
+    static constexpr uint32_t MAX_IDENT_PER_PASS = 8;
+    static constexpr uint32_t IDENT_JOB_STALE_MS = 5000;
+
+    // Incremented when an identification hook is registered (so NoMatch elements are offered to it at once)
+    std::atomic<uint32_t> _hookEpoch{0};
+
+    // Addresses the hook handles (under _handlerMutex; empty: every address) and a count of changes to the hook or
+    // its addresses
+    std::vector<std::pair<uint32_t, uint32_t>> _hookAddrRanges;
+    std::atomic<uint32_t> _hookClaimsEpoch{0};
+    bool isAddrInHookRangesLocked(uint32_t i2cAddr) const;
+
+    // Statistics
+    uint32_t _hookCallCount = 0;
+    uint32_t _initNackCount = 0;
+    uint32_t _reverifyCount = 0;
+    uint32_t _reverifyMismatchCount = 0;
+
+    // Deselect all slots
+    std::function<void()> _deselectSlotsFn = nullptr;
+
     // Form a bus element request from a command JSON string
     static HWElemReq cmdJSONToHWElemReq(const char* cmdJSON);
 
@@ -265,7 +417,7 @@ private:
     // Optional new-device identification handler (device-agnostic delegation hook) and bus-task service handler
     // These are registered from another task (generally the main task) and called on the bus task so each
     // {fn, ctx} pair is only accessed under _handlerMutex - it is copied out under the mutex and called outside it
-    RaftMutex _handlerMutex;
+    mutable RaftMutex _handlerMutex;
     RaftNewDeviceIdentFn _newDeviceIdentFn = nullptr;
     RaftBusTaskServiceFn _busTaskServiceFn = nullptr;
     void* _busTaskServiceCtx = nullptr;

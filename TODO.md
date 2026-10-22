@@ -29,3 +29,4 @@ TestWebUI
 [] ensure that TEST_DATA in npm start doesn't leak into non-local testing
 [] TestWebUI could subtract off ms time from time of first data received from any device?
 [] handling of invalid values in UI - see if chart can cope with nulls - form should maybe display N/A - or blank?
+[] configure bus multiplexers as a list of addresses rather than a contiguous range, so a second multiplexer can go at a quiet address (0x71/0x72) without reserving 0x76/0x77, which several pressure sensors need (MS8607, MS5637 and MS5837 have no other address; 0x77 is the Adafruit/SparkFun default for the Bosch sensors) - see devdocs/multiplexer-address-list.md

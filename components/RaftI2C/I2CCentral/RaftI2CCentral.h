@@ -27,6 +27,11 @@ public:
     RaftI2CCentral();
     virtual ~RaftI2CCentral();
 
+    // Always in internal RAM: the ISR (ESP_INTR_FLAG_IRAM) uses this object's members, and runs while a flash
+    // write has the cache disabled, when PSRAM can't be accessed
+    static void* operator new(size_t size);
+    static void operator delete(void* p);
+
     // Init/de-init
     virtual bool init(uint8_t i2cPort, uint16_t pinSDA, uint16_t pinSCL, uint32_t busFrequency, 
                 uint32_t busFilteringLevel = DEFAULT_BUS_FILTER_LEVEL) override final;
@@ -83,6 +88,11 @@ private:
     volatile uint32_t _writeBufPos = 0;
     volatile const uint8_t* _writeBufStartPtr = nullptr;
     volatile uint32_t _writeBufLen = 0;
+
+    // Internal RAM copy for a caller's buffer in PSRAM, which the ISR can't use (it runs while a flash write has
+    // the cache disabled): allocated when first needed, as big as the most an access can write plus read
+    uint8_t* _pBounceBuf = nullptr;
+    bool _bounceLogged = false;
 
     // Access result code
     volatile bool _accessNackDetected = false;
@@ -218,6 +228,12 @@ private:
     #define I2C_FILTER_CFG_SCL_ENABLE scl_filter_cfg.en
     #define I2C_FILTER_CFG_SDA_ENABLE sda_filter_cfg.en  
 #endif
+
+    // Most an access reads (one READ command, divisible by common record sizes), and the bounce buffer's size (the
+    // most an access can write - the commands other than START and STOP - plus that)
+    static const uint32_t MAX_I2C_READ_BYTES = 240;
+    static const uint32_t BOUNCE_WRITE_BYTES = (I2C_ENGINE_CMD_QUEUE_SIZE - 2) * I2C_ENGINE_CMD_MAX_TX_BYTES;
+    static const uint32_t BOUNCE_BUF_BYTES = BOUNCE_WRITE_BYTES + MAX_I2C_READ_BYTES;
 
     // Interrupts flags
     static const uint32_t INTERRUPT_BASE_ENABLES = 

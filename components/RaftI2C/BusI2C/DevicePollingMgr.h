@@ -27,8 +27,10 @@ public:
     // Setup
     void setup(const RaftJsonIF& config);
 
-    // Service from I2C task
-    void taskService(uint64_t timeNowUs);
+    /// @brief Service from I2C task - polls due devices, earliest due first
+    /// @param timeNowUs time now in us
+    /// @param pollBudgetUs no further poll is started once this long has been spent polling
+    void taskService(uint64_t timeNowUs, uint32_t pollBudgetUs);
 
     /// @brief Cumulative poll-response integrity counters (all devices)
     /// Zero unless a device type record declares pollInfo.crc. See RaftI2C
@@ -44,13 +46,19 @@ public:
     };
     const CrcStats& getCrcStats() const { return _crcStats; }
 
+    /// @brief Get the number of poll steps performed so far (a running count, for activity statistics)
+    uint32_t getPollStepCount() const { return _pollStepCount; }
+
 private:
+
+    // Poll the device that has been due longest; returns false if none was due
+    bool pollNextDueDevice(uint64_t timeNowUs, BusElemAddrType& polledAddress);
 
     // Validate (and if necessary re-read) a poll response carrying a CRC trailer.
     // On success readData is truncated to the declared length, i.e. the trailer is
     // stripped, so the decode and the record's resp.b are unaffected by the CRC.
     // Returns false if the response could not be validated and must be discarded.
-    bool validatePollResponse(const DevicePollingInfo& pollInfo, BusRequestInfo& busReqRec,
+    bool validatePollResponse(const PollPlan& pollInfo, const BusRequestInfo& busReqRec,
                               BusElemAddrType address, std::vector<uint8_t>& readData);
 
     // Poll-response integrity counters
@@ -124,7 +132,6 @@ private:
         uint64_t lastPollStartUs = 0;
         uint64_t cumulTransactionUs = 0;
         uint64_t cumulIntervalUs = 0;
-        uint32_t cumulFifoWords = 0;
         uint32_t pollCount = 0;
         uint64_t lastReportTimeUs = 0;
     };
@@ -134,6 +141,9 @@ private:
     uint32_t _timingEntryCount = 0;
     PollTimingStats& getTimingStats(BusElemAddrType address);
 #endif
+
+    // Number of poll steps performed (running count)
+    uint32_t _pollStepCount = 0;
 
     // Debug
     static constexpr const char* MODULE_PREFIX = "RaftI2CDevPollMgr";    

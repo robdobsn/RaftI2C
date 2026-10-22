@@ -17,6 +17,7 @@
 #include "BusAccessor.h"
 #include "DeviceIdentMgr.h"
 #include "DevicePollingMgr.h"
+#include "BusI2CActivityStats.h"
 #include "BusPowerController.h"
 #include "BusStuckHandler.h"
 #include "SlotController.h"
@@ -141,7 +142,11 @@ public:
     /// @return true if the request was added
     virtual bool addRequest(BusRequestInfo& busReqInfo) override final
     {
-        return _busAccessor.addRequest(busReqInfo);
+        bool added = _busAccessor.addRequest(busReqInfo);
+        // Wake the worker so the request doesn't wait for the worker's next scheduled pass
+        if (added)
+            wakeWorkerTask();
+        return added;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -364,21 +369,61 @@ public:
     /// first-read CRC failures, "recovered" those fixed by a re-read, and "dropped"
     /// those discarded (no correct data reached the decode). See
     /// devdocs/i2c-poll-data-integrity-crc-plan.md
+    /// Also reports: "activity" - where the worker task spent its time in the last complete ~1 s window;
+    /// "pollTiming" - per polled device, how closely polls keep to the configured interval; "identTiming" -
+    /// when each element was first seen, came online and was identified (ms since bus setup); "scan" - the scan
+    /// list sizes, background sweep addresses, scan share and probe counts; "workerStack" - the worker task's stack
+    /// size and the least it has had free (its high water mark: poll result subscribers' decodes run on it)
     virtual String getBusStatusJson() const override final
     {
         const DevicePollingMgr::CrcStats& s = _devicePollingMgr.getCrcStats();
         char buf[160];
         snprintf(buf, sizeof(buf),
-                 R"({"pollIntegrity":{"checked":%u,"failed":%u,"recovered":%u,"dropped":%u,"recoveries":%u}})",
+                 R"({"pollIntegrity":{"checked":%u,"failed":%u,"recovered":%u,"dropped":%u,"recoveries":%u})",
                  (unsigned)s.checked, (unsigned)s.failed, (unsigned)s.recovered, (unsigned)s.dropped,
                  (unsigned)s.recoveries);
-        return String(buf);
+        return String(buf) + ",\"pollLoadPct\":" + String(_busStatusMgr.getPollLoadPct(_freq)) +
+                ",\"activity\":" + _activityStats.getJson() +
+                ",\"pollTiming\":" + _busStatusMgr.getPollTimingJson() +
+                ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() +
+                ",\"scan\":" + _busScanner.getScanStatsJson() + getWorkerStackJson() + "}";
+    }
+
+    /// @brief The worker task's stack size and least free (a JSON field with a leading comma, or empty)
+    String getWorkerStackJson() const
+    {
+        TaskHandle_t workerTaskHandle = _i2cWorkerTaskHandle;
+        if (workerTaskHandle == nullptr)
+            return "";
+        return ",\"workerStack\":{\"size\":" + String(_taskStackSize) + ",\"minFree\":" +
+                    String((uint32_t)uxTaskGetStackHighWaterMark(workerTaskHandle)) + "}";
+    }
+
+    /// @brief Reset the bus status statistics that measure over a period (poll timing)
+    virtual void resetBusStatus() override final
+    {
+        _busStatusMgr.resetPollTiming();
     }
 
 private:
 
-    // Yield value on each bus processing loop
+    // Longest the worker waits between passes (it wakes sooner when a poll is due or a request is queued).
+    // Scanning runs at most once per this period, measured from the end of the previous scan
     static const uint32_t I2C_BUS_LOOP_YIELD_MS = 5;
+
+    // Time spent polling in each pass: no further poll is started once this is used
+    static const uint32_t I2C_BUS_POLL_BUDGET_DEFAULT_US = 2000;
+    // Identification time per pass (beyond the first element serviced)
+    static const uint32_t I2C_BUS_IDENT_BUDGET_DEFAULT_US = 5000;
+
+    // Least time a scan is given in a pass, even when a poll is due sooner
+    static const uint32_t I2C_BUS_SCAN_MIN_BUDGET_US = 500;
+
+    // Warn when the polling configured needs more than this share of the bus time (checked periodically)
+    static const uint32_t POLL_LOAD_WARN_PCT = 70;
+    static const uint32_t POLL_LOAD_CHECK_MS = 2000;
+    uint32_t _pollLoadCheckLastMs = 0;
+    bool _pollLoadWarned = false;
 
     // Max fast scanning without yielding
     static const uint32_t I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS = 10;
@@ -404,15 +449,20 @@ private:
     uint32_t _loopFastUnyieldUs = I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS * 1000;
     uint32_t _loopSlowUnyieldUs = I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS * 1000;
     uint32_t _loopYieldMs = I2C_BUS_LOOP_YIELD_MS;
+    uint32_t _pollBudgetUs = I2C_BUS_POLL_BUDGET_DEFAULT_US;
+    uint32_t _identBudgetUs = I2C_BUS_IDENT_BUDGET_DEFAULT_US;
+    uint64_t _lastScanEndUs = 0;
 
     // Init ok
     bool _initOk = false;
 
     // Task that operates the bus
     volatile TaskHandle_t _i2cWorkerTaskHandle = nullptr;
+    uint32_t _taskStackSize = 0;
+    volatile bool _workerExitRequested = false;
     static const int DEFAULT_TASK_CORE = 0;
     static const int DEFAULT_TASK_PRIORITY = 5;
-    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5000;
+    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5500;   // data subscribers decode on this task (about 1.8 KB was left of 5000 on an Axiom)
     static const uint32_t WAIT_FOR_TASK_EXIT_MS = 1000;
     static const uint32_t WAIT_FOR_TASK_EXIT_ON_DESTROY_MS = 10000;
 
@@ -514,6 +564,9 @@ private:
     // Device polling manager
     DevicePollingMgr _devicePollingMgr;
 
+    // Where the worker task spends its time (reported in bus status)
+    BusI2CActivityStats _activityStats;
+
     // Bus accessor
     BusAccessor _busAccessor;
 
@@ -536,6 +589,13 @@ private:
     // Worker task (static version calls the other)
     static void i2cWorkerTaskStatic(void* pvParameters);
     void i2cWorkerTask();
+    uint32_t getWorkerWaitTicks(bool pollingActive);
+    void wakeWorkerTask()
+    {
+        TaskHandle_t workerTaskHandle = _i2cWorkerTaskHandle;
+        if (workerTaskHandle != nullptr)
+            xTaskNotifyGive(workerTaskHandle);
+    }
 
     /// @brief Send I2C message asynchronously and store result in the response queue
     /// @param pReqRec

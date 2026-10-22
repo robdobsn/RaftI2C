@@ -13,6 +13,7 @@
 #include "RaftBus.h"
 #include "RaftUtils.h"
 #include "DeviceStatus.h"
+#include "DevicePollScheduler.h"
 #include "BusAddrRecord.h"
 #include <list>
 #include <atomic>
@@ -71,14 +72,33 @@ public:
     uint32_t getAddrStatusCount() const;
 
     /// @brief Check if an address is being polled
-    /// @param address address of the bus element
-    /// @return true if the address is being polled
-    bool isAddrBeingPolled(BusElemAddrType address) const;
+    /// @param address address
+    /// @param maxPollIntervalUs only count it if it is polled at least this often (default: any interval), unless its
+    ///        record says it isn't scanned while polled ("scanWhilePolled": false)
+    /// @return true if the address is being polled (with a poll interval no longer than maxPollIntervalUs)
+    bool isAddrBeingPolled(BusElemAddrType address, uint32_t maxPollIntervalUs = UINT32_MAX) const;
 
     /// @brief Set bus element device status (which includes device type and can be empty) for an address
     /// @param address address of the bus element
     /// @param deviceStatus device status to set
     void setBusElemDeviceStatus(BusElemAddrType address, const DeviceStatus& deviceStatus);
+
+    /// @brief Stop or resume polling an element (it stays identified)
+    /// @return false if the element isn't known
+    bool setDevicePollingEnabled(BusElemAddrType address, bool enabled);
+
+    /// @brief Identification state of an element as JSON fields (without braces; empty if not known)
+    String getIdentStateJsonFields(BusElemAddrType address) const;
+
+    /// @brief Note a change on a slot (an element there came online or went, or its multiplexer changed)
+    void noteSlotChange(uint32_t slotNum);
+
+    /// @brief Activity per slot number (0 the main bus): when something last changed there (0 never) and how many
+    ///        elements are online there
+    void getSlotActivity(uint32_t numSlotNums, std::vector<uint32_t>& lastChangeMs, std::vector<uint8_t>& numOnline) const;
+
+    /// @brief Check whether an element has answered but isn't online yet (it needs another successful access)
+    bool isElemPendingOnline(BusElemAddrType address) const;
 
     /// @brief Get device type index by address
     /// @param address address of the bus element
@@ -96,11 +116,18 @@ public:
     ///       devices of the same type.
     void clearDeviceIdentification(BusElemAddrType address);
 
-    /// @brief Get pending ident poll (this is the poll of the device based on its identified type)
+    /// @brief Get the poll that is due (the poll of the device based on its identified type)
     /// @param timeNowUs current time in us
-    /// @param pollInfo (out) device polling info
+    /// @param job (out) the device's poll plan (shared, not copied), the first request to send and the bus speed
     /// @return true if there is a pending ident poll
-    bool getPendingIdentPoll(uint64_t timeNowUs, DevicePollingInfo& pollInfo);
+    /// @note of the devices that are due, the one with the earliest due time is returned (on a tie, round robin)
+    bool getPendingPollJob(uint64_t timeNowUs, DevicePollJob& job);
+
+    /// @brief Get the earliest time any device poll (or poll step) is due
+    /// @param timeNowUs current time in us
+    /// @param dueUs (out) earliest due time (may be in the past)
+    /// @return false if no device is polled
+    bool getNextPollDueUs(uint64_t timeNowUs, uint64_t& dueUs);
 
     /// @brief Handle poll result
     /// @param nextReqIdx index of next request to store (0 = full poll, 1+ = partial poll)
@@ -194,12 +221,19 @@ public:
     /// @note see unregisterForDeviceData(address, pCallbackInfo)
     uint32_t unregisterForDeviceDataAll(const void* pCallbackInfo);
 
-    /// @brief Inform that an address is going offline
-    /// @param addrList list of addresses
-    void goingOffline(std::vector<BusElemAddrType>& addrList);
+    /// @brief Inform that the devices on a slot are going offline (e.g. the slot is being power cycled)
+    /// @param slotNum slot number (0 for the main bus)
+    void goingOfflineOnSlot(uint32_t slotNum);
 
     /// @brief Inform that the bus is stuck
     void informBusStuck();
+
+    /// @brief Get addresses whose per-address state on the bus task (e.g. CRC trailer capability) should be
+    ///        forgotten since the last call, because the record was deleted or its identification was cleared
+    /// @param addrs (out) addresses
+    /// @return false if some were missed (more than the list holds) - then forget the state of every address
+    /// @note called from the bus task; cheap when there is nothing to report
+    bool getForgottenAddresses(std::vector<BusElemAddrType>& addrs);
 
     /// @brief Get debug JSON
     /// @return JSON string
@@ -259,8 +293,121 @@ public:
     /// @brief Get pending deletions and clear the queue
     /// @param deletions (out) vector to receive pending deletions
     void getPendingDeletions(std::vector<DeletionNotice>& deletions);
-    
+
+    /// @brief Get poll timing statistics for each polled device as JSON
+    /// @return JSON object keyed by element address (hex), e.g. {"68":{"dtIdx":5,"cfgUs":50000,...}}
+    String getPollTimingJson() const;
+
+    /// @brief Record the bus time a device's poll (or poll step) took
+    /// @param address address
+    /// @param busTimeUs bus time in us
+    void recordPollBusTimeUs(BusElemAddrType address, uint64_t busTimeUs);
+
+    /// @brief Estimate the share of the bus time that polling online devices at their intervals needs
+    /// @param defaultBusHz bus frequency for devices that don't set their own
+    /// @return estimated load in percent (can exceed 100 when more polling is configured than the bus can do)
+    /// @note uses each device's measured bus time per poll once it has been polled, else an estimate
+    uint32_t getPollLoadPct(uint32_t defaultBusHz) const;
+
+    /// @brief Estimate the bus time one poll of a device takes
+    /// @param pollReqs the device's poll requests
+    /// @param busHz bus frequency
+    /// @return estimated time in us
+    static uint32_t estimatePollTimeUs(const std::vector<BusRequestInfo>& pollReqs, uint32_t busHz);
+
+    /// @brief Reset the poll timing statistics of all devices
+    void resetPollTiming();
+    // An element to identify, or an identified element to re-verify
+    struct IdentWork
+    {
+        BusElemAddrType address = 0;
+        bool reverify = false;
+        bool reident = false;       // an identified device to identify again (keeping its type until the result)
+        DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
+    };
+
+    /// @brief Mark the devices in a re-identification request (identified devices are identified again keeping
+    ///        their type until the result is known; others are tried at once)
+    /// @return number of devices marked
+    uint32_t applyReIdentRequest(const BusReIdentRequest& request);
+
+    /// @brief Set the outcome of re-identifying an identified device
+    enum class ReIdentResult : uint8_t
+    {
+        SameType,       // the same type matched - nothing changes (not initialised again)
+        NewType,        // another type matched (deviceStatus is its status) - reported as TypeChanged
+        NoMatch,        // nothing matched - reported as Lost
+        TryAgain,       // a bus error, or the hook deferred - the device keeps its type and is tried again later
+    };
+    void setReIdentOutcome(BusElemAddrType address, ReIdentResult result, const DeviceStatus& deviceStatus,
+                uint32_t generation, uint32_t hookEpoch);
+
+    /// @brief Get the next element due for identification (round robin)
+    /// @param timeNowMs time now
+    /// @param generation device type records generation (a NoMatch element whose last attempt was made against
+    ///        another generation, or another hook epoch, is due at once)
+    /// @param hookEpoch identification hook epoch
+    /// @param work (out) the element
+    /// @return true if an element is due
+    /// @note only an element that is online and responded to its last access is due
+    bool getNextIdentWork(uint32_t timeNowMs, uint32_t generation, uint32_t hookEpoch, IdentWork& work);
+
+    /// @brief Set the outcome of identifying an element
+    /// @param address address
+    /// @param state outcome (Pending: in progress - resumed at resumeAtMs, with the state left as it was)
+    /// @param deviceStatus device status (used if Identified)
+    /// @param generation device type records generation it was identified against
+    /// @param hookEpoch identification hook epoch
+    /// @param resumeAtMs when to resume (Pending)
+    void setIdentOutcome(BusElemAddrType address, BusIdentState state, const DeviceStatus& deviceStatus,
+                uint32_t generation, uint32_t hookEpoch, uint32_t resumeAtMs);
+
+    /// @brief Set the outcome of re-verifying an element
+    enum class ReverifyResult : uint8_t
+    {
+        StillMatches,       // still that type (re-initialised)
+        Mismatch,           // not that type now - identify it again
+        BusError,           // re-verify again later
+    };
+    void setReverifyOutcome(BusElemAddrType address, ReverifyResult result);
+
+
+    /// @brief Get identification timing for each element seen since the bus started, as JSON
+    /// @return JSON array, e.g. [{"addr":"68","seenMs":120,"onlineMs":140,"identMs":152,"dtIdx":5}]. Times are
+    ///         ms since the bus status manager was set up; -1 means not (yet) reached
+    String getIdentTimingJson() const;
+
 private:
+    // Identification timing for an element: when it was first seen, came online and was identified
+    struct IdentTiming
+    {
+        BusElemAddrType address = 0;
+        static constexpr uint32_t NOT_REACHED = UINT32_MAX;
+        uint32_t seenMs = NOT_REACHED;
+        uint32_t onlineMs = NOT_REACHED;
+        uint32_t identMs = NOT_REACHED;
+        uint16_t deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
+        uint16_t identAttempts = 0;     // identification attempts (all outcomes)
+    };
+    static const uint32_t MAX_IDENT_TIMING = 16;
+
+    // Time of the last change on each slot number (0 never), under the mutex
+    std::vector<uint32_t> _slotChangeMs;
+    static const uint32_t SLOT_NUM_MAX = 256;
+    void noteSlotChangeLocked(uint32_t slotNum);
+
+    // Position of the identification scheduler's round robin
+    uint32_t _identCursor = 0;
+
+    // Attempts at re-identifying a device (bus errors, or the hook deferring) before it is left as it is
+    static const uint32_t REIDENT_MAX_ATTEMPTS = 3;
+    IdentTiming _identTiming[MAX_IDENT_TIMING];
+    uint32_t _identTimingCount = 0;
+    uint32_t _setupTimeMs = 0;
+
+    // Find (or add) the identification timing entry for an element - assumes semaphore taken
+    IdentTiming* getIdentTiming(BusElemAddrType address, bool addIfMissing);
+
     // Bus element status change mutex
     mutable RaftMutex _busElemStatusMutex;
 
@@ -270,6 +417,28 @@ private:
     // Address status records (internal heavy structure)
     std::vector<BusAddrRecord> _addrStatus;
     static const uint32_t ADDR_STATUS_MAX = 50;
+
+    // Chooses the next device to poll (earliest due first) - only online devices are polled
+    DevicePollScheduler _pollScheduler;
+    static DeviceStatus* getRecordDeviceStatusIfOnline(BusAddrRecord& rec)
+    {
+        return ((rec.onlineState == DeviceOnlineState::ONLINE) && !rec.pollingDisabled) ? &rec.deviceStatus : nullptr;
+    }
+
+    // A device that was online, or found and not yet online, has gone (e.g. its slot lost power): an online
+    // device is reported and then deleted, others are deleted at once. Assumes the lock is held
+    void markGoneOffline(BusAddrRecord& rec);
+    void eraseSpuriousRecords();
+
+    // Addresses whose per-address state on the bus task (CRC recovery) should be forgotten
+    static const uint32_t FORGOTTEN_ADDRS_MAX = 16;
+    std::vector<BusElemAddrType> _forgottenAddrs;
+    bool _forgottenAddrsOverflow = false;
+    std::atomic<bool> _forgottenAddrsPending = false;
+    void addForgottenAddr(BusElemAddrType address);
+
+    // Warn once when the address table is full
+    bool _addrStatusFullWarned = false;
 
     // Find address record
     // Assumes semaphore already taken
