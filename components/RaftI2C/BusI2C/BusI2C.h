@@ -462,7 +462,7 @@ private:
     volatile bool _workerExitRequested = false;
     static const int DEFAULT_TASK_CORE = 0;
     static const int DEFAULT_TASK_PRIORITY = 5;
-    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5000;
+    static const int DEFAULT_TASK_STACK_SIZE_BYTES = 5500;   // data subscribers decode on this task (about 1.8 KB was left of 5000 on an Axiom)
     static const uint32_t WAIT_FOR_TASK_EXIT_MS = 1000;
     static const uint32_t WAIT_FOR_TASK_EXIT_ON_DESTROY_MS = 10000;
 
