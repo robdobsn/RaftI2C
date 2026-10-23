@@ -102,6 +102,7 @@ private:
     // Scan boost addresses (config "scanBoost") and the device type records generation and identification hook
     // claims the lists were built from
     std::vector<uint32_t> _scanBoostAddrs;
+    std::vector<uint32_t> _boostAddrs;          // config and runtime boost addresses, as the lists were built
     uint32_t _scanListsGeneration = 0;
     uint32_t _scanClaimsEpoch = 0;
     void loadScanLists();

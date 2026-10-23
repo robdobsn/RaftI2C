@@ -247,12 +247,20 @@ public:
     /// @brief Set the addresses the new-device identification handler handles (empty: every address)
     virtual void setNewDeviceIdentAddrRanges(const std::vector<std::pair<uint32_t, uint32_t>>& ranges) override final;
 
+    /// @brief Set addresses to scan most often, e.g. where the identification handler expects its devices
+    ///        (replaces those set before; added to the bus config's scan boost addresses)
+    virtual void setScanBoostAddrs(const std::vector<uint32_t>& addrs) override final;
+
+    /// @brief Get the addresses set by setScanBoostAddrs
+    void getScanBoostAddrs(std::vector<uint32_t>& addrs) const;
+
     /// @brief Check whether the identification handler could claim a device at an address
     /// @param i2cAddr 7-bit address
     /// @return false if no handler is registered, true if it handles every address or this one
     bool isAddrClaimedByHook(uint32_t i2cAddr) const;
 
-    /// @brief Changes each time the handler or its address ranges change (so the scanner rebuilds its lists)
+    /// @brief Changes each time the handler, its address ranges or the scan boost addresses change (so the scanner
+    ///        rebuilds its lists)
     uint32_t getHookClaimsEpoch() const
     {
         return _hookClaimsEpoch;
@@ -387,6 +395,9 @@ private:
     // its addresses
     std::vector<std::pair<uint32_t, uint32_t>> _hookAddrRanges;
     std::atomic<uint32_t> _hookClaimsEpoch{0};
+
+    // Addresses to scan most often, set at runtime (setScanBoostAddrs; under _handlerMutex)
+    std::vector<uint32_t> _scanBoostAddrs;
     bool isAddrInHookRangesLocked(uint32_t i2cAddr) const;
 
     // Statistics

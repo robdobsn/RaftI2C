@@ -406,7 +406,9 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType addres
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s", BusI2CAddrAndSlot::toString(address).c_str());
 #endif
-    _busStatusMgr.noteHookDeclined(address, _hookClaimsEpoch);
+    // The hook epoch, as the identification work is given (getNextIdentWork): a change to the scan lists alone
+    // doesn't make a declined device worth probing again
+    _busStatusMgr.noteHookDeclined(address, _hookEpoch);
     return IdentOutcome::NoMatch;
 }
 
@@ -555,7 +557,7 @@ void DeviceIdentMgr::serviceReInitRequests()
 /// @brief Identification information for a device
 String DeviceIdentMgr::getIdentInfoJson(BusElemAddrType address) const
 {
-    String stateFields = _busStatusMgr.getIdentStateJsonFields(address, _hookClaimsEpoch);
+    String stateFields = _busStatusMgr.getIdentStateJsonFields(address, _hookEpoch);
     if (stateFields.length() == 0)
         return "{}";
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
@@ -1324,6 +1326,30 @@ void DeviceIdentMgr::setNewDeviceIdentAddrRanges(const std::vector<std::pair<uin
     _hookEpoch++;
     _hookClaimsEpoch++;
     LOG_I(MODULE_PREFIX, "setNewDeviceIdentAddrRanges %d range(s)", (int)ranges.size());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set addresses to scan most often (replacing those set before)
+void DeviceIdentMgr::setScanBoostAddrs(const std::vector<uint32_t>& addrs)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    _scanBoostAddrs = addrs;
+    RaftMutex_unlock(_handlerMutex);
+    // The scanner rebuilds its lists (identification is unaffected, so the hook epoch is unchanged)
+    _hookClaimsEpoch++;
+    LOG_I(MODULE_PREFIX, "setScanBoostAddrs %d address(es)", (int)addrs.size());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get the addresses set by setScanBoostAddrs
+void DeviceIdentMgr::getScanBoostAddrs(std::vector<uint32_t>& addrs) const
+{
+    addrs.clear();
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    addrs = _scanBoostAddrs;
+    RaftMutex_unlock(_handlerMutex);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

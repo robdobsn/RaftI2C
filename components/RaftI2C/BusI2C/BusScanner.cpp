@@ -89,10 +89,12 @@ void BusScanner::loop()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Load the scan priority lists from the device type records (plus the scan boost addresses)
-/// @note The last list holds every scanned address not in a higher one: those that nothing can claim (no record
-///       identifies or claims them, the identification hook doesn't handle them, and they aren't a multiplexer's
-///       or a scan boost address) are moved to the background sweep. Each list keeps its scan position where it is
+/// @brief Load the scan priority lists from the device type records (plus the scan boost addresses: the bus
+///        config's and those set at runtime, e.g. by the identification hook - in the first list only)
+/// @note The last list holds every scanned address not in a higher one: those that no record identifies or claims
+///       and that aren't a multiplexer's or a scan boost address are moved to the background sweep. That includes
+///       addresses only the identification hook handles: the hook is still offered devices there, found by the
+///       sweep, and boosts the addresses it expects its devices at. Each list keeps its scan position where it is
 ///       unchanged in size
 void BusScanner::loadScanLists()
 {
@@ -102,8 +104,21 @@ void BusScanner::loadScanLists()
     deviceTypeRecords.getScanPriorityLists(lists);
     if (lists.size() == 0)
         lists.resize(1);
-    for (uint32_t addr : _scanBoostAddrs)
-        lists[0].push_back(addr);
+
+    // Boost addresses go in the first list, and only there (each once)
+    std::vector<uint32_t> runtimeBoostAddrs;
+    _deviceIdentMgr.getScanBoostAddrs(runtimeBoostAddrs);
+    _boostAddrs = _scanBoostAddrs;
+    for (uint32_t addr : runtimeBoostAddrs)
+        _boostAddrs.push_back(addr);
+    auto isBoosted = [this](uint32_t addr) {
+        return std::find(_boostAddrs.begin(), _boostAddrs.end(), addr) != _boostAddrs.end();
+    };
+    for (uint32_t i = 1; i < lists.size(); i++)
+        lists[i].erase(std::remove_if(lists[i].begin(), lists[i].end(), isBoosted), lists[i].end());
+    for (uint32_t addr : _boostAddrs)
+        if (std::find(lists[0].begin(), lists[0].end(), addr) == lists[0].end())
+            lists[0].push_back(addr);
 
     std::vector<std::vector<uint8_t>> scheduleLists(lists.size());
     std::vector<uint8_t> background;
@@ -137,11 +152,9 @@ bool BusScanner::isAddrClaimable(uint32_t addr) const
 {
     if (deviceTypeRecords.isAddrReserved(addr) || !deviceTypeRecords.getIdentCandidates(addr).empty())
         return true;
-    if (_deviceIdentMgr.isAddrClaimedByHook(addr))
-        return true;
     if ((addr >= _busMultiplexers.getMinAddr()) && (addr <= _busMultiplexers.getMaxAddr()))
         return true;
-    return std::find(_scanBoostAddrs.begin(), _scanBoostAddrs.end(), addr) != _scanBoostAddrs.end();
+    return std::find(_boostAddrs.begin(), _boostAddrs.end(), addr) != _boostAddrs.end();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
