@@ -406,7 +406,9 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType addres
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s", BusI2CAddrAndSlot::toString(address).c_str());
 #endif
-    _busStatusMgr.noteHookDeclined(address, _hookClaimsEpoch);
+    // The hook epoch, as the identification work is given (getNextIdentWork): a change to the scan lists alone
+    // doesn't make a declined device worth probing again
+    _busStatusMgr.noteHookDeclined(address, _hookEpoch);
     return IdentOutcome::NoMatch;
 }
 
@@ -555,7 +557,7 @@ void DeviceIdentMgr::serviceReInitRequests()
 /// @brief Identification information for a device
 String DeviceIdentMgr::getIdentInfoJson(BusElemAddrType address) const
 {
-    String stateFields = _busStatusMgr.getIdentStateJsonFields(address, _hookClaimsEpoch);
+    String stateFields = _busStatusMgr.getIdentStateJsonFields(address, _hookEpoch);
     if (stateFields.length() == 0)
         return "{}";
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);
