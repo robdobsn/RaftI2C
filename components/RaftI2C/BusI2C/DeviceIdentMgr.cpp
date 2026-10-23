@@ -1329,6 +1329,30 @@ void DeviceIdentMgr::setNewDeviceIdentAddrRanges(const std::vector<std::pair<uin
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Set addresses to scan most often (replacing those set before)
+void DeviceIdentMgr::setScanBoostAddrs(const std::vector<uint32_t>& addrs)
+{
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    _scanBoostAddrs = addrs;
+    RaftMutex_unlock(_handlerMutex);
+    // The scanner rebuilds its lists (identification is unaffected, so the hook epoch is unchanged)
+    _hookClaimsEpoch++;
+    LOG_I(MODULE_PREFIX, "setScanBoostAddrs %d address(es)", (int)addrs.size());
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Get the addresses set by setScanBoostAddrs
+void DeviceIdentMgr::getScanBoostAddrs(std::vector<uint32_t>& addrs) const
+{
+    addrs.clear();
+    if (!RaftMutex_lock(_handlerMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    addrs = _scanBoostAddrs;
+    RaftMutex_unlock(_handlerMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Check whether the identification handler could claim a device at an address
 bool DeviceIdentMgr::isAddrClaimedByHook(uint32_t i2cAddr) const
 {
