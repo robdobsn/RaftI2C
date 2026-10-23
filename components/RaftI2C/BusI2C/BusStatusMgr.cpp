@@ -803,8 +803,11 @@ bool BusStatusMgr::handlePollResult(uint32_t nextReqIdx, uint64_t timeNowUs, Bus
             pCallback = pAddrStatus->getDataChangeCB();
             if (pCallback)
             {
-                // Check min time between reports
-                if (Raft::isTimeout(timeNowMs, pAddrStatus->lastDataChangeReportTimeMs, pAddrStatus->minTimeBetweenReportsMs))
+                // Check min time between reports, allowing a report an eighth of the interval early (as RaftCore's
+                // DeviceDataSubscribers): a device polled at the report rate is polled a millisecond or two either
+                // side of it, and without the slack one report in a few was skipped
+                uint32_t minMs = pAddrStatus->minTimeBetweenReportsMs;
+                if ((uint32_t)(timeNowMs - pAddrStatus->lastDataChangeReportTimeMs) >= minMs - minMs / 8)
                 {
                     // Get device type index and callback info
                     deviceTypeIndex = pAddrStatus->deviceStatus.getDeviceTypeIndex();
