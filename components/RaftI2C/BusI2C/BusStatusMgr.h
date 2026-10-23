@@ -90,6 +90,10 @@ public:
     /// @brief Identification state of an element as JSON fields (without braces; empty if not known)
     String getIdentStateJsonFields(BusElemAddrType address, uint32_t hookEpoch) const;
 
+    /// @brief Identification state of an element and the consecutive attempts with that outcome
+    /// @return false if the element isn't known
+    bool getIdentState(BusElemAddrType address, BusIdentState& state, uint32_t& attempts) const;
+
     /// @brief Note a change on a slot (an element there came online or went, or its multiplexer changed)
     void noteSlotChange(uint32_t slotNum);
 

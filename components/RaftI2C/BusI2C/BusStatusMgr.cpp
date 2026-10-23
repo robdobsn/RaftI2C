@@ -1860,6 +1860,22 @@ bool BusStatusMgr::setDevicePollingEnabled(BusElemAddrType address, bool enabled
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Identification state of an element and the consecutive attempts with that outcome
+bool BusStatusMgr::getIdentState(BusElemAddrType address, BusIdentState& state, uint32_t& attempts) const
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return false;
+    const BusAddrRecord* pRec = findAddrStatusRecord(address);
+    if (pRec)
+    {
+        state = pRec->identState;
+        attempts = pRec->identAttempts;
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+    return pRec != nullptr;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Identification state of an element as JSON fields
 String BusStatusMgr::getIdentStateJsonFields(BusElemAddrType address, uint32_t hookEpoch) const
 {

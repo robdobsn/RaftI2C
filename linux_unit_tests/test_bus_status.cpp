@@ -202,3 +202,35 @@ int testHookDeclined()
     return failCount;
 }
 
+
+// The identification state of an element (as the slot LEDs read it): the state and the consecutive attempts with
+// that outcome, which are counted again when the outcome changes and cleared when it is identified
+int testGetIdentState()
+{
+    printf("Running testGetIdentState...\n");
+    RaftBus bus(nullptr, nullptr);
+    BusStatusMgr statusMgr(bus);
+    const BusElemAddrType dev = 0x253;
+    BusIdentState state = BusIdentState::Identified;
+    uint32_t attempts = 99;
+    TEST_ASSERT(!statusMgr.getIdentState(dev, state, attempts), "an unknown element isn't reported");
+    bool isOnline = false;
+    for (int i = 0; (i < 10) && !isOnline; i++)
+        statusMgr.updateBusElemState(dev, true, isOnline);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Pending) && (attempts == 0),
+                "a new element is pending");
+    DeviceStatus noStatus;
+    for (int i = 0; i < 3; i++)
+        statusMgr.setIdentOutcome(dev, BusIdentState::Deferred, noStatus, 0, 0, 0);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Deferred) && (attempts == 3),
+                "deferred three times");
+    statusMgr.setIdentOutcome(dev, BusIdentState::NoMatch, noStatus, 0, 0, 0);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::NoMatch) && (attempts == 1),
+                "no match, counted again");
+    DeviceStatus deviceStatus;
+    deviceStatus.deviceTypeIndex = 3;
+    statusMgr.setIdentOutcome(dev, BusIdentState::Identified, deviceStatus, 0, 0, 0);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Identified) && (attempts == 0),
+                "identified");
+    return failCount;
+}

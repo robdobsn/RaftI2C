@@ -275,6 +275,12 @@ public:
     /// @brief Identification information for a device (state, attempts, candidates in the order tried, ...)
     virtual String getIdentInfoJson(BusElemAddrType address) const override final;
 
+    /// @brief Identification state of a device
+    virtual bool getIdentState(BusElemAddrType address, BusIdentState& state, uint32_t& attempts) const override final
+    {
+        return _busStatusMgr.getIdentState(address, state, attempts);
+    }
+
     /// @brief Run an identified device's initialisation again (carried out on the bus task)
     virtual bool requestReInit(BusElemAddrType address, std::function<void(bool ok)> doneFn) override final;
 
