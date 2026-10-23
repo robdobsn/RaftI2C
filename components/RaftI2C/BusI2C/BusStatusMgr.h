@@ -88,7 +88,7 @@ public:
     bool setDevicePollingEnabled(BusElemAddrType address, bool enabled);
 
     /// @brief Identification state of an element as JSON fields (without braces; empty if not known)
-    String getIdentStateJsonFields(BusElemAddrType address) const;
+    String getIdentStateJsonFields(BusElemAddrType address, uint32_t hookEpoch) const;
 
     /// @brief Note a change on a slot (an element there came online or went, or its multiplexer changed)
     void noteSlotChange(uint32_t slotNum);
@@ -323,11 +323,21 @@ public:
         BusElemAddrType address = 0;
         bool reverify = false;
         bool reident = false;       // an identified device to identify again (keeping its type until the result)
+        bool hookDeclined = false;  // the identification hook has said it isn't its device (see noteHookDeclined)
         DeviceTypeIndexType deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
     };
 
+    /// @brief Note that the identification hook said a device isn't its own. The hook's probe can change an ordinary
+    ///        device (it is a write), so after HOOK_DECLINES_MAX such answers the device isn't offered to the hook
+    ///        again (IdentWork::hookDeclined) until it goes offline and comes back, or the hook's claims change
+    /// @param address address
+    /// @param hookEpoch identification hook epoch the hook was called in
+    void noteHookDeclined(BusElemAddrType address, uint32_t hookEpoch);
+    static const uint32_t HOOK_DECLINES_MAX = 2;
+
     /// @brief Mark the devices in a re-identification request (identified devices are identified again keeping
-    ///        their type until the result is known; others are tried at once)
+    ///        their type until the result is known; others are tried at once). A device identified by the
+    ///        identification hook (a probe-only type) is included in every scope but Outranked
     /// @return number of devices marked
     uint32_t applyReIdentRequest(const BusReIdentRequest& request);
 
@@ -439,6 +449,19 @@ private:
 
     // Warn once when the address table is full
     bool _addrStatusFullWarned = false;
+
+    // Devices the identification hook has said aren't its own since they came online (noteHookDeclined), under the
+    // mutex. An entry is removed when its device comes online again
+    struct HookDeclined
+    {
+        BusElemAddrType address = 0;
+        uint32_t hookEpoch = 0;
+        uint8_t count = 0;
+    };
+    std::vector<HookDeclined> _hookDeclined;
+    static const uint32_t HOOK_DECLINED_MAX_ENTRIES = ADDR_STATUS_MAX;
+    bool isHookDeclinedLocked(BusElemAddrType address, uint32_t hookEpoch) const;
+    void clearHookDeclinedLocked(BusElemAddrType address);
 
     // Find address record
     // Assumes semaphore already taken

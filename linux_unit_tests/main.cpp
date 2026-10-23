@@ -31,6 +31,8 @@ bool isApprox(float a, float b, float tol = 0.0001f)
 }
 
 int testBusStatus();
+int testReIdentHookDevices();
+int testHookDeclined();
 
 int main()
 {
@@ -120,6 +122,8 @@ int main()
     
     // BusStatusMgr
     failCount += testBusStatus();
+    failCount += testReIdentHookDevices();
+    failCount += testHookDeclined();
 
     // Check failCount
     if (failCount > 0)

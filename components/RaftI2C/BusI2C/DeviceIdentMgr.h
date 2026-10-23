@@ -316,6 +316,7 @@ private:
         BusElemAddrType address = 0;
         uint32_t generation = 0;    // device type records generation and hook epoch the candidates are from
         uint32_t hookEpoch = 0;
+        bool hookDeclined = false;  // the identification hook has said it isn't its device - not offered to it again
         Phase phase = Phase::Detect;
         std::vector<DeviceTypeIndexType> candidates;
         uint32_t candPos = 0;

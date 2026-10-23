@@ -173,6 +173,7 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
                 job.address = work.address;
                 job.generation = generation;
                 job.hookEpoch = hookEpoch;
+                job.hookDeclined = work.hookDeclined;
                 job.candidates = deviceTypeRecords.getIdentCandidates(BusI2CAddrAndSlot::getI2CAddr(work.address));
                 _jobs.push_back(job);
                 jobIt = _jobs.end() - 1;
@@ -238,6 +239,10 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentJob(IdentJob& job, DeviceSt
             // device that couldn't be read would give a wrong or harmful result
             if (job.busError)
                 return IdentOutcome::BusError;
+            // Nor on a device the hook has already said isn't its own (BusStatusMgr::noteHookDeclined): its probe
+            // can change an ordinary device
+            if (job.hookDeclined)
+                return IdentOutcome::NoMatch;
             IdentOutcome hookOutcome = runIdentHook(address, deviceStatus);
             if (hookOutcome != IdentOutcome::Identified)
                 return hookOutcome;
@@ -401,6 +406,7 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType addres
 #ifdef DEBUG_DEVICE_IDENT_MGR
     LOG_I(MODULE_PREFIX, "identifyDevice handler NOT MINE address %s", BusI2CAddrAndSlot::toString(address).c_str());
 #endif
+    _busStatusMgr.noteHookDeclined(address, _hookClaimsEpoch);
     return IdentOutcome::NoMatch;
 }
 
@@ -549,7 +555,7 @@ void DeviceIdentMgr::serviceReInitRequests()
 /// @brief Identification information for a device
 String DeviceIdentMgr::getIdentInfoJson(BusElemAddrType address) const
 {
-    String stateFields = _busStatusMgr.getIdentStateJsonFields(address);
+    String stateFields = _busStatusMgr.getIdentStateJsonFields(address, _hookClaimsEpoch);
     if (stateFields.length() == 0)
         return "{}";
     uint32_t i2cAddr = BusI2CAddrAndSlot::getI2CAddr(address);

@@ -303,6 +303,7 @@ bool BusStatusMgr::updateBusElemState(BusElemAddrType address, bool elemRespondi
                 pAddrStatus->identAttempts = 0;
                 pAddrStatus->nextIdentMs = millis();
                 pAddrStatus->reverifyRequested = false;
+                clearHookDeclinedLocked(address);
             }
 
             // Identification timing - first time online
@@ -1538,6 +1539,7 @@ bool BusStatusMgr::getNextIdentWork(uint32_t timeNowMs, uint32_t generation, uin
         work.address = rec.address;
         work.reverify = reverify;
         work.reident = reident;
+        work.hookDeclined = isHookDeclinedLocked(rec.address, hookEpoch);
         work.deviceTypeIndex = rec.deviceStatus.getDeviceTypeIndex();
         _identCursor = pos + 1;
         found = true;
@@ -1545,6 +1547,54 @@ bool BusStatusMgr::getNextIdentWork(uint32_t timeNowMs, uint32_t generation, uin
     }
     RaftMutex_unlock(_busElemStatusMutex);
     return found;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Note that the identification hook said a device isn't its own
+void BusStatusMgr::noteHookDeclined(BusElemAddrType address, uint32_t hookEpoch)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    auto it = std::find_if(_hookDeclined.begin(), _hookDeclined.end(),
+                [address](const HookDeclined& entry) { return entry.address == address; });
+    if ((it != _hookDeclined.end()) && (it->hookEpoch != hookEpoch))
+    {
+        // The hook's claims have changed since: count again
+        it->hookEpoch = hookEpoch;
+        it->count = 0;
+    }
+    if ((it == _hookDeclined.end()) && (_hookDeclined.size() < HOOK_DECLINED_MAX_ENTRIES))
+    {
+        _hookDeclined.push_back({address, hookEpoch, 0});
+        it = _hookDeclined.end() - 1;
+    }
+    if ((it != _hookDeclined.end()) && (it->count < UINT8_MAX))
+    {
+        it->count++;
+        if (it->count == HOOK_DECLINES_MAX)
+            LOG_I(MODULE_PREFIX, "noteHookDeclined %s: the identification hook said it isn't its device %d times - "
+                        "not offered to the hook again until it goes offline", BusI2CAddrAndSlot::toString(address).c_str(),
+                        (int)it->count);
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Check whether a device isn't to be offered to the identification hook again - assumes the lock is held
+bool BusStatusMgr::isHookDeclinedLocked(BusElemAddrType address, uint32_t hookEpoch) const
+{
+    for (const HookDeclined& entry : _hookDeclined)
+        if (entry.address == address)
+            return (entry.hookEpoch == hookEpoch) && (entry.count >= HOOK_DECLINES_MAX);
+    return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Forget that the identification hook declined a device (it has come online again) - assumes the lock is held
+void BusStatusMgr::clearHookDeclinedLocked(BusElemAddrType address)
+{
+    _hookDeclined.erase(std::remove_if(_hookDeclined.begin(), _hookDeclined.end(),
+                [address](const HookDeclined& entry) { return entry.address == address; }), _hookDeclined.end());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1656,9 +1706,12 @@ uint32_t BusStatusMgr::applyReIdentRequest(const BusReIdentRequest& request)
             continue;
         if (currentTypeIndex != DEVICE_TYPE_INDEX_INVALID)
         {
-            // A device identified by a hook (probe-only type) is only re-identified when asked for by address
+            // A device identified by a hook (probe-only type) is re-identified - by the hook, which probes it - in every
+            // scope but Outranked: a probe-only type is never a candidate at an address, so any record enabled at the
+            // device's address would count as outranking it, and that record's detection would be run on it. So
+            // disabling a hook type (TypeIndex) drops its devices at once, as for any type
             const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(currentTypeIndex);
-            if (pRec && pRec->isProbeOnly() && (request.scope != BusReIdentScope::Address))
+            if (pRec && pRec->isProbeOnly() && (request.scope == BusReIdentScope::Outranked))
                 continue;
             rec.reidentRequested = true;
             rec.reidentAttempts = 0;
@@ -1666,6 +1719,9 @@ uint32_t BusStatusMgr::applyReIdentRequest(const BusReIdentRequest& request)
         else
         {
             rec.identAttempts = 0;
+            // Asked for by address: offered to the identification hook again even if it has declined the device
+            if (request.scope == BusReIdentScope::Address)
+                clearHookDeclinedLocked(rec.address);
         }
         rec.nextIdentMs = timeNowMs;
         numMarked++;
@@ -1802,7 +1858,7 @@ bool BusStatusMgr::setDevicePollingEnabled(BusElemAddrType address, bool enabled
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Identification state of an element as JSON fields
-String BusStatusMgr::getIdentStateJsonFields(BusElemAddrType address) const
+String BusStatusMgr::getIdentStateJsonFields(BusElemAddrType address, uint32_t hookEpoch) const
 {
     if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
         return "";
@@ -1813,12 +1869,13 @@ String BusStatusMgr::getIdentStateJsonFields(BusElemAddrType address) const
         int32_t nextInMs = (int32_t)(pRec->nextIdentMs - millis());
         DeviceTypeIndexType typeIdx = pRec->deviceStatus.getDeviceTypeIndex();
         char buf[260];
-        snprintf(buf, sizeof(buf), R"("online":"%s","state":"%s","attempts":%d,"nextInMs":%d,"dtIdx":%d,"polled":%s,"reverify":%s,"reident":%s)",
+        snprintf(buf, sizeof(buf), R"("online":"%s","state":"%s","attempts":%d,"nextInMs":%d,"dtIdx":%d,"polled":%s,"reverify":%s,"reident":%s,"hookDeclined":%s)",
                     BusAddrStatus::getOnlineStateStr(pRec->onlineState), BusIdentSchedule::getStateStr(pRec->identState),
                     (int)pRec->identAttempts, (pRec->identState == BusIdentState::Identified) ? 0 : (nextInMs > 0 ? (int)nextInMs : 0),
                     typeIdx == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)typeIdx,
                     pRec->pollingDisabled ? "false" : "true", pRec->reverifyRequested ? "true" : "false",
-                    pRec->reidentRequested ? "true" : "false");
+                    pRec->reidentRequested ? "true" : "false",
+                    isHookDeclinedLocked(address, hookEpoch) ? "true" : "false");
         json = buf;
     }
     RaftMutex_unlock(_busElemStatusMutex);
