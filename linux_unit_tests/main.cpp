@@ -81,22 +81,27 @@ int main()
         const char* pDevTypeStr = "MAX30101";
         RaftBusDeviceDecodeState decodeState;
 
-        // Poll response
+        // Poll response: FIFO_WR_PTR, OVF_COUNTER, FIFO_RD_PTR, 8 samples of 9 bytes (red, IR, green), then
+        // FIFO_RD_PTR again - the samples popped are those between the two read pointers (here 5, wrapping past
+        // the end of the 32-sample FIFO); the reads past them repeat the last sample, as the chip does
         uint32_t bufIdx = 0;
         uint8_t pollResp[100];
         uint8_t fifoWriteOffset = 0x02;
-        uint8_t fifoReadOffset = 0x1a;
-        uint16_t numReadingsInFIFO = (fifoWriteOffset + 32 - fifoReadOffset) % 32;
-        printf("numReadingsInFIFO %d\n", numReadingsInFIFO);
+        uint8_t fifoReadOffset = 0x1d;
+        uint16_t numReadingsInFIFO = 5;
+        uint8_t fifoReadOffsetAfter = (fifoReadOffset + numReadingsInFIFO) % 32;
         bufIdx = Raft::setBytes(pollResp, bufIdx, 1234, 2, true);
         bufIdx = Raft::setBytes(pollResp, bufIdx, fifoWriteOffset, 1, true); // Write offset in FIFO
         bufIdx = Raft::setBytes(pollResp, bufIdx, 0x00, 1, true);
         bufIdx = Raft::setBytes(pollResp, bufIdx, fifoReadOffset, 1, true); // Read offset in FIFO
-        for (uint32_t i = 0; i < numReadingsInFIFO; i++)
+        for (uint32_t i = 0; i < 8; i++)
         {
-            bufIdx = Raft::setBytes(pollResp, bufIdx, 2345 + i*12, 3, true); // FIFO Red
-            bufIdx = Raft::setBytes(pollResp, bufIdx, 5678 + i*9, 3, true); // FIFO IR data
+            uint32_t j = i < numReadingsInFIFO ? i : numReadingsInFIFO - 1;
+            bufIdx = Raft::setBytes(pollResp, bufIdx, 2345 + j*12, 3, true); // FIFO Red
+            bufIdx = Raft::setBytes(pollResp, bufIdx, 5678 + j*9, 3, true); // FIFO IR data
+            bufIdx = Raft::setBytes(pollResp, bufIdx, 345 + j*7, 3, true); // FIFO Green data
         }
+        bufIdx = Raft::setBytes(pollResp, bufIdx, fifoReadOffsetAfter, 1, true); // Read offset after the read
 
         // Get the device type record
         const DeviceTypeRecord* pDevTypeRecord = getDevTypeRecord(pDevTypeStr);
@@ -112,6 +117,7 @@ int main()
                 TEST_ASSERT(pollRespStruct[i].timeMs == 1234 * DevicePollingInfo::POLL_RESULT_RESOLUTION_US / 1000 + i*40, "MAX30101 timeMs decode failed");
                 TEST_ASSERT(pollRespStruct[i].Red == 2345 + i*12, "MAX30101 Red decode failed");
                 TEST_ASSERT(pollRespStruct[i].IR == 5678 + i*9, "MAX30101 IR decode failed");
+                TEST_ASSERT(pollRespStruct[i].Green == 345 + i*7, "MAX30101 Green decode failed");
             }
         }
         else
