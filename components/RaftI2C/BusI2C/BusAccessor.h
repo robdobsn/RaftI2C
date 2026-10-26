@@ -39,6 +39,13 @@ public:
     // Polling
     void processPolling();
 
+    // Function telling whether access to an address is barred for now (e.g. during a pause in its poll): a queued
+    // request to it is then held, with the queue behind it, until the bar ends
+    void setAddrBarredFn(std::function<bool(BusElemAddrType)> addrBarredFn)
+    {
+        _addrBarredFn = addrBarredFn;
+    }
+
 private:
     // Bus base
     RaftBus& _raftBus;
@@ -72,6 +79,17 @@ private:
     static const int REQUEST_FIFO_SLOTS_LOW_LOAD = 3;
     static const uint32_t ADD_REQ_TO_QUEUE_MAX_MS = 2;
     ThreadSafeQueue<BusRequestInfo> _requestQueue;
+
+    // Most requests sent together as one batch (requests marked BusRequestInfo::isBatchFollows and the one after them)
+    static const uint32_t MAX_BATCH_REQUESTS = 64;
+
+    // A request to a barred address, held until the bar ends (or MAX_HOLD_BARRED_MS has passed, when it is sent and
+    // fails as barred)
+    std::function<bool(BusElemAddrType)> _addrBarredFn = nullptr;
+    BusRequestInfo _heldReq;
+    bool _heldReqValid = false;
+    uint32_t _heldSinceMs = 0;
+    static const uint32_t MAX_HOLD_BARRED_MS = 2000;
 
     // Response FIFO
     static const int RESPONSE_FIFO_SLOTS = 40;

@@ -138,20 +138,50 @@ void BusAccessor::clear(bool incPolling)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @brief Process request queue (called from thread function)
 /// @param isPaused True if bus is paused
+/// @note A request marked as followed by the rest of its batch (BusRequestInfo::isBatchFollows) is sent with the
+///       requests after it in the queue, up to the end of the batch, before anything else on the bus - so no device
+///       poll comes between the writes of a device action (devman/cmdraw hexWrs)
 void BusAccessor::processRequestQueue(bool isPaused)
 {
-    // Get from request FIFO
+    // Get from request FIFO - the next request, or a whole batch
     BusRequestInfo reqRec;
-    if (_requestQueue.get(reqRec))
+    for (uint32_t batchIdx = 0; batchIdx < MAX_BATCH_REQUESTS; batchIdx++)
     {
+        // The request held for a barred address, or the next in the queue
+        if (_heldReqValid)
+        {
+            reqRec = _heldReq;
+        }
+        else if (!_requestQueue.get(reqRec))
+        {
+            return;
+        }
+
+        // A request to an address whose access is barred for now (e.g. during a pause in the device's poll) waits,
+        // and the queue behind it, until the bar ends - rather than failing. After MAX_HOLD_BARRED_MS it is sent
+        // (and fails as barred)
+        if (!isPaused && _addrBarredFn && _addrBarredFn(reqRec.getAddress()))
+        {
+            if (!_heldReqValid)
+            {
+                _heldReq = reqRec;
+                _heldReqValid = true;
+                _heldSinceMs = millis();
+                return;
+            }
+            if (!Raft::isTimeout(millis(), _heldSinceMs, MAX_HOLD_BARRED_MS))
+                return;
+        }
+        _heldReqValid = false;
+
 #ifdef DEBUG_REQ_QUEUE_COMMANDS
         // Address and slot
         BusElemAddrType address = reqRec.getAddress();
         // Debug
         String writeDataStr;
         Raft::getHexStrFromBytes(reqRec.getWriteData(), reqRec.getWriteDataLen(), writeDataStr);
-        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr %s write %s", 
-                    BusI2CAddrAndSlot::toString(address).c_str(), writeDataStr.c_str());
+        LOG_I(MODULE_PREFIX, "i2cWorkerTask reqQ got addr %s write %s batchFollows %d", 
+                    BusI2CAddrAndSlot::toString(address).c_str(), writeDataStr.c_str(), reqRec.isBatchFollows());
 #endif
 
         // Debug one address only
@@ -182,6 +212,10 @@ void BusAccessor::processRequestQueue(bool isPaused)
             // Make the request
             _busI2CReqAsyncFn(&reqRec, 0);
         }
+
+        // The rest of the batch follows
+        if (!reqRec.isBatchFollows())
+            return;
     }
 }
 
