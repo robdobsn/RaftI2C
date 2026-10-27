@@ -64,6 +64,7 @@ void BusScanner::setup(const RaftJsonIF& config)
     _slotKnownWeight = config.getLong("slotKnownWeight", SLOT_KNOWN_WEIGHT_DEFAULT);
     _slotChangedWeight = config.getLong("slotChangedWeight", SLOT_CHANGED_WEIGHT_DEFAULT);
     _slotChangedMs = config.getLong("slotChangedMs", SLOT_CHANGED_DEFAULT_MS);
+    _generalCallRoundMs = config.getLong("generalCallRoundMs", GENERAL_CALL_ROUND_DEFAULT_MS);
 
     // Debug
     LOG_I(MODULE_PREFIX, "setup busScanPeriodMs %d", _slowScanPeriodMs);
@@ -102,6 +103,7 @@ void BusScanner::loadScanLists()
     _scanClaimsEpoch = _deviceIdentMgr.getHookClaimsEpoch();
     std::vector<std::vector<BusElemAddrType>> lists;
     deviceTypeRecords.getScanPriorityLists(lists);
+    deviceTypeRecords.getGeneralCalls(_generalCalls);
     if (lists.size() == 0)
         lists.resize(1);
 
@@ -226,12 +228,13 @@ void BusScanner::updateScanCredit(uint64_t timeNowUs)
 /// @brief Scanning status as JSON
 String BusScanner::getScanStatsJson() const
 {
-    char buf[320];
-    snprintf(buf, sizeof(buf), R"({"mode":"%s","lists":[%d,%d,%d],"background":%d,"sharePct":%d,"bgProbes":%d,"confirmProbes":%d,"mainBusChecks":%d,"slots":%d,"slotsKnown":%d,"slotsChanged":%d,"slotCycle":%d,"muxRescans":%d,"muxChecks":%d})",
+    char buf[352];
+    snprintf(buf, sizeof(buf), R"({"mode":"%s","lists":[%d,%d,%d],"background":%d,"sharePct":%d,"bgProbes":%d,"confirmProbes":%d,"mainBusChecks":%d,"slots":%d,"slotsKnown":%d,"slotsChanged":%d,"slotCycle":%d,"muxRescans":%d,"muxChecks":%d,"generalCalls":%d})",
                 getScanStateStr(_scanMode), (int)_numListAddrs[0], (int)_numListAddrs[1], (int)_numListAddrs[2],
                 (int)_numBackgroundAddrs, (int)getScanSharePct(), (int)_backgroundProbeCount, (int)_confirmProbeCount,
                 (int)_mainBusCheckCount, (int)_busMultiplexers.getSlotIndices().size(), (int)_numSlotsKnown,
-                (int)_numSlotsChanged, (int)_schedule.numSlotPositions(), (int)_muxRescanCount, (int)_muxCheckProbeCount);
+                (int)_numSlotsChanged, (int)_schedule.numSlotPositions(), (int)_muxRescanCount, (int)_muxCheckProbeCount,
+                (int)_generalCallCount);
     return buf;
 }
 
@@ -275,6 +278,11 @@ bool BusScanner::taskService(uint64_t curTimeUs, uint64_t maxFastTimeInLoopUs, u
         if ((uint64_t)_scanCreditUs < maxSlowTimeInLoopUs)
             maxSlowTimeInLoopUs = _scanCreditUs;
     }
+
+    // General calls for devices that stay off the bus until they get one
+    if ((_scanMode == SCAN_MODE_SCAN_FAST) || (_scanMode == SCAN_MODE_SCAN_SLOW))
+        serviceGeneralCalls();
+
     // Confirmation probes for elements that answered on an earlier pass (not this one, so the two probes are apart)
     uint32_t confirmsThisPass = _confirmQueue.size();
 
@@ -717,6 +725,41 @@ void BusScanner::handleScanRequest()
     if (_fastScanRequested.exchange(false))
     {
         setScanMode(SCAN_MODE_SCAN_FAST);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Send the general calls on the next slot in turn when one is due (see _generalCalls)
+void BusScanner::serviceGeneralCalls()
+{
+    if (_generalCalls.empty())
+        return;
+    const auto& slotIndices = _busMultiplexers.getSlotIndices();
+    uint32_t numPositions = slotIndices.empty() ? 1 : slotIndices.size();
+    uint32_t intervalMs = std::max(GENERAL_CALL_MIN_INTERVAL_MS, _generalCallRoundMs / numPositions);
+    if (!Raft::isTimeout(millis(), _generalCallLastMs, intervalMs) && (_generalCallLastMs != 0))
+        return;
+    _generalCallLastMs = millis();
+    _generalCallPos = (_generalCallPos + 1) % numPositions;
+    uint32_t slotNum = slotIndices.empty() ? 0 : slotIndices[_generalCallPos] + 1;
+
+    // Select the slot (as scanOneAddress)
+    if ((slotNum != _scanSlotSelected) && (_scanSlotSelected != 0))
+        _busMultiplexers.disableAllSlots(false);
+    _scanSlotSelected = 0;
+    if (_busMultiplexers.enableOneSlot(slotNum) != RAFT_OK)
+    {
+        _busMultiplexers.disableAllSlots(false);
+        return;
+    }
+    _scanSlotSelected = slotNum;
+
+    // Send each (a device answering a general call ACKs it; none answering is a NACK, which is normal)
+    for (const std::vector<uint8_t>& generalCall : _generalCalls)
+    {
+        BusRequestInfo reqRec(BUS_REQ_TYPE_SLOW_SCAN, I2C_GENERAL_CALL_ADDR, 0, generalCall.size(), generalCall.data(), 0, 0, nullptr, this);
+        _busReqSyncFn(&reqRec, nullptr);
+        _generalCallCount++;
     }
 }
 

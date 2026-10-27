@@ -167,6 +167,20 @@ private:
     uint32_t _muxCheckIdx = 0;
     uint32_t _muxCheckProbeCount = 0;
 
+    // General calls: bytes sent to the general call address (0x00) for devices that stay off the bus until they get
+    // one (DeviceTypeRecord::generalCall, e.g. the CaliPile's 0x04 to load its address), from the enabled records.
+    // In the fast and slow scan modes they are sent on one slot at a time in turn (a slot also passes the main bus;
+    // with no slots, on the main bus), a full round taking generalCallRoundMs - so a device plugged in later is
+    // woken within about that time
+    static constexpr uint32_t GENERAL_CALL_ROUND_DEFAULT_MS = 2000;
+    static constexpr uint32_t GENERAL_CALL_MIN_INTERVAL_MS = 50;
+    std::vector<std::vector<uint8_t>> _generalCalls;
+    uint32_t _generalCallRoundMs = GENERAL_CALL_ROUND_DEFAULT_MS;
+    uint32_t _generalCallLastMs = 0;
+    uint32_t _generalCallPos = 0;
+    uint32_t _generalCallCount = 0;
+    void serviceGeneralCalls();
+
     // Slot left selected by the last probe (0 none), so consecutive probes on a slot don't rewrite the multiplexer
     uint32_t _scanSlotSelected = 0;
 
