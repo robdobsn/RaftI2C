@@ -15,6 +15,10 @@ CORE = $(RAFTCORE)/components/core
 
 CFLAGS = -Wall -std=c++20 -g -ffp-contract=off -DRAFT_CORE
 
+# Header dependencies (-MMD), so a change to a RaftCore or RaftI2C header rebuilds what includes it - an object
+# built against an older layout of a class (e.g. DeviceTypeRecord) otherwise links in and fails at runtime
+DEPFLAGS = -MMD -MP
+
 GEN_DIR = gen
 CATALOGUE = $(GEN_DIR)/DeviceTypeRecords.json
 GEN_HEADER = $(GEN_DIR)/DeviceTypeRecords_generated.h
@@ -76,10 +80,12 @@ $(OBJDIR)/main.o $(OBJDIR)/DeviceTypeRecords.o: $(GEN_HEADER)
 
 $(OBJDIR)/%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	$(CC) $(CFLAGS) $(TEST_FLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEPFLAGS) $(TEST_FLAGS) $(INCLUDES) -c $< -o $@
 
 $(OUTPUT): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $(OUTPUT) $(OBJECTS)
 
 clean:
 	rm -rf $(OUTPUT) $(OBJDIR) $(GEN_DIR)
+
+-include $(OBJECTS:.o=.d)
