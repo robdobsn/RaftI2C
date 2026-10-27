@@ -89,6 +89,9 @@ BusI2C::BusI2C(BusElemStatusCB busElemStatusCB, BusOperationStatusCB busOperatio
     // Provide the I2C central to the polling manager for bus-frequency switching
     _devicePollingMgr.setI2CCentral(_pI2CCentral);
 
+    // A queued request to a device whose access is barred (e.g. during a pause in its poll) waits for the bar to end
+    _busAccessor.setAddrBarredFn([this](BusElemAddrType address) { return _busStatusMgr.barElemAccessGet(millis(), address); });
+
     // Allow the device identification manager to re-select a device's multiplexer slot after a
     // registered new-device identification handler runs (a handler's synchronous bus probe may
     // reset the slot selection which the scanner had established and which identification relies on)
