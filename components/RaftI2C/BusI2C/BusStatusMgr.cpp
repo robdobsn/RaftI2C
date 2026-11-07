@@ -1475,14 +1475,16 @@ String BusStatusMgr::getIdentTimingJson() const
         for (uint32_t i = 0; i < _identTimingCount; i++)
         {
             const IdentTiming& t = _identTiming[i];
-            char buf[200];
+            char buf[300];
             auto msOrNeg = [](uint32_t ms) { return (ms == IdentTiming::NOT_REACHED) ? -1L : (long)ms; };
             const BusAddrRecord* pRec = findAddrStatusRecord(t.address);
-            snprintf(buf, sizeof(buf), R"(%s{"addr":"%s","seenMs":%ld,"onlineMs":%ld,"identMs":%ld,"dtIdx":%d,"attempts":%d,"state":"%s"})",
+            snprintf(buf, sizeof(buf), R"(%s{"addr":"%s","seenMs":%ld,"onlineMs":%ld,"identMs":%ld,"dtIdx":%d,"attempts":%d,"state":"%s",)"
+                     R"("pollFails":%d,"pollNacks":%d,"reverifies":%d,"reverifyNacks":%d,"reverifyMismatches":%d})",
                      i > 0 ? "," : "", BusI2CAddrAndSlot::toString(t.address).c_str(), msOrNeg(t.seenMs),
                      msOrNeg(t.onlineMs), msOrNeg(t.identMs),
                      t.deviceTypeIndex == DEVICE_TYPE_INDEX_INVALID ? -1 : (int)t.deviceTypeIndex,
-                     (int)t.identAttempts, pRec ? BusIdentSchedule::getStateStr(pRec->identState) : "gone");
+                     (int)t.identAttempts, pRec ? BusIdentSchedule::getStateStr(pRec->identState) : "gone",
+                     (int)t.pollFails, (int)t.pollNacks, (int)t.reverifies, (int)t.reverifyNacks, (int)t.reverifyMismatches);
             json += buf;
         }
         RaftMutex_unlock(_busElemStatusMutex);
@@ -1660,14 +1662,40 @@ void BusStatusMgr::setReverifyOutcome(BusElemAddrType address, ReverifyResult re
     if (pRec)
     {
         uint32_t timeNowMs = millis();
+        IdentTiming* pIdentTiming = getIdentTiming(address, false);
+        if (pIdentTiming)
+        {
+            if (pIdentTiming->reverifies < UINT16_MAX)
+                pIdentTiming->reverifies++;
+            if ((result == ReverifyResult::Nack) && (pIdentTiming->reverifyNacks < UINT16_MAX))
+                pIdentTiming->reverifyNacks++;
+        }
+
+        // A NACKed detection (the device asleep, or busy e.g. just after a reset) isn't evidence that it is another
+        // type: try again, backing off, and only treat it as a mismatch if it keeps NACKing. identAttempts counts
+        // the re-verify attempts (it is 0 while identified)
+        if (result == ReverifyResult::Nack)
+        {
+            if (pRec->identAttempts < UINT8_MAX)
+                pRec->identAttempts++;
+            if (pRec->identAttempts >= REVERIFY_NACK_MAX_ATTEMPTS)
+                result = ReverifyResult::Mismatch;
+        }
+        if ((result == ReverifyResult::Mismatch) && pIdentTiming && (pIdentTiming->reverifyMismatches < UINT16_MAX))
+            pIdentTiming->reverifyMismatches++;
+
         switch (result)
         {
             case ReverifyResult::StillMatches:
                 // Re-initialised: reported as Identified (with the same type) so that settings made since it was
                 // first initialised are applied again
                 pRec->reverifyRequested = false;
+                pRec->identAttempts = 0;
                 pRec->identChangePending = true;
                 _busElemStatusChangeDetected = true;
+                break;
+            case ReverifyResult::Nack:
+                pRec->nextIdentMs = timeNowMs + BusIdentSchedule::retryDelayMs(BusIdentState::BusError, pRec->identAttempts);
                 break;
             case ReverifyResult::Mismatch:
                 // Not that type now: identified again at once (and the identity change reported then)
@@ -1679,9 +1707,31 @@ void BusStatusMgr::setReverifyOutcome(BusElemAddrType address, ReverifyResult re
                 addForgottenAddr(address);
                 break;
             case ReverifyResult::BusError:
-                pRec->nextIdentMs = timeNowMs + BusIdentSchedule::RETRY_BUS_ERROR_MIN_MS;
+                // Back off (100 ms doubling to 10 s) rather than retrying every 100 ms indefinitely
+                if (pRec->identAttempts < UINT8_MAX)
+                    pRec->identAttempts++;
+                pRec->nextIdentMs = timeNowMs + BusIdentSchedule::retryDelayMs(BusIdentState::BusError, pRec->identAttempts);
                 break;
         }
+    }
+    RaftMutex_unlock(_busElemStatusMutex);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Note a failed poll of an element (counted in the identification timing JSON)
+/// @param address address
+/// @param rslt result of the failed access
+void BusStatusMgr::notePollFail(BusElemAddrType address, RaftRetCode rslt)
+{
+    if (!RaftMutex_lock(_busElemStatusMutex, RAFT_MUTEX_WAIT_FOREVER))
+        return;
+    IdentTiming* pIdentTiming = getIdentTiming(address, false);
+    if (pIdentTiming)
+    {
+        if (pIdentTiming->pollFails < UINT16_MAX)
+            pIdentTiming->pollFails++;
+        if ((rslt == RAFT_BUS_ACK_ERROR) && (pIdentTiming->pollNacks < UINT16_MAX))
+            pIdentTiming->pollNacks++;
     }
     RaftMutex_unlock(_busElemStatusMutex);
 }

@@ -234,3 +234,54 @@ int testGetIdentState()
                 "identified");
     return failCount;
 }
+
+// Re-verification after a poll failure: a NACKed detection (the device asleep, or busy e.g. just after a reset) is
+// tried again, backing off, and only taken as a mismatch after REVERIFY_NACK_MAX_ATTEMPTS; a re-verify that matches
+// clears the count. Failed polls and re-verify outcomes are counted in the identification timing JSON
+int testReverifyNack()
+{
+    printf("Running testReverifyNack...\n");
+    RaftBus bus(nullptr, nullptr);
+    BusStatusMgr statusMgr(bus);
+    const BusElemAddrType dev = 0x37;
+    addIdentifiedDevice(statusMgr, dev, 2);
+    BusIdentState state = BusIdentState::Pending;
+    uint32_t attempts = 99;
+
+    // NACKs short of the limit: still identified, attempts counted
+    for (uint32_t i = 1; i < BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS; i++)
+    {
+        statusMgr.notePollFail(dev, RAFT_BUS_ACK_ERROR);
+        statusMgr.setReverifyOutcome(dev, BusStatusMgr::ReverifyResult::Nack);
+        TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Identified) && (attempts == i),
+                    "a NACKed re-verify keeps the type");
+    }
+
+    // A match clears the count
+    statusMgr.setReverifyOutcome(dev, BusStatusMgr::ReverifyResult::StillMatches);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Identified) && (attempts == 0),
+                "a matching re-verify clears the attempts");
+
+    // A bus error backs off but keeps the type
+    statusMgr.setReverifyOutcome(dev, BusStatusMgr::ReverifyResult::BusError);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Identified) && (attempts == 1),
+                "a bus error re-verify keeps the type");
+    statusMgr.setReverifyOutcome(dev, BusStatusMgr::ReverifyResult::StillMatches);
+
+    // NACKs up to the limit: a mismatch - identified again
+    for (uint32_t i = 0; i < BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS; i++)
+        statusMgr.setReverifyOutcome(dev, BusStatusMgr::ReverifyResult::Nack);
+    TEST_ASSERT(statusMgr.getIdentState(dev, state, attempts) && (state == BusIdentState::Pending),
+                "NACKing on every re-verify is taken as a mismatch");
+
+    // Counted
+    String json = statusMgr.getIdentTimingJson();
+    char expect[200];
+    snprintf(expect, sizeof(expect), R"("pollFails":%d,"pollNacks":%d,"reverifies":%d,"reverifyNacks":%d,"reverifyMismatches":1)",
+                (int)BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS - 1, (int)BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS - 1,
+                (int)(2 * BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS + 2), (int)(2 * BusStatusMgr::REVERIFY_NACK_MAX_ATTEMPTS - 1));
+    TEST_ASSERT(json.indexOf(expect) >= 0, "counts in the identification timing JSON");
+    if (json.indexOf(expect) < 0)
+        printf("  got %s\n  expected %s\n", json.c_str(), expect);
+    return failCount;
+}

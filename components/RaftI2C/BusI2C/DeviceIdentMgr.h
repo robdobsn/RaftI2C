@@ -360,7 +360,7 @@ private:
     };
     IdentOutcome runIdentJob(IdentJob& job, DeviceStatus& deviceStatus, bool allowPause);
     IdentOutcome runIdentHook(BusElemAddrType address, DeviceStatus& deviceStatus);
-    DetectionResult reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex);
+    DetectionResult reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex, bool& detectionNacked);
     DetectionResult runDetectionSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
                 uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause);
     InitResult runInitSteps(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
@@ -411,6 +411,9 @@ private:
     uint32_t _initNackCount = 0;
     uint32_t _reverifyCount = 0;
     uint32_t _reverifyMismatchCount = 0;
+
+    // The last runDetectionSteps() ended because a step was NACKed (rather than a value not matching)
+    bool _lastDetectionNacked = false;
 
     // Deselect all slots
     std::function<void()> _deselectSlotsFn = nullptr;

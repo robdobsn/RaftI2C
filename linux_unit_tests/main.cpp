@@ -34,6 +34,7 @@ int testBusStatus();
 int testReIdentHookDevices();
 int testHookDeclined();
 int testGetIdentState();
+int testReverifyNack();
 
 int main()
 {
@@ -132,6 +133,7 @@ int main()
     failCount += testReIdentHookDevices();
     failCount += testHookDeclined();
     failCount += testGetIdentState();
+    failCount += testReverifyNack();
 
     // Check failCount
     if (failCount > 0)
