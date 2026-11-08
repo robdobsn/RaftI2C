@@ -903,6 +903,8 @@ void BusI2C::updateRecordAddrBits()
     for (uint8_t addr : addrs)
         _probeByReadAddrBits[(addr >> 5) & 3] |= 1u << (addr & 31);
     _probeByReadNumAddrs = addrs.size();
+    if (_pI2CCentral)
+        _pI2CCentral->setNoAddrOnlyAddrs(_probeByReadAddrBits);
     _recordAddrsGeneration = generation;
 }
 
