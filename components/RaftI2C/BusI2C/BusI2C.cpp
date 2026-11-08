@@ -14,6 +14,7 @@
 #include "esp_task_wdt.h"
 #include "BusI2CConsts.h"
 #include "BusI2CAddrAndSlot.h"
+#include "DeviceTypeRecords.h"
 #include <algorithm>
 
 // Auto-select I2C implementation based on chip if not explicitly defined
@@ -180,6 +181,7 @@ bool BusI2C::setup(BusNumType busNum, const RaftJsonIF& config)
         _loopYieldMs = 1;
     _pollBudgetUs = config.getLong("pollBudgetUs", I2C_BUS_POLL_BUDGET_DEFAULT_US);
     _identBudgetUs = config.getLong("identBudgetUs", I2C_BUS_IDENT_BUDGET_DEFAULT_US);
+    _wakeNackRetryUs = config.getLong("wakeNackRetryUs", WAKE_NACK_RETRY_DEFAULT_US);
     _loopFastUnyieldUs = config.getLong("fastScanMaxUnyieldMs", I2C_BUS_FAST_MAX_UNYIELD_DEFAUT_MS) * 1000;
     _loopSlowUnyieldUs = config.getLong("slowScanMaxUnyieldMs", I2C_BUS_SLOW_MAX_UNYIELD_DEFAUT_MS) * 1000;
 
@@ -687,7 +689,7 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 
         // Access the bus
         uint32_t numBytesRead = 0;
-        rsltCode = _pI2CCentral->access(i2cAddr, pReqRec->getWriteData(), writeReqLen, 
+        rsltCode = accessWithWakeRetry(i2cAddr, pReqRec->getWriteData(), writeReqLen,
                 pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
 
         // Record time of comms
@@ -821,7 +823,7 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
     uint32_t numBytesRead = 0;
     if (!_pI2CCentral)
         return failRequest(RAFT_BUS_NOT_INIT);
-    rslt = _pI2CCentral->access(i2cAddr, pReqRec->getWriteData(), writeReqLen, 
+    rslt = accessWithWakeRetry(i2cAddr, pReqRec->getWriteData(), writeReqLen,
             readBuf, readReqLen, numBytesRead);
 
     // Reset bus multiplexers to turn off all slots
@@ -840,6 +842,43 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
 
     // Record time of comms
     _lastI2CCommsUs = micros();
+    return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Access the bus, trying once more if a device that NACKs the transfer that wakes it did so
+/// @param i2cAddr - I2C address (no slot: the slot is already selected)
+/// @param pWriteBuf, numToWrite - bytes to write
+/// @param pReadBuf, numToRead - buffer for the bytes read and how many to read
+/// @param numRead (out) number read
+/// @return result code
+/// @note Called with the bus owner lock held. A NACK can't be told apart from one for a data byte, so any NACKed
+///       access to these addresses is retried; other addresses are accessed once, as before
+RaftRetCode BusI2C::accessWithWakeRetry(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
+            uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead)
+{
+    // The addresses of the records with "wakeNack", taken again when the catalogue changes
+    uint32_t generation = deviceTypeRecords.getGeneration();
+    if (generation != _wakeNackGeneration)
+    {
+        std::vector<uint8_t> addrs;
+        deviceTypeRecords.getWakeNackAddrs(addrs);
+        memset(_wakeNackAddrBits, 0, sizeof(_wakeNackAddrBits));
+        for (uint8_t addr : addrs)
+            _wakeNackAddrBits[(addr >> 5) & 3] |= 1u << (addr & 31);
+        _wakeNackNumAddrs = addrs.size();
+        _wakeNackGeneration = generation;
+    }
+
+    RaftRetCode rslt = _pI2CCentral->access(i2cAddr, pWriteBuf, numToWrite, pReadBuf, numToRead, numRead);
+    if ((rslt == RAFT_BUS_ACK_ERROR) && (i2cAddr < 128) && (_wakeNackAddrBits[i2cAddr >> 5] & (1u << (i2cAddr & 31))))
+    {
+        _wakeNackRetries++;
+        delayMicroseconds(_wakeNackRetryUs);
+        rslt = _pI2CCentral->access(i2cAddr, pWriteBuf, numToWrite, pReadBuf, numToRead, numRead);
+        if (rslt == RAFT_OK)
+            _wakeNackRecovered++;
+    }
     return rslt;
 }
 
