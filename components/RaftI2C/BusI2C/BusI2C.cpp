@@ -689,7 +689,7 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 
         // Access the bus
         uint32_t numBytesRead = 0;
-        rsltCode = accessWithWakeRetry(i2cAddr, pReqRec->getWriteData(), writeReqLen,
+        rsltCode = accessWithDeviceQuirks(i2cAddr, pReqRec->getWriteData(), writeReqLen,
                 pReadData ? pReadData->data() : pDummyReadBuf, readReqLen, numBytesRead);
 
         // Record time of comms
@@ -823,7 +823,7 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
     uint32_t numBytesRead = 0;
     if (!_pI2CCentral)
         return failRequest(RAFT_BUS_NOT_INIT);
-    rslt = accessWithWakeRetry(i2cAddr, pReqRec->getWriteData(), writeReqLen,
+    rslt = accessWithDeviceQuirks(i2cAddr, pReqRec->getWriteData(), writeReqLen,
             readBuf, readReqLen, numBytesRead);
 
     // Reset bus multiplexers to turn off all slots
@@ -846,32 +846,33 @@ RaftRetCode BusI2C::i2cSendAsync(const BusRequestInfo* pReqRec, uint32_t pollLis
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// @brief Access the bus, trying once more if a device that NACKs the transfer that wakes it did so
+/// @brief Access the bus, allowing for the device quirks some records declare: an address-only access (a scan probe)
+///        to a "probeByRead" address is made a 1-byte read, and a NACKed access to a "wakeNack" address is tried once
+///        more
 /// @param i2cAddr - I2C address (no slot: the slot is already selected)
 /// @param pWriteBuf, numToWrite - bytes to write
 /// @param pReadBuf, numToRead - buffer for the bytes read and how many to read
-/// @param numRead (out) number read
+/// @param numRead (out) number read (0 for a probe made a read: the byte read is discarded)
 /// @return result code
 /// @note Called with the bus owner lock held. A NACK can't be told apart from one for a data byte, so any NACKed
-///       access to these addresses is retried; other addresses are accessed once, as before
-RaftRetCode BusI2C::accessWithWakeRetry(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
+///       access to the wakeNack addresses is retried; other addresses are accessed as asked, as before
+RaftRetCode BusI2C::accessWithDeviceQuirks(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
             uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead)
 {
-    // The addresses of the records with "wakeNack", taken again when the catalogue changes
-    uint32_t generation = deviceTypeRecords.getGeneration();
-    if (generation != _wakeNackGeneration)
+    updateRecordAddrBits();
+
+    // An address-only probe of a device that mishandles one is a 1-byte read (which it ACKs the same way)
+    uint8_t probeReadByte = 0;
+    bool probeByRead = (numToWrite == 0) && (numToRead == 0) && isAddrInBits(_probeByReadAddrBits, i2cAddr);
+    if (probeByRead)
     {
-        std::vector<uint8_t> addrs;
-        deviceTypeRecords.getWakeNackAddrs(addrs);
-        memset(_wakeNackAddrBits, 0, sizeof(_wakeNackAddrBits));
-        for (uint8_t addr : addrs)
-            _wakeNackAddrBits[(addr >> 5) & 3] |= 1u << (addr & 31);
-        _wakeNackNumAddrs = addrs.size();
-        _wakeNackGeneration = generation;
+        _probeByReadCount++;
+        pReadBuf = &probeReadByte;
+        numToRead = 1;
     }
 
     RaftRetCode rslt = _pI2CCentral->access(i2cAddr, pWriteBuf, numToWrite, pReadBuf, numToRead, numRead);
-    if ((rslt == RAFT_BUS_ACK_ERROR) && (i2cAddr < 128) && (_wakeNackAddrBits[i2cAddr >> 5] & (1u << (i2cAddr & 31))))
+    if ((rslt == RAFT_BUS_ACK_ERROR) && isAddrInBits(_wakeNackAddrBits, i2cAddr))
     {
         _wakeNackRetries++;
         delayMicroseconds(_wakeNackRetryUs);
@@ -879,7 +880,30 @@ RaftRetCode BusI2C::accessWithWakeRetry(uint16_t i2cAddr, const uint8_t* pWriteB
         if (rslt == RAFT_OK)
             _wakeNackRecovered++;
     }
+    if (probeByRead)
+        numRead = 0;
     return rslt;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief Take the wakeNack and probeByRead addresses from the device type records again if they have changed
+void BusI2C::updateRecordAddrBits()
+{
+    uint32_t generation = deviceTypeRecords.getGeneration();
+    if (generation == _recordAddrsGeneration)
+        return;
+    std::vector<uint8_t> addrs;
+    deviceTypeRecords.getWakeNackAddrs(addrs);
+    memset(_wakeNackAddrBits, 0, sizeof(_wakeNackAddrBits));
+    for (uint8_t addr : addrs)
+        _wakeNackAddrBits[(addr >> 5) & 3] |= 1u << (addr & 31);
+    _wakeNackNumAddrs = addrs.size();
+    deviceTypeRecords.getProbeByReadAddrs(addrs);
+    memset(_probeByReadAddrBits, 0, sizeof(_probeByReadAddrBits));
+    for (uint8_t addr : addrs)
+        _probeByReadAddrBits[(addr >> 5) & 3] |= 1u << (addr & 31);
+    _probeByReadNumAddrs = addrs.size();
+    _recordAddrsGeneration = generation;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

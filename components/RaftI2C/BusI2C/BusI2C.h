@@ -388,7 +388,9 @@ public:
                 ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() +
                 ",\"scan\":" + _busScanner.getScanStatsJson() +
                 ",\"wakeNack\":{\"addrs\":" + String(_wakeNackNumAddrs) + ",\"retries\":" + String(_wakeNackRetries) +
-                ",\"recovered\":" + String(_wakeNackRecovered) + "}" + getWorkerStackJson() + "}";
+                ",\"recovered\":" + String(_wakeNackRecovered) + "}" +
+                ",\"probeByRead\":{\"addrs\":" + String(_probeByReadNumAddrs) + ",\"probes\":" +
+                String(_probeByReadCount) + "}" + getWorkerStackJson() + "}";
     }
 
     /// @brief The worker task's stack size and least free (a JSON field with a leading comma, or empty)
@@ -453,10 +455,24 @@ private:
     uint32_t _wakeNackRetryUs = WAKE_NACK_RETRY_DEFAULT_US;
     uint32_t _wakeNackAddrBits[4] = {};
     uint32_t _wakeNackNumAddrs = 0;
-    uint32_t _wakeNackGeneration = UINT32_MAX;
     uint32_t _wakeNackRetries = 0;
     uint32_t _wakeNackRecovered = 0;
-    RaftRetCode accessWithWakeRetry(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
+
+    // Devices that mishandle an address-only (zero-length) transfer (records with "probeByRead", e.g. the
+    // MCP9600/MCP9601, which then stops answering until power is cycled): an address-only access to one of their
+    // addresses - a scan probe - is made a 1-byte read instead. Taken from the records with the wakeNack addresses
+    uint32_t _probeByReadAddrBits[4] = {};
+    uint32_t _probeByReadNumAddrs = 0;
+    uint32_t _probeByReadCount = 0;
+
+    // The generation of the device type records the address lists above were taken from
+    uint32_t _recordAddrsGeneration = UINT32_MAX;
+    void updateRecordAddrBits();
+    static bool isAddrInBits(const uint32_t* pBits, uint16_t i2cAddr)
+    {
+        return (i2cAddr < 128) && (pBits[i2cAddr >> 5] & (1u << (i2cAddr & 31)));
+    }
+    RaftRetCode accessWithDeviceQuirks(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
                 uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead);
     static const uint32_t MIN_TIME_BETWEEN_I2C_COMMS_US = 1000;
 
