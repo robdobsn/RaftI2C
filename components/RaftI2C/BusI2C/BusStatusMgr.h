@@ -381,9 +381,17 @@ public:
     {
         StillMatches,       // still that type (re-initialised)
         Mismatch,           // not that type now - identify it again
-        BusError,           // re-verify again later
+        BusError,           // re-verify again later (backing off)
+        Nack,               // detection NACKed (asleep or busy, e.g. just reset) - re-verify again later (backing off),
+                            // a mismatch after REVERIFY_NACK_MAX_ATTEMPTS
     };
     void setReverifyOutcome(BusElemAddrType address, ReverifyResult result);
+    static constexpr uint32_t REVERIFY_NACK_MAX_ATTEMPTS = 4;
+
+    /// @brief Note a failed poll of an element (counted in the identification timing JSON)
+    /// @param address address
+    /// @param rslt result of the failed access
+    void notePollFail(BusElemAddrType address, RaftRetCode rslt);
 
 
     /// @brief Get identification timing for each element seen since the bus started, as JSON
@@ -402,6 +410,11 @@ private:
         uint32_t identMs = NOT_REACHED;
         uint16_t deviceTypeIndex = DEVICE_TYPE_INDEX_INVALID;
         uint16_t identAttempts = 0;     // identification attempts (all outcomes)
+        uint16_t pollFails = 0;         // failed polls (all results other than barred)
+        uint16_t pollNacks = 0;         // failed polls that were NACKed
+        uint16_t reverifies = 0;        // re-verifications (after a poll failure)
+        uint16_t reverifyNacks = 0;     // re-verifications whose detection was NACKed
+        uint16_t reverifyMismatches = 0; // re-verifications that ended as a mismatch
     };
     static const uint32_t MAX_IDENT_TIMING = 16;
 

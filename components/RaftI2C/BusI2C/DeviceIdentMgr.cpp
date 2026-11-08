@@ -150,11 +150,13 @@ void DeviceIdentMgr::taskService(uint64_t budgetUs)
         else if (work.reverify)
         {
             // Re-verification of an identified device after a poll failure it recovered from
-            DetectionResult result = reverifyDevice(work.address, work.deviceTypeIndex);
+            bool detectionNacked = false;
+            DetectionResult result = reverifyDevice(work.address, work.deviceTypeIndex, detectionNacked);
             _busStatusMgr.setReverifyOutcome(work.address,
                         result == DetectionResult::Match ? BusStatusMgr::ReverifyResult::StillMatches :
-                        result == DetectionResult::NoMatch ? BusStatusMgr::ReverifyResult::Mismatch :
-                        BusStatusMgr::ReverifyResult::BusError);
+                        result != DetectionResult::NoMatch ? BusStatusMgr::ReverifyResult::BusError :
+                        detectionNacked ? BusStatusMgr::ReverifyResult::Nack :
+                        BusStatusMgr::ReverifyResult::Mismatch);
         }
         else
         {
@@ -421,8 +423,10 @@ DeviceIdentMgr::IdentOutcome DeviceIdentMgr::runIdentHook(BusElemAddrType addres
 ///         later)
 /// @note A probe-only type (identified by a hook) isn't re-verified, nor one whose detection has a long pause (the
 ///       device is being polled); these are treated as a match without re-initialising
-DeviceIdentMgr::DetectionResult DeviceIdentMgr::reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex)
+DeviceIdentMgr::DetectionResult DeviceIdentMgr::reverifyDevice(BusElemAddrType address, DeviceTypeIndexType deviceTypeIndex,
+            bool& detectionNacked)
 {
+    detectionNacked = false;
     const DeviceTypeRecord* pRec = deviceTypeRecords.getRecord(deviceTypeIndex);
     if (!pRec)
         return DetectionResult::NoMatch;
@@ -445,11 +449,15 @@ DeviceIdentMgr::DetectionResult DeviceIdentMgr::reverifyDevice(BusElemAddrType a
     }
     else if (result == DetectionResult::NoMatch)
     {
-        _reverifyMismatchCount++;
+        // A NACK (asleep, or busy e.g. just reset) is tried again before it is taken as a mismatch
+        detectionNacked = _lastDetectionNacked;
+        if (!detectionNacked)
+            _reverifyMismatchCount++;
     }
     LOG_I(MODULE_PREFIX, "reverify %s at %s after a poll failure: %s", pRec->deviceType ? pRec->deviceType : "?",
                 BusI2CAddrAndSlot::toString(address).c_str(),
                 result == DetectionResult::Match ? "still matches, re-initialised" :
+                detectionNacked ? "detection NACKed - tried again later" :
                 result == DetectionResult::NoMatch ? "no longer matches - identifying again" : "bus error - tried again later");
     return result;
 }
@@ -628,6 +636,7 @@ DeviceIdentMgr::DetectionResult DeviceIdentMgr::runDetectionSteps(BusElemAddrTyp
             uint32_t& stepIdx, uint32_t& resumeAtMs, bool allowPause)
 {
     // Get the detection records - a record with an invalid detection value never matches
+    _lastDetectionNacked = false;
     std::vector<DeviceTypeRecords::DeviceDetectionRec> detectionRecs;
     if (!deviceTypeRecords.getDetectionRecs(deviceTypeIndex, detectionRecs))
         return DetectionResult::NoMatch;
@@ -666,7 +675,10 @@ DeviceIdentMgr::DetectionResult DeviceIdentMgr::runDetectionSteps(BusElemAddrTyp
 
         // A NACK means the device rejected this step (not this type); anything else is a bus problem
         if (rslt == RAFT_BUS_ACK_ERROR)
+        {
+            _lastDetectionNacked = true;
             return DetectionResult::NoMatch;
+        }
         if (rslt != RAFT_OK)
             return DetectionResult::BusError;
 
@@ -710,6 +722,9 @@ DeviceIdentMgr::DetectionResult DeviceIdentMgr::runDetectionSteps(BusElemAddrTyp
         {
             if (allowPause && (detectionRec.pauseAfterSendMs >= LONG_PAUSE_MS))
             {
+                // Bar the address while paused so the scanner (and anything else) leaves the device alone - the
+                // bar ends as the job resumes
+                _busStatusMgr.barElemAccessSet(sentMs, address, detectionRec.pauseAfterSendMs);
                 resumeAtMs = sentMs + detectionRec.pauseAfterSendMs;
                 return DetectionResult::Paused;
             }
@@ -797,6 +812,9 @@ DeviceIdentMgr::InitResult DeviceIdentMgr::runInitSteps(BusElemAddrType address,
         {
             if (allowPause && (pauseMs >= LONG_PAUSE_MS))
             {
+                // Bar the address while paused (e.g. after a reset) so a scan probe doesn't find the device NACKing
+                // and take it offline - the bar ends as the job resumes
+                _busStatusMgr.barElemAccessSet(sentMs, address, pauseMs);
                 resumeAtMs = sentMs + pauseMs;
                 return InitResult::Paused;
             }
