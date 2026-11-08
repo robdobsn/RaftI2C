@@ -386,7 +386,9 @@ public:
                 ",\"activity\":" + _activityStats.getJson() +
                 ",\"pollTiming\":" + _busStatusMgr.getPollTimingJson() +
                 ",\"identTiming\":" + _busStatusMgr.getIdentTimingJson() +
-                ",\"scan\":" + _busScanner.getScanStatsJson() + getWorkerStackJson() + "}";
+                ",\"scan\":" + _busScanner.getScanStatsJson() +
+                ",\"wakeNack\":{\"addrs\":" + String(_wakeNackNumAddrs) + ",\"retries\":" + String(_wakeNackRetries) +
+                ",\"recovered\":" + String(_wakeNackRecovered) + "}" + getWorkerStackJson() + "}";
     }
 
     /// @brief The worker task's stack size and least free (a JSON field with a leading comma, or empty)
@@ -443,6 +445,19 @@ private:
 
     // Last comms time uS
     uint64_t _lastI2CCommsUs = 0;
+
+    // Devices that NACK the transfer that wakes them from sleep (records with "wakeNack", e.g. the CY8CMBR3xxx
+    // CapSense controllers): a NACKed access to one of their addresses is tried once more, _wakeNackRetryUs later
+    // (bus setting "wakeNackRetryUs"). The addresses are taken from the records again when the catalogue changes
+    static const uint32_t WAKE_NACK_RETRY_DEFAULT_US = 1000;
+    uint32_t _wakeNackRetryUs = WAKE_NACK_RETRY_DEFAULT_US;
+    uint32_t _wakeNackAddrBits[4] = {};
+    uint32_t _wakeNackNumAddrs = 0;
+    uint32_t _wakeNackGeneration = UINT32_MAX;
+    uint32_t _wakeNackRetries = 0;
+    uint32_t _wakeNackRecovered = 0;
+    RaftRetCode accessWithWakeRetry(uint16_t i2cAddr, const uint8_t* pWriteBuf, uint32_t numToWrite,
+                uint8_t* pReadBuf, uint32_t numToRead, uint32_t& numRead);
     static const uint32_t MIN_TIME_BETWEEN_I2C_COMMS_US = 1000;
 
     // I2C loop control
