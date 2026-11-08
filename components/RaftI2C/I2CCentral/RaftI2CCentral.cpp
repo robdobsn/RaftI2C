@@ -640,13 +640,16 @@ RaftRetCode RaftI2CCentral::access(uint32_t address, const uint8_t *pWriteBuf, u
 #endif
 
     // Resync the bus if required using an address-only probe of the same address (all of its commands, including
-    // the STOP, are executed even if the address is NACKed) - the result of the probe is not used
+    // the STOP, are executed even if the address is NACKed) - the result of the probe is not used. A device that
+    // mishandles an address-only transfer (probeByRead) isn't given one: the probe goes to a reserved address, which
+    // completes the START ... STOP just the same (a read probe wouldn't: a NACKed read stops before its STOP)
     RaftRetCode accessResultCode = _accessResultCode;
     if (busResyncRequired)
     {
+        bool redirect = (address < 128) && (_noAddrOnlyAddrBits[address >> 5] & (1u << (address & 31)));
         uint32_t probeNumRead = 0;
-        access(address, nullptr, 0, nullptr, 0, probeNumRead);
-        _i2cStats.recordBusResync();
+        access(redirect ? RESYNC_RESERVED_ADDR : address, nullptr, 0, nullptr, 0, probeNumRead);
+        _i2cStats.recordBusResync(redirect);
     }
     return accessResultCode;
 }

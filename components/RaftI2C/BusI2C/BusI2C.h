@@ -390,7 +390,9 @@ public:
                 ",\"wakeNack\":{\"addrs\":" + String(_wakeNackNumAddrs) + ",\"retries\":" + String(_wakeNackRetries) +
                 ",\"recovered\":" + String(_wakeNackRecovered) + "}" +
                 ",\"probeByRead\":{\"addrs\":" + String(_probeByReadNumAddrs) + ",\"probes\":" +
-                String(_probeByReadCount) + "}" + getWorkerStackJson() + "}";
+                String(_probeByReadCount) + ",\"resyncsRedirected\":" +
+                String(_pI2CCentral ? _pI2CCentral->getStats().busResyncRedirectCount : 0) + "}" +
+                getWorkerStackJson() + "}";
     }
 
     /// @brief The worker task's stack size and least free (a JSON field with a leading comma, or empty)

@@ -60,8 +60,21 @@ public:
     {
         return _appliedBusFrequency;
     }
+
+    // Addresses that must not be given an address-only transfer (see RaftI2CCentralIF)
+    virtual void setNoAddrOnlyAddrs(const uint32_t addrBits[4]) override final
+    {
+        for (int i = 0; i < 4; i++)
+            _noAddrOnlyAddrBits[i] = addrBits[i];
+    }
      
 private:
+    // Addresses that must not be given an address-only transfer (records with "probeByRead"), and the reserved
+    // address (I2C's 0x7C-0x7F, reserved for future purposes: nothing answers it and the scanner doesn't probe it)
+    // that a bus resync after a failed access to one of them is sent to instead
+    uint32_t _noAddrOnlyAddrBits[4] = {};
+    static constexpr uint32_t RESYNC_RESERVED_ADDR = 0x7F;
+
     // Settings
     uint8_t _i2cPort = 0;
     int16_t _pinSDA = -1;

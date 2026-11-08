@@ -53,6 +53,12 @@ public:
     // Get current bus frequency (Hz)
     virtual uint32_t getBusFrequency() const { return 0; }
 
+    // Addresses (a 128-bit map, bit n for address n) that must not be given an address-only (zero-length) transfer -
+    // those of device type records with "probeByRead", e.g. the MCP9600/MCP9601, which stops answering after one. A
+    // central that resynchronises the bus with an address-only probe after a failed access sends that probe to a
+    // reserved address instead when the access was to one of these
+    virtual void setNoAddrOnlyAddrs(const uint32_t addrBits[4]) {}
+
     // Debugging
     class I2CStats
     {
@@ -74,6 +80,7 @@ public:
             txFifoEmptyCount = 0;
             incompleteTransaction = 0;
             busResyncCount = 0;
+            busResyncRedirectCount = 0;
         }
         void FUNCTION_DECORATOR_IRAM_ATTR update(bool transStart,
             bool ackErr,
@@ -107,9 +114,11 @@ public:
         {
             incompleteTransaction++;
         }
-        void recordBusResync()
+        void recordBusResync(bool redirected)
         {
             busResyncCount++;
+            if (redirected)
+                busResyncRedirectCount++;
         }
         String debugStr()
         {
@@ -131,6 +140,7 @@ public:
         uint32_t txFifoEmptyCount;
         uint32_t incompleteTransaction;
         uint32_t busResyncCount;
+        uint32_t busResyncRedirectCount;
     };
 
     // Get stats
