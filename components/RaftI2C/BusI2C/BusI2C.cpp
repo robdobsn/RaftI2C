@@ -702,7 +702,7 @@ RaftRetCode BusI2C::i2cSendSync(const BusRequestInfo* pReqRec, std::vector<uint8
 #endif
 #ifdef DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES
     String writeDataHexStr;
-    Raft::getHexStrFromBytes(pReqRec->getWriteData(), Raft::clamp(pReqRec->getWriteDataLen(), 0, DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
+    Raft::getHexStrFromBytes(pReqRec->getWriteData(), std::min<uint32_t>(pReqRec->getWriteDataLen(), DEBUG_I2C_SEND_HELPERS_DETAIL_MAX_BYTES), writeDataHexStr);
     LOG_I(MODULE_PREFIX, "I2CSendSync %s i2cAddr %s writeLen %d readLen %d reqType %d writeData %s",
                     addrOk ? Raft::getRetCodeStr(rsltCode) : "INVALID ADDR",
                     BusI2CAddrAndSlot::toString(address).c_str(), pReqRec->getWriteDataLen(),
