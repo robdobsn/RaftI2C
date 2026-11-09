@@ -1101,9 +1101,10 @@ bool DeviceIdentMgr::decodeLatestPollResponse(BusElemAddrType address,
     if (latestData.empty())
         return false;
 
-    // Decode single response
-    uint32_t numDecoded = decodePollResponses(deviceTypeIndex, latestData.data(), latestData.size(),
-                pStructOut, structOutSize, 1, decodeState);
+    // The latest response is kept at its actual length, and can hold several records (e.g. a FIFO read): decode
+    // it as every on-device consumer does, giving the newest record
+    uint32_t numDecoded = deviceTypeRecords.decodeNewestPollRecord(deviceTypeIndex, latestData.data(),
+                latestData.size(), pStructOut, structOutSize, decodeState);
     return numDecoded > 0;
 }
 
@@ -1129,11 +1130,9 @@ uint32_t DeviceIdentMgr::decodePollResponses(uint16_t deviceTypeIndex,
             void* pStructOut, uint32_t structOutSize, 
             uint16_t maxRecCount, RaftBusDeviceDecodeState& decodeState) const
 {
-    // Decode function of the device type (no copy of the record)
-    DeviceTypeRecordDecodeFn decodeFn = deviceTypeRecords.getPollDecodeFn(deviceTypeIndex);
-    if (!decodeFn)
-        return 0;
-    return decodeFn(pPollBuf, pollBufLen, pStructOut, structOutSize, maxRecCount, decodeState);
+    // Through DeviceTypeRecords, which pads a record cut short (the stored responses are padded already)
+    return deviceTypeRecords.decodePollData(deviceTypeIndex, pPollBuf, pollBufLen, pStructOut, structOutSize,
+                maxRecCount, decodeState);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
